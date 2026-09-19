@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      # Rust CLI tools (versions pinned in Cargo.toml [workspace.metadata.bin]).
+      # cargo-run-bin makes that manifest the single source of truth for both
+      # local dev (`make setup`) and CI.
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-run-bin
+        run: cargo binstall -y cargo-run-bin
+      - name: Cache repo-local tools (.bin)
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: cargo-bin-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo-deny
+        run: cargo bin cargo-deny check
+      - name: build (offline)
+        run: cargo build --workspace
+      # Same Postgres as local dev; `#[sqlx::test]` creates a fresh database per
+      # test on it. `--wait` blocks on the compose healthcheck.
+      - name: start Postgres (docker compose)
+        run: docker compose up -d --wait postgres
+      - name: test
+        env:
+          DATABASE_URL: postgres://app:app@localhost:5432/postgres
+        run: cargo test --workspace
+
+  frontend:
+    runs-on: ubuntu-latest
+    # Activates once the frontend/ tree is scaffolded.
+    if: ${{ hashFiles('frontend/package.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: cd frontend && pnpm install --frozen-lockfile
+      - name: generate client from spec
+        run: make generate
+      - name: typecheck
+        run: cd frontend && pnpm run typecheck
+      - name: lint
+        run: cd frontend && pnpm biome ci
+      - name: unit tests
+        run: cd frontend && pnpm run test
+      - name: build
+        run: cd frontend && pnpm run build

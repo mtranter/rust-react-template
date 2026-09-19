@@ -1,0 +1,6 @@
+# Domain-layer isolation guard (spec §4.3) — see modules/users/clippy.toml.
+disallowed-types = [
+    { path = "sqlx::PgPool", reason = "application/domain must reach persistence via the Repository trait, not the driver" },
+    { path = "sqlx::Pool", reason = "application/domain must not name the database driver" },
+    { path = "sqlx::Postgres", reason = "application/domain must not name the database driver" },
+]

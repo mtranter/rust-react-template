@@ -1,0 +1,12 @@
+# Domain-layer isolation guard (spec §4.3).
+#
+# Naming the database driver outside the db layer is a leak. This bans sqlx pool
+# types crate-wide; the db layer (`src/db/mod.rs`) and the api layer's pool
+# extraction (`src/api/handlers.rs`) carry an explicit
+# `#![allow(clippy::disallowed_types)]`, so the **application** and **domain**
+# layers are forced to stay driver-free. Run with `-D warnings` to make leaks fail CI.
+disallowed-types = [
+    { path = "sqlx::PgPool", reason = "application/domain must reach persistence via the Repository trait, not the driver" },
+    { path = "sqlx::Pool", reason = "application/domain must not name the database driver" },
+    { path = "sqlx::Postgres", reason = "application/domain must not name the database driver" },
+]

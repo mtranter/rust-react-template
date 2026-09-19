@@ -1,0 +1,54 @@
+# cargo-deny 0.20 configuration.
+# Primary isolation is the Cargo workspace graph (a module can't import a sibling
+# it doesn't depend on). This file adds a third-party ban: sqlx may only be
+# depended on by the db-coupled crates. Domain/api layers physically cannot pull
+# it in without tripping this check.
+
+[graph]
+all-features = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Internal workspace crates are declared as path deps (`app-error.workspace = true`),
+# which resolve to a `*` version requirement. `wildcards = "deny"` is meant to catch
+# external crates pinned to `*`; exempt our own path crates so it keeps doing that.
+allow-wildcard-paths = true
+
+
+[licenses]
+# Permissive licenses expected across the dependency tree.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0", # webpki-roots (via sqlx-core): permissive data license
+]
+confidence-threshold = 0.9
+
+[advisories]
+version = 2
+yanked = "deny"
+# Advisories with no fix reachable from the pinned stack. Revisit when bumping poem
+# (§2) or jsonwebtoken; drop an entry once its crate has a patched release we can take.
+ignore = [
+    # rsa (via jsonwebtoken): Marvin timing side-channel. Upstream has no patched
+    # release ("No safe upgrade is available!"); only exploitable by a network
+    # attacker observing timing, which our minimal JWT seam does not expose.
+    "RUSTSEC-2023-0071",
+    # quick-xml 0.36 (via poem/poem-openapi): fixed in >=0.41, but poem-openapi 5.1
+    # pins ^0.36.1, so the fix is unreachable without moving off the pinned poem stack.
+    "RUSTSEC-2026-0194", # quadratic run time on duplicate start-tag attributes
+    "RUSTSEC-2026-0195", # unbounded namespace-declaration allocation in NsReader
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

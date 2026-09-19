@@ -1,0 +1,7 @@
+# Track the latest stable. Edition 2024 needs >= 1.85, but the effective
+# workspace MSRV is 1.94 (sqlx 0.9's declared rust-version); see the
+# `rust-version` field in the root Cargo.toml, which is what actually enforces
+# the floor. CI installs an explicit stable version for reproducibility.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -1,0 +1,15 @@
+[package]
+name = "app-test-support"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Dev-only, pure test utilities shared by every module's tests. Modules depend on
+# it under [dev-dependencies] only. Keep it free of poem/sqlx: anything that
+# needs a framework belongs in the module's own test driver.
+[dependencies]
+serde_json.workspace = true
+jsonpath-rust.workspace = true
+assert-json-diff.workspace = true

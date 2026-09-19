@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE notes.note\n                    SET title = $2, body = $3, version = version + 1\n                    WHERE id = $1 AND version = $4\n                    RETURNING version\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "notes.note",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "add78a91137f85009f49ad9d425d19b4162492443fc0a385ff85ca87e722f3e2"
+}

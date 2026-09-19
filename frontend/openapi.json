@@ -1,0 +1,626 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "rust-vite-template API",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Notes"
+    },
+    {
+      "name": "Users"
+    }
+  ],
+  "paths": {
+    "/users": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Register a new user.",
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List users, most-recent first (paginated).",
+        "parameters": [
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "The currently-authenticated user (JWT Bearer guarded — spec §11). The\nresponse carries the version in the `ETag` header (and body) — the token\na subsequent change must send back in `If-Match`.",
+        "description": "Declared before `/:id` so the static segment wins in routing.",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Change the currently-authenticated user's display name. Requires `If-Match`\nwith the version the client last read; a stale value is refused with `412`\nand changes nothing (e.g. a change already made in another tab).",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeDisplayNameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ]
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Fetch a user by id.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notes": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Create a note.",
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "List notes, most-recent first (paginated).",
+        "parameters": [
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_NoteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notes/{id}": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Fetch a note by id. The response carries its version in the `ETag` header\n(and body) — the token a subsequent edit must send back in `If-Match`.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/EditNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChangeDisplayNameRequest": {
+        "type": "object",
+        "title": "ChangeDisplayNameRequest",
+        "description": "Request body for changing the current user's display name. Carries no\nversion: the concurrency token travels only in the `If-Match` header.",
+        "required": [
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateNoteRequest": {
+        "type": "object",
+        "title": "CreateNoteRequest",
+        "required": [
+          "author_id",
+          "title"
+        ],
+        "properties": {
+          "author_id": {
+            "type": "string",
+            "description": "Author id (a plain uuid; not validated against the users module)."
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "title": "CreateUserRequest",
+        "description": "Request body for creating a user.",
+        "required": [
+          "email",
+          "display_name"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          }
+        }
+      },
+      "EditNoteRequest": {
+        "type": "object",
+        "title": "EditNoteRequest",
+        "description": "Replaces a note's title and body. Carries no version: the concurrency token\ntravels only in the `If-Match` header, never the body (see the handlers).",
+        "required": [
+          "title",
+          "body"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        }
+      },
+      "NoteResponse": {
+        "type": "object",
+        "title": "NoteResponse",
+        "required": [
+          "id",
+          "author_id",
+          "title",
+          "body",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "author_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Optimistic-concurrency version. Echo it back in `If-Match` to edit this\nnote; a stale value is refused with `412 Precondition Failed`. Also\nmirrored in the `ETag` response header for single-item reads."
+          }
+        }
+      },
+      "Page_NoteResponse": {
+        "type": "object",
+        "title": "Page_NoteResponse",
+        "description": "A single page of results plus the metadata a client needs to page further.",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The items on this page.",
+            "items": {
+              "$ref": "#/components/schemas/NoteResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `offset` that was applied."
+          }
+        }
+      },
+      "Page_UserResponse": {
+        "type": "object",
+        "title": "Page_UserResponse",
+        "description": "A single page of results plus the metadata a client needs to page further.",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The items on this page.",
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `offset` that was applied."
+          }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "title": "UserResponse",
+        "description": "A user as exposed over HTTP. Ids and timestamps are strings so the generated\nclient stays dependency-free (uuid/RFC3339 as plain `string`).",
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Optimistic-concurrency version. Echo it back in `If-Match` to change this\nuser; a stale value is refused with `412 Precondition Failed`. Also\nmirrored in the `ETag` response header for single-item reads."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "JwtAuth": {
+        "type": "http",
+        "description": "JWT Bearer security scheme. Apply as an operation parameter to guard a route:\nthe extracted [`Claims`] identify the caller.",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

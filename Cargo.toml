@@ -1,0 +1,105 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/common/config",
+    "crates/common/error",
+    "crates/common/persistence",
+    "crates/common/telemetry",
+    "crates/common/web",
+    "crates/common/db",
+    "crates/common/test-support",
+    "crates/modules/users",
+    "crates/modules/notes",
+    "crates/server",
+]
+
+[workspace.package]
+edition = "2024"
+# MSRV floor. Edition 2024 needs 1.85, but sqlx 0.9 declares rust-version 1.94,
+# which raises the effective minimum for the whole workspace.
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# --- Internal crates ---
+app-config = { path = "crates/common/config" }
+app-error = { path = "crates/common/error" }
+app-persistence = { path = "crates/common/persistence" }
+app-telemetry = { path = "crates/common/telemetry" }
+app-web = { path = "crates/common/web" }
+app-db = { path = "crates/common/db" }
+app-test-support = { path = "crates/common/test-support" }
+users = { path = "crates/modules/users" }
+notes = { path = "crates/modules/notes" }
+
+# --- Web / OpenAPI (kept in lockstep: poem 3.1.x <-> poem-openapi 5.1.x) ---
+poem = "3.1"
+poem-openapi = { version = "5.1", features = ["swagger-ui"] }
+
+# --- Async runtime ---
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+# --- Database ---
+sqlx = { version = "0.9", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "macros",
+    "migrate",
+    "uuid",
+    "chrono",
+] }
+
+# --- Errors / config / telemetry ---
+async-trait = "0.1"
+thiserror = "2"
+figment = { version = "0.10", features = ["env", "toml"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# --- Serialization / common types ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# --- Auth ---
+# `rust_crypto` = pure-Rust HMAC/SHA2 backend: self-contained (no global crypto
+# provider to install) and no aws-lc-rs/cmake friction (spec §14).
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+# JWKS discovery/fetch for the OIDC verification mode. rustls with webpki roots,
+# no default-tls: reuses the `ring` provider already in the tree (via sqlx) so no
+# system OpenSSL and no aws-lc-rs/cmake friction (spec §14).
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls-webpki-roots",
+] }
+
+# --- Test infra ---
+proptest = "1"
+# JSON path assertions in app-test-support. jsonpath-rust is pinned to the 1.0
+# line (its query API changed across 0.x).
+jsonpath-rust = "1.0"
+assert-json-diff = "2.0"
+
+# Repo-local Rust CLI tooling, managed by cargo-run-bin (`cargo bin <tool>`).
+# `make setup` installs these into a gitignored ./.bin — nothing lands in the
+# global ~/.cargo/bin except the cargo-run-bin bootstrap itself. This is the
+# manifest + version pin for dev tools (the FE equivalent lives in package.json).
+# cargo-run-bin passes `version` to `cargo install --version`, which needs a
+# SemVer *range* qualifier for two-component versions (a bare "0.20" is read as
+# an incomplete exact version). "^0.20" pins the 0.20.x line, matching CI.
+[workspace.metadata.bin]
+cargo-deny = { version = "^0.20" }
+cargo-watch = { version = "8.5.3" }
+# sqlx-cli must match the sqlx 0.9 lib and use rustls (no native-tls/openssl).
+sqlx-cli = { version = "^0.9", bins = ["sqlx"], default-features = false, features = [
+    "rustls",
+    "postgres",
+] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

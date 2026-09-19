@@ -1,0 +1,20 @@
+# Git hooks via lefthook. Install once with `lefthook install`.
+pre-commit:
+  parallel: true
+  commands:
+    rustfmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+    clippy:
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    biome:
+      glob: "frontend/**/*.{ts,tsx,js,json}"
+      run: cd frontend && pnpm biome ci {staged_files}
+      skip:
+        - run: test ! -d frontend
+    tsc:
+      glob: "frontend/**/*.{ts,tsx}"
+      run: cd frontend && pnpm run typecheck
+      skip:
+        - run: test ! -d frontend

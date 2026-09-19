@@ -1,0 +1,46 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "dump-spec"
+path = "src/bin/dump-spec.rs"
+
+[[bin]]
+name = "migrate"
+path = "src/bin/migrate.rs"
+
+[dependencies]
+app-config.workspace = true
+app-db.workspace = true
+app-telemetry.workspace = true
+app-web.workspace = true
+users.workspace = true
+notes.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
+
+# Frontend embedding (spec §9). Off by default so the backend builds before the
+# frontend exists; the Dockerfile enables it once `frontend/dist` is present.
+# `mime-guess` provides `EmbeddedFile::metadata().mimetype()` for correct
+# Content-Type headers on the embedded SPA assets.
+rust-embed = { version = "8", optional = true, features = ["mime-guess"] }
+
+[features]
+default = []
+embed-frontend = ["dep:rust-embed", "poem/embed"]
