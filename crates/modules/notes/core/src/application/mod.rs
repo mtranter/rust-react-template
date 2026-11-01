@@ -8,7 +8,7 @@ mod repository;
 mod service;
 
 pub use app_persistence::{
-    EventPublisher, Expected, ListQuery, Listed, Transactions, Tx, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
 pub use repository::{NoteRepository, NoteSortKey};
 pub use service::NoteService;

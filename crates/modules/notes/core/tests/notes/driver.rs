@@ -3,6 +3,7 @@ use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
+use app_persistence::PendingEvent;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
@@ -150,13 +151,13 @@ impl Notes {
         let mut tx = self.ctx.transactions().begin().await.expect("begin");
         self.ctx
             .publisher()
-            .publish::<UserDeleted>(
+            .publish(
                 &mut tx,
-                EventPayload::new(users_events::User {
+                PendingEvent::of::<UserDeleted>(EventPayload::new(users_events::User {
                     id: user.id,
                     email: user.email,
                     display_name: user.display_name,
-                }),
+                })),
             )
             .await
             .expect("publish");

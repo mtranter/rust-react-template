@@ -1,6 +1,6 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, Transactions, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Version, Versioned,
     WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
@@ -38,7 +38,10 @@ impl WidgetService {
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
         self.publisher
-            .publish::<WidgetCreated>(&mut tx, EventPayload::new(events::widget(&widget)))
+            .publish(
+                &mut tx,
+                PendingEvent::of::<WidgetCreated>(EventPayload::new(events::widget(&widget))),
+            )
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -63,7 +66,10 @@ impl WidgetService {
             .save(&mut tx, &widget, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish::<WidgetRenamed>(&mut tx, EventPayload::new(events::widget(&widget)))
+            .publish(
+                &mut tx,
+                PendingEvent::of::<WidgetRenamed>(EventPayload::new(events::widget(&widget))),
+            )
             .await?;
         tx.commit().await?;
         Ok(Versioned {

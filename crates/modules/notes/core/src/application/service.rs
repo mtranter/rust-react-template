@@ -1,7 +1,7 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
-    Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, PendingEvent,
+    Transactions, Tx, Version, Versioned,
 };
 use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
 use app_domain::Clock;
@@ -51,7 +51,10 @@ impl NoteService {
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
         self.publisher
-            .publish::<NoteCreated>(&mut tx, EventPayload::new(events::note(&note)))
+            .publish(
+                &mut tx,
+                PendingEvent::of::<NoteCreated>(EventPayload::new(events::note(&note))),
+            )
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -72,7 +75,10 @@ impl NoteService {
             .save(&mut tx, &note, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish::<NoteEdited>(&mut tx, EventPayload::new(events::note(&note)))
+            .publish(
+                &mut tx,
+                PendingEvent::of::<NoteEdited>(EventPayload::new(events::note(&note))),
+            )
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -95,7 +101,10 @@ impl NoteService {
                 .save(tx, &note, Expected::Version(version))
                 .await?;
             self.publisher
-                .publish::<NoteArchived>(tx, EventPayload::new(events::note(&note)))
+                .publish(
+                    tx,
+                    PendingEvent::of::<NoteArchived>(EventPayload::new(events::note(&note))),
+                )
                 .await?;
         }
         Ok(())

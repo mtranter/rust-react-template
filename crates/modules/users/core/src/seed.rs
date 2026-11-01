@@ -26,6 +26,7 @@ fn user(published: v1::User, minutes: i64) -> User {
         seed_time(minutes),
     )
     .expect("seed data satisfies the domain's invariants")
+    .0
 }
 
 pub fn alice() -> User {

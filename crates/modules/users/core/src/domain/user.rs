@@ -1,4 +1,4 @@
-use super::{ChangeDisplayName, Email, RegisterUser, UserError, UserId};
+use super::{ChangeDisplayName, Email, RegisterUser, UserError, UserEvent, UserId};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,18 +12,27 @@ pub struct User {
 impl User {
     /// Takes the id and `now` so the domain stays deterministic: the service
     /// passes fresh values, seeds pass well-known ones.
-    pub fn register(id: UserId, cmd: RegisterUser, now: DateTime<Utc>) -> Result<Self, UserError> {
-        Ok(Self {
+    pub fn register(
+        id: UserId,
+        cmd: RegisterUser,
+        now: DateTime<Utc>,
+    ) -> Result<(Self, UserEvent), UserError> {
+        let user = Self {
             id,
             email: Email::parse(&cmd.email)?,
             display_name: display_name(&cmd.display_name)?,
             created_at: now,
-        })
+        };
+        Ok((user, UserEvent::Registered))
     }
 
-    pub fn change_display_name(&mut self, cmd: ChangeDisplayName) -> Result<(), UserError> {
+    pub fn change_display_name(&mut self, cmd: ChangeDisplayName) -> Result<UserEvent, UserError> {
         self.display_name = display_name(&cmd.display_name)?;
-        Ok(())
+        Ok(UserEvent::DisplayNameChanged)
+    }
+
+    pub fn delete(&self) -> UserEvent {
+        UserEvent::Deleted
     }
 
     /// Skips invariants: for repositories only.
@@ -80,6 +89,7 @@ mod tests {
             Utc::now(),
         )
         .unwrap()
+        .0
     }
 
     #[test]
@@ -98,8 +108,29 @@ mod tests {
                 display_name: "   ".into(),
             },
             Utc::now(),
-        );
+        )
+        .map(|(user, _)| user);
         assert_eq!(result, Err(UserError::EmptyDisplayName));
+    }
+
+    #[test]
+    fn each_transition_says_what_happened() {
+        let (mut user, registered) = User::register(
+            UserId::new(),
+            RegisterUser {
+                email: "a@example.com".into(),
+                display_name: "A".into(),
+            },
+            Utc::now(),
+        )
+        .unwrap();
+        let changed = user.change_display_name(ChangeDisplayName {
+            user_id: user.id(),
+            display_name: "B".into(),
+        });
+        assert_eq!(registered, UserEvent::Registered);
+        assert_eq!(changed, Ok(UserEvent::DisplayNameChanged));
+        assert_eq!(user.delete(), UserEvent::Deleted);
     }
 
     #[test]

@@ -341,17 +341,32 @@ own port, `Arc<dyn EventPublisher>`, which takes the `Tx` like a repository
 write does.
 
 ```
+let changed = a.change(..)?;
+let (b, created) = B::create(..)?;
 let mut tx = self.transactions.begin().await?;
 self.repo.save(&mut tx, &a, Expected::Version(v)).await?;
 self.repo.save(&mut tx, &b, Expected::New).await?;
-self.publisher.publish::<AWasChanged>(&mut tx, EventPayload::new(..)).await?;
-self.publisher.publish::<BWasCreated>(&mut tx, EventPayload::new(..)).await?;
+self.publisher.publish(&mut tx, events::pending_a(&a, changed)).await?;
+self.publisher.publish(&mut tx, events::pending_b(&b, created)).await?;
 tx.commit().await?;
 ```
 
 Anything that must follow a write goes through the same `Tx`, so it happens if
 and only if the write commits:
 
+- **The domain decides what happened.** Each aggregate has a plain
+  `#[must_use]` enum of what can happen to it in its `domain/`
+  (`users::domain::UserEvent { Registered, DisplayNameChanged, Deleted }`),
+  knowing nothing of `app_events`. Every transition returns one: a constructor
+  `Result<(Self, XEvent), _>`, a mutation `Result<XEvent, _>` (`Option` where it
+  may change nothing), and a deletion `XEvent` from the aggregate as it was last.
+  A variant carries only what the state can't say (the event's context), never
+  the state. `application/events.rs` maps each variant, exhaustively, to its
+  `-api` event: `pending(&aggregate, event) -> PendingEvent`, building the
+  payload from the aggregate as it now is. That match is the one place domain
+  names meet the published contract, so the domain can rename or split its
+  events without touching `events::v1`. `notes` and the template still name
+  their `-api` events in the service; copy `users`.
 - **An event** (`publisher.publish`) tells other modules something happened to an
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
@@ -383,7 +398,9 @@ and only if the write commits:
 - **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
   1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`,
   `subject`, `time`, `datacontenttype`, `data`: the payload);
-  `EnvelopeOf<E>` names it for an event. The publisher stamps the id and
+  `EnvelopeOf<E>` names it for an event. A service hands the publisher a
+  `PendingEvent::of::<E>(payload)`, an event with its type erased so a
+  module's events share one type, and the publisher stamps the id and
   time and stores the whole envelope as the outbox `payload`; subscribers
   receive it, so they have the event's id to deduplicate on and the time it
   happened.
@@ -510,7 +527,7 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 | `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
 | `app-events` | pure | `Event` (what a module announces), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
-| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `EventPublisher` / `Announcement`, `Handle` / `Handlers` (subscribers, §4) | application and db layers |
+| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `EventPublisher` / `PendingEvent`, `Handle` / `Handlers` (subscribers, §4) | application and db layers |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
 | `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `PgEventPublisher` (the outbox), `Worker` (relay, delivery, dead letters) | db layers, server |
 | `app-module` | poem + `app-db` | `Context` (the pool and the clock every module is built from), `Module`: a module's provider, handlers, migrations and seed, registered once with the server (§4) | `di.rs`, server, test drivers |

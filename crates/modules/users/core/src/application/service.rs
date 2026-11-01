@@ -6,9 +6,7 @@ use super::{
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::EventPayload;
 use std::sync::Arc;
-use users_api::events::v1::{UserDeleted, UserDisplayNameChanged, UserRegistered};
 
 /// Holds trait objects rather than being generic so the service is one
 /// nameable type; one dynamic call per repository method is noise beside the I/O.
@@ -36,14 +34,14 @@ impl UserService {
     }
 
     pub async fn register(&self, cmd: RegisterUser) -> AppResult<Versioned<User>> {
-        let user = User::register(UserId::new(), cmd, self.clock.now())?;
+        let (user, event) = User::register(UserId::new(), cmd, self.clock.now())?;
         if self.repo.find_by_email(user.email()).await?.is_some() {
             return Err(AppError::conflict("a user with that email already exists"));
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &user, Expected::New).await?;
         self.publisher
-            .publish::<UserRegistered>(&mut tx, EventPayload::new(events::user(&user)))
+            .publish(&mut tx, events::pending(&user, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -60,14 +58,14 @@ impl UserService {
         expected: Version,
     ) -> AppResult<Versioned<User>> {
         let mut user = self.get(cmd.user_id).await?.entity;
-        user.change_display_name(cmd)?;
+        let event = user.change_display_name(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
             .repo
             .save(&mut tx, &user, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish::<UserDisplayNameChanged>(&mut tx, EventPayload::new(events::user(&user)))
+            .publish(&mut tx, events::pending(&user, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -87,10 +85,11 @@ impl UserService {
                 "the account was modified elsewhere",
             ));
         }
+        let event = current.entity.delete();
         let mut tx = self.transactions.begin().await?;
         self.repo.delete(&mut tx, id, expected).await?;
         self.publisher
-            .publish::<UserDeleted>(&mut tx, EventPayload::new(events::user(&current.entity)))
+            .publish(&mut tx, events::pending(&current.entity, event))
             .await?;
         tx.commit().await
     }
