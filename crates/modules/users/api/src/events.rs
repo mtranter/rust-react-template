@@ -1,15 +1,12 @@
-//! What `users` announces (spec §4): one event per state change, each carrying
-//! the user as they now are. Stored as JSON, so a version only gains fields,
-//! each `#[serde(default)]`.
+//! What `users` announces (spec §4): one topic per aggregate root, each event
+//! carrying the root as it now is.
 
 pub mod v1 {
-    use app_events::{Event, NoContext};
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;
 
-    const SOURCE: &str = "/users";
-
     /// What every users event carries: the user's state but its audit fields.
+    /// Only gains fields, each `#[serde(default)]`.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct User {
@@ -18,44 +15,37 @@ pub mod v1 {
         pub display_name: String,
     }
 
-    pub struct UserRegistered;
-
-    impl Event for UserRegistered {
-        const TYPE: &'static str = "users.user_registered.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = User;
-        type Context = NoContext;
-
-        fn subject(user: &User) -> String {
-            user.id.to_string()
+    app_events::topic! {
+        /// Everything that happens to a user, keyed by their id.
+        pub topic UserTopic("users.user.v1") {
+            source: "/users",
+            entity: User,
+            key: |user| user.id.to_string(),
+            events: UserEvent, UserEventKind;
+            UserRegistered => Registered: "users.user_registered",
+            UserDisplayNameChanged => DisplayNameChanged: "users.user_display_name_changed",
+            /// The account is gone, as it was last: its id now names nobody, and
+            /// any module holding it decides what that means for its own data.
+            UserDeleted => Deleted: "users.user_deleted",
         }
     }
 
-    pub struct UserDisplayNameChanged;
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-    impl Event for UserDisplayNameChanged {
-        const TYPE: &'static str = "users.user_display_name_changed.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = User;
-        type Context = NoContext;
-
-        fn subject(user: &User) -> String {
-            user.id.to_string()
-        }
-    }
-
-    /// The account is gone, as it was last: its id now names nobody, and any
-    /// module holding it decides what that means for its own data.
-    pub struct UserDeleted;
-
-    impl Event for UserDeleted {
-        const TYPE: &'static str = "users.user_deleted.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = User;
-        type Context = NoContext;
-
-        fn subject(user: &User) -> String {
-            user.id.to_string()
+        #[test]
+        fn every_event_round_trips() {
+            let events = [
+                UserEvent::Registered,
+                UserEvent::DisplayNameChanged,
+                UserEvent::Deleted,
+            ];
+            for event in &events {
+                let (event_type, context) = event.encode().unwrap();
+                assert_eq!(&UserEvent::decode(event_type, context).unwrap(), event);
+            }
+            assert_eq!(events.len(), UserEventKind::ALL.len());
         }
     }
 }

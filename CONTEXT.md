@@ -111,9 +111,14 @@ together or not at all.
 Something that happened to an Aggregate, announced for Modules to react to
 (e.g. a user registered, a user was deleted). A fact, named in the past tense,
 never a request for something to be done. Its type is published in the Module
-API, versioned, and it carries an Event Payload. Every change to an Aggregate
+API, as one of its Topic's, and it carries an Event Payload. Every change to an Aggregate
 publishes one. It travels in an Event Envelope and is recorded in the same Unit of Work as the change it announces, in the
 Outbox. The publisher does not know who listens.
+
+### Topic
+Every Event that happens to one kind of Aggregate root (e.g. `users.user.v1`),
+keyed by the root's id. Declared in the Module API with an exhaustive list of
+its Events, and versioned as a whole.
 
 ### Event Publisher
 The interface, defined in common code, through which a Service publishes an
@@ -128,13 +133,14 @@ state transfer); and a context saying what happened where the state can't
 
 ### Event Envelope
 The CloudEvents-shaped wrapper every Event is stored and delivered in: its id,
-source Module, type, subject (the Aggregate's id) and time, around its Event
-Payload.
+source Module, Topic, type, key (the Aggregate's id) and time, around its
+Event Payload.
 
 ### Subscriber
-A Module's reaction to an Event, another Module's or its own (e.g. archiving a
-deleted user's notes, welcoming a registered user): it changes only its own
-Module's data, and may run more than once.
+A Module's reaction to an Event, or to every Event of a Topic, another Module's
+or its own (e.g. archiving a deleted user's notes, welcoming a registered
+user): it changes only its own Module's data, and may run more than once. Each
+is a **Subscription**, its own queue, registered when migrating.
 
 ### Outbox
 Where a Unit of Work records its Events, so they are delivered if and only if it

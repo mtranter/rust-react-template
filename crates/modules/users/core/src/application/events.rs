@@ -1,16 +1,15 @@
 use super::PendingEvent;
 use crate::domain::{User, UserEvent};
-use app_events::EventPayload;
-use users_api::events::v1::{self, UserDeleted, UserDisplayNameChanged, UserRegistered};
+use users_api::events::v1::{self, UserTopic};
 
 /// Where the domain's events meet the published contract.
 pub(super) fn pending(user: &User, event: UserEvent) -> PendingEvent {
-    let payload = EventPayload::new(state(user));
-    match event {
-        UserEvent::Registered => PendingEvent::of::<UserRegistered>(payload),
-        UserEvent::DisplayNameChanged => PendingEvent::of::<UserDisplayNameChanged>(payload),
-        UserEvent::Deleted => PendingEvent::of::<UserDeleted>(payload),
-    }
+    let event = match event {
+        UserEvent::Registered => v1::UserEvent::Registered,
+        UserEvent::DisplayNameChanged => v1::UserEvent::DisplayNameChanged,
+        UserEvent::Deleted => v1::UserEvent::Deleted,
+    };
+    PendingEvent::on::<UserTopic>(&state(user), event)
 }
 
 fn state(user: &User) -> v1::User {

@@ -15,7 +15,7 @@ use sqlx::{AssertSqlSafe, PgPool};
 use std::fmt::Display;
 use std::sync::Arc;
 use users_api::UserDirectory;
-use users_api::events::v1::{self as users_events, UserDeleted};
+use users_api::events::v1::{self as users_events, UserTopic};
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -157,11 +157,14 @@ impl Notes {
             .publisher()
             .publish(
                 &mut tx,
-                PendingEvent::of::<UserDeleted>(EventPayload::new(users_events::User {
-                    id: user.id,
-                    email: user.email,
-                    display_name: user.display_name,
-                })),
+                PendingEvent::on::<UserTopic>(
+                    &users_events::User {
+                        id: user.id,
+                        email: user.email,
+                        display_name: user.display_name,
+                    },
+                    users_events::UserEvent::Deleted,
+                ),
             )
             .await
             .expect("publish");

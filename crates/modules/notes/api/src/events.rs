@@ -1,16 +1,13 @@
-//! What `notes` announces (spec §4): one event per state change, each carrying
-//! the note as it now is. Stored as JSON, so a version only gains fields, each
-//! `#[serde(default)]`.
+//! What `notes` announces (spec §4): one topic per aggregate root, each event
+//! carrying the root as it now is.
 
 pub mod v1 {
-    use app_events::{Event, NoContext};
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;
 
-    const SOURCE: &str = "/notes";
-
     /// What every notes event carries: the note's state but its audit fields.
+    /// Only gains fields, each `#[serde(default)]`.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Note {
@@ -22,42 +19,31 @@ pub mod v1 {
         pub archived_at: Option<DateTime<Utc>>,
     }
 
-    pub struct NoteCreated;
-
-    impl Event for NoteCreated {
-        const TYPE: &'static str = "notes.note_created.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = Note;
-        type Context = NoContext;
-
-        fn subject(note: &Note) -> String {
-            note.id.to_string()
+    app_events::topic! {
+        /// Everything that happens to a note, keyed by its id.
+        pub topic NoteTopic("notes.note.v1") {
+            source: "/notes",
+            entity: Note,
+            key: |note| note.id.to_string(),
+            events: NoteEvent, NoteEventKind;
+            NoteCreated => Created: "notes.note_created",
+            NoteEdited => Edited: "notes.note_edited",
+            NoteArchived => Archived: "notes.note_archived",
         }
     }
 
-    pub struct NoteEdited;
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-    impl Event for NoteEdited {
-        const TYPE: &'static str = "notes.note_edited.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = Note;
-        type Context = NoContext;
-
-        fn subject(note: &Note) -> String {
-            note.id.to_string()
-        }
-    }
-
-    pub struct NoteArchived;
-
-    impl Event for NoteArchived {
-        const TYPE: &'static str = "notes.note_archived.v1";
-        const SOURCE: &'static str = SOURCE;
-        type Entity = Note;
-        type Context = NoContext;
-
-        fn subject(note: &Note) -> String {
-            note.id.to_string()
+        #[test]
+        fn every_event_round_trips() {
+            let events = [NoteEvent::Created, NoteEvent::Edited, NoteEvent::Archived];
+            for event in &events {
+                let (event_type, context) = event.encode().unwrap();
+                assert_eq!(&NoteEvent::decode(event_type, context).unwrap(), event);
+            }
+            assert_eq!(events.len(), NoteEventKind::ALL.len());
         }
     }
 }

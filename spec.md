@@ -362,21 +362,49 @@ and only if the write commits:
   may change nothing: `notes`' `archive` of an archived note), and a deletion `XEvent` from the aggregate as it was last.
   A variant carries only what the state can't say (the event's context), never
   the state. `application/events.rs` maps each variant, exhaustively, to its
-  `-api` event: `pending(&aggregate, event) -> PendingEvent`, building the
-  payload from the aggregate as it now is. That match is the one place domain
-  names meet the published contract, so the domain can rename or split its
-  events without touching `events::v1`.
+  topic's event enum in the `-api`: `pending(&aggregate, event) -> PendingEvent`,
+  `PendingEvent::on::<UserTopic>(&state, event)` with the state built from the
+  aggregate as it now is. That match is the one place domain names meet the
+  published contract, so the domain can rename or split its events without
+  touching `events::v1`; the path from domain to wire has two exhaustive
+  matches, one on each side.
 - **An event** (`publisher.publish`) tells other modules something happened to an
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
   unit of work that saves it, one per aggregate changed (`users`: registered,
-  display name changed, deleted; `notes`: created, edited, archived). Its type
-  is a marker implementing `app_events::Event` in the module's `-api`,
-  versioned (`users_api::events::v1::UserDeleted`,
-  `TYPE = "users.user_deleted.v1"`, `SOURCE = "/users"`), naming what it
-  carries (`Entity`, `Context`) and how to find its subject (the root's id).
-  A breaking change is a new `TYPE` beside the old one. The publisher doesn't
-  know who listens.
+  display name changed, deleted; `notes`: created, edited, archived). The
+  publisher doesn't know who listens.
+- **Each aggregate root has a topic** (as Kafka has topics): one stream of its
+  events, keyed by the root's id. A module's `-api` declares it with
+  `app_events::topic!` (`users_api::events::v1`):
+
+  ```rust
+  app_events::topic! {
+      pub topic UserTopic("users.user.v1") {
+          source: "/users",
+          entity: User,
+          key: |user| user.id.to_string(),
+          events: UserEvent, UserEventKind;
+          UserRegistered => Registered: "users.user_registered",
+          UserDisplayNameChanged => DisplayNameChanged: "users.user_display_name_changed",
+          UserDeleted => Deleted: "users.user_deleted",
+      }
+  }
+  ```
+
+  It generates the `app_events::Topic` (`NAME`, `SOURCE`, `Entity`, `Event`,
+  `key`), the topic's event enum with one variant per event holding its
+  context (`ItemRemovedFromList => ItemRemoved(ItemRemoved): "lists.item_removed"`),
+  its `decode` and `encode`, a fieldless `UserEventKind` holding each type
+  string, and a marker type per event (`UserDeleted`) implementing
+  `app_events::Event` (`TYPE`, `Topic`, `Context`). It fails to compile if two
+  events of a topic share a type. The enum is deliberately **not**
+  `#[non_exhaustive]`: a new event breaks every whole-topic consumer's build,
+  in the same change. **Versioning is the topic's**: event types are
+  `<module>.<event>`, unique within the topic; contexts and the entity only gain
+  fields, each `#[serde(default)]`, and adding an event is additive on the
+  wire; removing one or changing the entity incompatibly is a new topic
+  (`users.user.v2`), published beside v1 until its consumers have moved.
 - **What an event carries is an `app_events::EventPayload { entity, context }`**
   (event-carried state transfer, so a subscriber never calls back).
   `entity` is the aggregate root's whole state as it now is, every property but
@@ -390,25 +418,33 @@ and only if the write commits:
   the publisher, deciding what they need. `context` says what happened where
   the state alone can't: an event about a child of the root (`ToDoItemRemoved`)
   carries the root (the list) as its entity and the child's id as its context
-  (`ItemRemoved { item_id }`). Each event type fixes its context; `NoContext`,
-  left out of the JSON, where the entity says it all (every event in this repo
-  today: none of its aggregates has children). Both are stored as JSON, so a
-  version only gains fields, each `#[serde(default)]`.
+  (`ItemRemoved { item_id }`), held by its variant. Each event type fixes its
+  context; `NoContext`, left out of the JSON, where the entity says it all
+  (every event in this repo today: none of its aggregates has children).
 - **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
-  1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`,
-  `subject`, `time`, `datacontenttype`, `data`: the payload);
+  1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`: the
+  event type, `subject`: the key, `time`, `datacontenttype`, `data`: the
+  payload `{ entity, context? }`), with extension attributes `topic` and
+  `partitionkey` (the key, from CloudEvents' partitioning extension);
   `EnvelopeOf<E>` names it for an event. A service hands the publisher a
-  `PendingEvent::of::<E>(payload)`, an event with its type erased so a
-  module's events share one type, and the publisher stamps the id and
-  time and stores the whole envelope as the outbox `payload`; subscribers
-  receive it, so they have the event's id to deduplicate on and the time it
-  happened.
-- **A subscriber** is how a module reacts: an
-  `app_persistence::Handle<E>` impl in its `application/`, receiving an
-  `EnvelopeOf<E>` (`notes`'
-  `application/reactions.rs`, deleting a user archives their notes), registered
-  under a stable queue name in its `handlers(..)`
-  (`Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`).
+  `PendingEvent`, its topic erased so every module's events share one type,
+  and the publisher stamps the id and time and stores the whole envelope as
+  the outbox `payload`; subscribers receive it, so they have the event's id to
+  deduplicate on. Decoding takes two steps, since `type` and `context` sit at
+  different depths, beyond a serde-tagged enum: the envelope with its context
+  as raw JSON, then `UserEvent::decode(type, context)`.
+- **A subscriber** is how a module reacts: an `app_persistence::Handle<S>`
+  impl in its `application/`, registered under a stable queue name in its
+  `handlers(..)`. It subscribes either to one event,
+  `Handle<UserDeleted>` receiving an `EnvelopeOf<UserDeleted>` (`notes`'
+  `application/reactions.rs`, deleting a user archives their notes;
+  `Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`),
+  or to a whole topic, `Handle<UserTopic>` receiving a
+  `TopicEnvelope<UserTopic> { id, key, time, entity, event }` and matching
+  `event` with no wildcard arm (`.on::<UserTopic>(queue, handler)`; one
+  subscription row per event type). A queue is of one topic; it may list
+  several of its types. A delivery of a topic or type its queue didn't
+  register is refused.
   It must tolerate being run twice and in any order. A module may subscribe to
   its own events: `users` welcomes a registered user by reacting to its
   `UserRegistered` (`application/welcome.rs`), rather than the registration
@@ -569,7 +605,7 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 |---|---|---|---|
 | `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
-| `app-events` | pure | `Event` (what a module announces), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
+| `app-events` | pure | `Topic` and `topic!` (a root's events, keyed by its id), `Event` (one of them), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` / `TopicEnvelope<T>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
 | `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `EventPublisher` / `PendingEvent`, `Handle` / `Handlers` (subscribers, §4) | application and db layers |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
 | `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `PgEventPublisher` (the outbox), `Worker` (relay, delivery, dead letters) | db layers, server |

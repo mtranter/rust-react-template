@@ -1,7 +1,7 @@
 use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_error::AppResult;
-use app_events::{EnvelopeOf, Event, EventPayload, NoContext};
+use app_events::EnvelopeOf;
 use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -13,30 +13,24 @@ pub struct Ping {
     pub name: String,
 }
 
-pub struct Pinged;
-
-impl Event for Pinged {
-    const TYPE: &'static str = "tests.pinged.v1";
-    const SOURCE: &'static str = "/tests";
-    type Entity = Ping;
-    type Context = NoContext;
-
-    fn subject(ping: &Ping) -> String {
-        ping.name.clone()
+app_events::topic! {
+    pub topic PingTopic("tests.ping.v1") {
+        source: "/tests",
+        entity: Ping,
+        key: |ping| ping.name.clone(),
+        events: PingEvent, PingEventKind;
+        Pinged => Pinged: "tests.pinged",
     }
 }
 
-/// `Pinged` under another topic.
-pub struct Poked;
-
-impl Event for Poked {
-    const TYPE: &'static str = "others.poked.v1";
-    const SOURCE: &'static str = "/others";
-    type Entity = Ping;
-    type Context = NoContext;
-
-    fn subject(ping: &Ping) -> String {
-        ping.name.clone()
+app_events::topic! {
+    /// Another topic of the same entity.
+    pub topic PokeTopic("tests.poke.v1") {
+        source: "/tests",
+        entity: Ping,
+        key: |ping| ping.name.clone(),
+        events: PokeEvent, PokeEventKind;
+        Poked => Poked: "tests.poked",
     }
 }
 
@@ -150,7 +144,7 @@ impl Messaging {
     pub async fn ping(&self, name: &str) {
         let transactions = PgTransactions::new(self.pool.clone());
         let mut tx = transactions.begin().await.expect("begin");
-        let event = PendingEvent::of::<Pinged>(EventPayload::new(Ping { name: name.into() }));
+        let event = PendingEvent::on::<PingTopic>(&Ping { name: name.into() }, PingEvent::Pinged);
         PgEventPublisher::new(self.clock.clone())
             .publish(&mut tx, event)
             .await

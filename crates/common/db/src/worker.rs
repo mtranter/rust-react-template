@@ -8,7 +8,7 @@
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::{EnvelopeOf, Event};
+use app_events::{EnvelopeOf, Event, Topic};
 use app_persistence::{Handlers, MAX_ATTEMPTS};
 use chrono::TimeDelta;
 use serde_json::Value;
@@ -174,7 +174,7 @@ impl Worker {
             SELECT s.queue, o.event_type, o.payload, $2, $3, $2
             FROM messaging.outbox o
             JOIN messaging.subscription s
-              ON s.event_type = o.event_type AND s.topic = o.payload->>'source'
+              ON s.topic = o.payload->>'topic' AND s.event_type = o.event_type
              AND s.retired_at IS NULL
             WHERE o.seq = ANY($1)
             ORDER BY o.seq, s.queue
@@ -300,7 +300,12 @@ impl Worker {
     /// Every `E` published so far, oldest first: for tests and diagnostics.
     pub async fn published<E: Event>(&self) -> AppResult<Vec<EnvelopeOf<E>>> {
         let payloads = sqlx::query_scalar!(
-            "SELECT payload FROM messaging.outbox WHERE event_type = $1 ORDER BY seq",
+            r#"
+            SELECT payload FROM messaging.outbox
+            WHERE payload->>'topic' = $1 AND event_type = $2
+            ORDER BY seq
+            "#,
+            <E::Topic as Topic>::NAME,
             E::TYPE,
         )
         .fetch_all(&self.pool)
