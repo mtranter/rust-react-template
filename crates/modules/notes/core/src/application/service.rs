@@ -1,13 +1,11 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, PendingEvent,
-    Transactions, Tx, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
+    Version, Versioned,
 };
 use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::EventPayload;
-use notes_api::events::v1::{NoteArchived, NoteCreated, NoteEdited};
 use std::sync::Arc;
 use users_api::UserDirectory;
 
@@ -44,17 +42,14 @@ impl NoteService {
     /// reaction only if it runs after this commits.
     pub async fn create(&self, cmd: CreateNote) -> AppResult<Versioned<Note>> {
         let author = cmd.author_id;
-        let note = Note::create(NoteId::new(), cmd, self.clock.now())?;
+        let (note, event) = Note::create(NoteId::new(), cmd, self.clock.now())?;
         if !self.users.exists(author.as_uuid()).await? {
             return Err(AppError::invalid_field("authorId", "unknown author"));
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
         self.publisher
-            .publish(
-                &mut tx,
-                PendingEvent::of::<NoteCreated>(EventPayload::new(events::note(&note))),
-            )
+            .publish(&mut tx, events::pending(&note, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -68,17 +63,14 @@ impl NoteService {
         // Load first so a missing note is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
         let mut note = self.get(cmd.note_id).await?.entity;
-        note.edit(cmd)?;
+        let event = note.edit(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
             .repo
             .save(&mut tx, &note, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish(
-                &mut tx,
-                PendingEvent::of::<NoteEdited>(EventPayload::new(events::note(&note))),
-            )
+            .publish(&mut tx, events::pending(&note, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -96,15 +88,14 @@ impl NoteService {
             version,
         } in self.repo.unarchived_by(author).await?
         {
-            note.archive(now);
+            let Some(event) = note.archive(now) else {
+                continue;
+            };
             self.repo
                 .save(tx, &note, Expected::Version(version))
                 .await?;
             self.publisher
-                .publish(
-                    tx,
-                    PendingEvent::of::<NoteArchived>(EventPayload::new(events::note(&note))),
-                )
+                .publish(tx, events::pending(&note, event))
                 .await?;
         }
         Ok(())

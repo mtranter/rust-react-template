@@ -1,4 +1,4 @@
-use super::{AuthorId, CreateNote, EditNote, NoteError, NoteId};
+use super::{AuthorId, CreateNote, EditNote, NoteError, NoteEvent, NoteId};
 use chrono::{DateTime, Utc};
 
 const MAX_TITLE_LEN: usize = 200;
@@ -14,30 +14,39 @@ pub struct Note {
 }
 
 impl Note {
-    pub fn create(id: NoteId, cmd: CreateNote, now: DateTime<Utc>) -> Result<Self, NoteError> {
-        Ok(Self {
+    pub fn create(
+        id: NoteId,
+        cmd: CreateNote,
+        now: DateTime<Utc>,
+    ) -> Result<(Self, NoteEvent), NoteError> {
+        let note = Self {
             id,
             author_id: cmd.author_id,
             title: title(&cmd.title)?,
             body: cmd.body,
             created_at: now,
             archived_at: None,
-        })
+        };
+        Ok((note, NoteEvent::Created))
     }
 
     /// On error the note is left unchanged.
-    pub fn edit(&mut self, cmd: EditNote) -> Result<(), NoteError> {
+    pub fn edit(&mut self, cmd: EditNote) -> Result<NoteEvent, NoteError> {
         if self.archived_at.is_some() {
             return Err(NoteError::Archived);
         }
         self.title = title(&cmd.title)?;
         self.body = cmd.body;
-        Ok(())
+        Ok(NoteEvent::Edited)
     }
 
-    /// Read-only from now on. Archiving again keeps the first time.
-    pub fn archive(&mut self, now: DateTime<Utc>) {
-        self.archived_at.get_or_insert(now);
+    /// Read-only from now on. Archiving again changes nothing, keeping the first time.
+    pub fn archive(&mut self, now: DateTime<Utc>) -> Option<NoteEvent> {
+        if self.archived_at.is_some() {
+            return None;
+        }
+        self.archived_at = Some(now);
+        Some(NoteEvent::Archived)
     }
 
     /// Skips invariants: for repositories rebuilding persisted state only.
@@ -110,6 +119,7 @@ mod tests {
             },
             Utc::now(),
         )
+        .map(|(note, _)| note)
     }
 
     #[test]
@@ -120,6 +130,28 @@ mod tests {
             create(&"x".repeat(MAX_TITLE_LEN + 1)),
             Err(NoteError::TitleTooLong { max: MAX_TITLE_LEN })
         );
+    }
+
+    #[test]
+    fn each_transition_says_what_happened() {
+        let (mut note, created) = Note::create(
+            NoteId::new(),
+            CreateNote {
+                author_id: AuthorId::from_uuid(Uuid::new_v4()),
+                title: "First".into(),
+                body: String::new(),
+            },
+            Utc::now(),
+        )
+        .unwrap();
+        let edited = note.edit(EditNote {
+            note_id: note.id(),
+            title: "Second".into(),
+            body: String::new(),
+        });
+        assert_eq!(created, NoteEvent::Created);
+        assert_eq!(edited, Ok(NoteEvent::Edited));
+        assert_eq!(note.archive(Utc::now()), Some(NoteEvent::Archived));
     }
 
     #[test]
@@ -139,8 +171,8 @@ mod tests {
     fn an_archived_note_refuses_edits_and_keeps_its_first_archive_time() {
         let mut note = create("First").unwrap();
         let first = Utc::now();
-        note.archive(first);
-        note.archive(first + chrono::TimeDelta::hours(1));
+        assert_eq!(note.archive(first), Some(NoteEvent::Archived));
+        assert_eq!(note.archive(first + chrono::TimeDelta::hours(1)), None);
         assert_eq!(note.archived_at(), Some(first));
 
         let before = note.clone();

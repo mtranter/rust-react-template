@@ -3,10 +3,12 @@
 
 mod commands;
 mod error;
+mod events;
 mod ids;
 mod note;
 
 pub use commands::{CreateNote, EditNote};
 pub use error::NoteError;
+pub use events::NoteEvent;
 pub use ids::{AuthorId, NoteId};
 pub use note::Note;

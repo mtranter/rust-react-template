@@ -1,7 +1,19 @@
-use crate::domain::Note;
-use notes_api::events::v1;
+use super::PendingEvent;
+use crate::domain::{Note, NoteEvent};
+use app_events::EventPayload;
+use notes_api::events::v1::{self, NoteArchived, NoteCreated, NoteEdited};
 
-pub(super) fn note(note: &Note) -> v1::Note {
+/// Where the domain's events meet the published contract.
+pub(super) fn pending(note: &Note, event: NoteEvent) -> PendingEvent {
+    let payload = EventPayload::new(state(note));
+    match event {
+        NoteEvent::Created => PendingEvent::of::<NoteCreated>(payload),
+        NoteEvent::Edited => PendingEvent::of::<NoteEdited>(payload),
+        NoteEvent::Archived => PendingEvent::of::<NoteArchived>(payload),
+    }
+}
+
+fn state(note: &Note) -> v1::Note {
     v1::Note {
         id: note.id().as_uuid(),
         author_id: note.author_id().as_uuid(),

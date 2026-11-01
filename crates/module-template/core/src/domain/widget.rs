@@ -1,4 +1,4 @@
-use super::{CreateWidget, RenameWidget, WidgetError, WidgetId};
+use super::{CreateWidget, RenameWidget, WidgetError, WidgetEvent, WidgetId};
 use chrono::{DateTime, Utc};
 
 const MAX_NAME_LEN: usize = 200;
@@ -15,18 +15,19 @@ impl Widget {
         id: WidgetId,
         cmd: CreateWidget,
         now: DateTime<Utc>,
-    ) -> Result<Self, WidgetError> {
-        Ok(Self {
+    ) -> Result<(Self, WidgetEvent), WidgetError> {
+        let widget = Self {
             id,
             name: name(&cmd.name)?,
             created_at: now,
-        })
+        };
+        Ok((widget, WidgetEvent::Created))
     }
 
     /// On error the widget is left unchanged.
-    pub fn rename(&mut self, cmd: RenameWidget) -> Result<(), WidgetError> {
+    pub fn rename(&mut self, cmd: RenameWidget) -> Result<WidgetEvent, WidgetError> {
         self.name = name(&cmd.name)?;
-        Ok(())
+        Ok(WidgetEvent::Renamed)
     }
 
     /// Skips invariants: for repositories rebuilding persisted state only.
@@ -72,6 +73,7 @@ mod tests {
             CreateWidget { name: name.into() },
             Utc::now(),
         )
+        .map(|(widget, _)| widget)
     }
 
     #[test]
@@ -82,6 +84,24 @@ mod tests {
             create(&"x".repeat(MAX_NAME_LEN + 1)),
             Err(WidgetError::NameTooLong { max: MAX_NAME_LEN })
         );
+    }
+
+    #[test]
+    fn each_transition_says_what_happened() {
+        let (mut widget, created) = Widget::create(
+            WidgetId::new(),
+            CreateWidget {
+                name: "First".into(),
+            },
+            Utc::now(),
+        )
+        .unwrap();
+        let renamed = widget.rename(RenameWidget {
+            widget_id: widget.id(),
+            name: "Second".into(),
+        });
+        assert_eq!(created, WidgetEvent::Created);
+        assert_eq!(renamed, Ok(WidgetEvent::Renamed));
     }
 
     #[test]

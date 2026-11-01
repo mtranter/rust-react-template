@@ -359,14 +359,13 @@ and only if the write commits:
   (`users::domain::UserEvent { Registered, DisplayNameChanged, Deleted }`),
   knowing nothing of `app_events`. Every transition returns one: a constructor
   `Result<(Self, XEvent), _>`, a mutation `Result<XEvent, _>` (`Option` where it
-  may change nothing), and a deletion `XEvent` from the aggregate as it was last.
+  may change nothing: `notes`' `archive` of an archived note), and a deletion `XEvent` from the aggregate as it was last.
   A variant carries only what the state can't say (the event's context), never
   the state. `application/events.rs` maps each variant, exhaustively, to its
   `-api` event: `pending(&aggregate, event) -> PendingEvent`, building the
   payload from the aggregate as it now is. That match is the one place domain
   names meet the published contract, so the domain can rename or split its
-  events without touching `events::v1`. `notes` and the template still name
-  their `-api` events in the service; copy `users`.
+  events without touching `events::v1`.
 - **An event** (`publisher.publish`) tells other modules something happened to an
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the

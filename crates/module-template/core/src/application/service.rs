@@ -1,14 +1,12 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, Transactions, Version, Versioned,
     WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::EventPayload;
 use std::sync::Arc;
-use widgets_api::events::v1::{WidgetCreated, WidgetRenamed};
 
 #[derive(Clone)]
 pub struct WidgetService {
@@ -34,14 +32,11 @@ impl WidgetService {
     }
 
     pub async fn create(&self, cmd: CreateWidget) -> AppResult<Versioned<Widget>> {
-        let widget = Widget::create(WidgetId::new(), cmd, self.clock.now())?;
+        let (widget, event) = Widget::create(WidgetId::new(), cmd, self.clock.now())?;
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
         self.publisher
-            .publish(
-                &mut tx,
-                PendingEvent::of::<WidgetCreated>(EventPayload::new(events::widget(&widget))),
-            )
+            .publish(&mut tx, events::pending(&widget, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -59,17 +54,14 @@ impl WidgetService {
         // Load first so a missing widget is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
         let mut widget = self.get(cmd.widget_id).await?.entity;
-        widget.rename(cmd)?;
+        let event = widget.rename(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
             .repo
             .save(&mut tx, &widget, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish(
-                &mut tx,
-                PendingEvent::of::<WidgetRenamed>(EventPayload::new(events::widget(&widget))),
-            )
+            .publish(&mut tx, events::pending(&widget, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {

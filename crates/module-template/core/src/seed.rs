@@ -20,6 +20,7 @@ pub const SECOND_WIDGET: WidgetId = WidgetId::from_uuid(well_known_id(MODULE, 1,
 fn widget(id: WidgetId, name: &str, minutes: i64) -> Widget {
     Widget::create(id, CreateWidget { name: name.into() }, seed_time(minutes))
         .expect("seed data satisfies the domain's invariants")
+        .0
 }
 
 pub fn first_widget() -> Widget {

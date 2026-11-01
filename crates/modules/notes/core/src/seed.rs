@@ -25,6 +25,7 @@ fn note(published: v1::Note, body: &str) -> Note {
         published.created_at,
     )
     .expect("seed data satisfies the domain's invariants")
+    .0
 }
 
 pub fn alices_note() -> Note {
