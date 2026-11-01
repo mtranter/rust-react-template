@@ -151,7 +151,7 @@ impl<S: Subscribable, H: Handle<S>> ErasedHandler for TypedHandler<S, H> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PendingEvent, TxBackend};
+    use crate::{PendingEvent, TxBackend, Version};
     use app_events::{EnvelopeOf, TopicEnvelope};
     use chrono::DateTime;
     use serde::{Deserialize, Serialize};
@@ -251,7 +251,7 @@ mod tests {
     /// As the worker reads it from the queue.
     fn delivery<T: Topic>(state: &T::Entity, event: T::Event) -> Value {
         let epoch = DateTime::from_timestamp(0, 0).unwrap();
-        let envelope = PendingEvent::on::<T>(state, event)
+        let envelope = PendingEvent::on::<T>(Version::FIRST, state, event)
             .envelope(Uuid::nil(), epoch)
             .unwrap();
         serde_json::to_value(envelope).unwrap()

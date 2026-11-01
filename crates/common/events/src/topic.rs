@@ -70,6 +70,9 @@ pub struct TopicEnvelope<T: Topic> {
     pub id: Uuid,
     /// The root's id.
     pub key: String,
+    /// The root's version, which orders the key's events.
+    pub version: i64,
+    /// When it was recorded; it doesn't order events.
     pub time: DateTime<Utc>,
     pub entity: T::Entity,
     pub event: T::Event,
@@ -92,6 +95,7 @@ pub fn decode_topic<T: Topic>(delivery: Value) -> Result<TopicEnvelope<T>, Decod
         event: T::decode(&envelope.event_type, envelope.data.context)?,
         id: envelope.id,
         key: envelope.partition_key,
+        version: envelope.entity_version,
         time: envelope.time,
         entity: envelope.data.entity,
     })

@@ -1,5 +1,6 @@
 use crate::driver::{Notes, Refusal};
 use app_events::EventPayload;
+use app_persistence::Version;
 use app_test_support::{assert_json_exists, assert_json_matches};
 use notes_api::events::v1::{self, NoteCreated};
 use notes_api::seed::UNKNOWN_AUTHOR;
@@ -30,13 +31,16 @@ async fn creating_a_note_announces_it(pool: PgPool) {
 
     assert_eq!(
         notes.announced::<NoteCreated>().await,
-        [EventPayload::new(v1::Note {
-            id: created.id().parse().unwrap(),
-            author_id: ALICE,
-            title: "Groceries".into(),
-            body: "hi".into(),
-            archived_at: None,
-        })]
+        [(
+            Version::FIRST,
+            EventPayload::new(v1::Note {
+                id: created.id().parse().unwrap(),
+                author_id: ALICE,
+                title: "Groceries".into(),
+                body: "hi".into(),
+                archived_at: None,
+            })
+        )]
     );
 }
 

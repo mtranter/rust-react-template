@@ -1,5 +1,6 @@
 use crate::driver::{Refusal, Widgets, announced};
 use app_events::EventPayload;
+use app_persistence::Version;
 use app_test_support::assert_json_matches;
 use sqlx::PgPool;
 use widgets::seed::{self, FIRST_WIDGET};
@@ -24,10 +25,13 @@ async fn renaming_a_widget_announces_it_as_it_now_is(pool: PgPool) {
 
     assert_eq!(
         widgets.announced::<WidgetRenamed>().await,
-        [EventPayload::new(v1::Widget {
-            name: "Renamed".into(),
-            ..announced(&seed::first_widget()).entity
-        })]
+        [(
+            Version::from_i64(2),
+            EventPayload::new(v1::Widget {
+                name: "Renamed".into(),
+                ..announced(&seed::first_widget()).entity
+            })
+        )]
     );
 }
 

@@ -19,7 +19,8 @@ pub struct EventEnvelope<T> {
     pub event_type: String,
     /// The id of the aggregate root the event is about: its key.
     pub subject: String,
-    /// When the unit of work that published it committed.
+    /// When the publishing transaction recorded it, by that instance's clock:
+    /// before it committed, and no way to order events; `entity_version` is.
     pub time: DateTime<Utc>,
     #[serde(rename = "datacontenttype")]
     pub data_content_type: String,
@@ -28,6 +29,12 @@ pub struct EventEnvelope<T> {
     /// The root's id, as `subject`: what orders the topic's events.
     #[serde(rename = "partitionkey")]
     pub partition_key: String,
+    /// The root's version this event announces, which orders the events of
+    /// one key. An extension attribute rather than CloudEvents' `sequence`,
+    /// which is a string sorted lexicographically, with no stated scope; this
+    /// is an integer scoped to one `topic` and `partitionkey`.
+    #[serde(rename = "entityversion")]
+    pub entity_version: i64,
     pub data: T,
 }
 
@@ -38,6 +45,7 @@ pub struct EventAttributes {
     pub topic: &'static str,
     pub event_type: &'static str,
     pub key: String,
+    pub version: i64,
 }
 
 const SPEC_VERSION: &str = "1.0";
@@ -55,6 +63,7 @@ impl<T> EventEnvelope<T> {
             data_content_type: DATA_CONTENT_TYPE.into(),
             topic: attributes.topic.into(),
             partition_key: attributes.key,
+            entity_version: attributes.version,
             data,
         }
     }
@@ -121,6 +130,7 @@ mod tests {
             topic: E::Topic::NAME,
             event_type: E::TYPE,
             key: <E::Topic as Topic>::key(&payload.entity),
+            version: 3,
         };
         let epoch = DateTime::from_timestamp(0, 0).unwrap();
         EventEnvelope::new(Uuid::nil(), epoch, attributes, payload)
@@ -148,6 +158,7 @@ mod tests {
                 "datacontenttype": "application/json",
                 "topic": "lists.list.v1",
                 "partitionkey": LIST.to_string(),
+                "entityversion": 3,
                 "data": { "entity": { "id": LIST, "itemIds": [] } },
             })
         );
@@ -215,6 +226,7 @@ mod tests {
             TopicEnvelope::<ListTopic> {
                 id: Uuid::nil(),
                 key: LIST.to_string(),
+                version: 3,
                 time: DateTime::from_timestamp(0, 0).unwrap(),
                 entity: list(),
                 event: ListEvent::ItemRemoved(ItemRemoved { item_id: ITEM }),

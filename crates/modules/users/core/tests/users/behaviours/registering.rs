@@ -36,6 +36,7 @@ async fn registering_announces_the_new_user(pool: PgPool) {
     assert_eq!(event.topic, "users.user.v1");
     assert_eq!(event.event_type, "users.user_registered");
     assert_eq!(event.partition_key, carol.id());
+    assert_eq!(event.entity_version, 1);
     assert_eq!(event.subject, carol.id());
     assert_eq!(event.time, users.now());
     assert_eq!(

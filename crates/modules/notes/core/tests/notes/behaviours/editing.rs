@@ -1,5 +1,6 @@
 use crate::driver::{Notes, Refusal, announced};
 use app_events::EventPayload;
+use app_persistence::Version;
 use app_test_support::assert_json_matches;
 use notes::NoteId;
 use notes::seed::{self, ALICES_NOTE};
@@ -31,11 +32,14 @@ async fn editing_a_note_announces_it_as_it_now_is(pool: PgPool) {
 
     assert_eq!(
         notes.announced::<NoteEdited>().await,
-        [EventPayload::new(v1::Note {
-            title: "Renamed".into(),
-            body: "updated".into(),
-            ..announced(&seed::alices_note()).entity
-        })]
+        [(
+            Version::from_i64(2),
+            EventPayload::new(v1::Note {
+                title: "Renamed".into(),
+                body: "updated".into(),
+                ..announced(&seed::alices_note()).entity
+            })
+        )]
     );
 }
 

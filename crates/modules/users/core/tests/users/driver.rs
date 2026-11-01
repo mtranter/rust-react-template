@@ -5,6 +5,7 @@ use app_domain::{Clock, FixedClock, SystemClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
+use app_persistence::Version;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
 use async_trait::async_trait;
@@ -169,12 +170,13 @@ impl Users {
         self.worker.dead_letters().await.expect("read dead letters")
     }
 
-    /// Every `E` users has announced to other modules, oldest first.
-    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+    /// Every `E` users has announced to other modules, oldest first, with the
+    /// version of the user each announces.
+    pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.announced_envelopes::<E>()
             .await
             .into_iter()
-            .map(|event| event.data)
+            .map(|event| (Version::from_i64(event.entity_version), event.data))
             .collect()
     }
 

@@ -174,7 +174,7 @@ impl Worker {
             SELECT s.queue, o.event_type, o.payload, $2, $3, $2
             FROM messaging.outbox o
             JOIN messaging.subscription s
-              ON s.topic = o.payload->>'topic' AND s.event_type = o.event_type
+              ON s.topic = o.topic AND s.event_type = o.event_type
              AND s.retired_at IS NULL
             WHERE o.seq = ANY($1)
             ORDER BY o.seq, s.queue
@@ -302,7 +302,7 @@ impl Worker {
         let payloads = sqlx::query_scalar!(
             r#"
             SELECT payload FROM messaging.outbox
-            WHERE payload->>'topic' = $1 AND event_type = $2
+            WHERE topic = $1 AND event_type = $2
             ORDER BY seq
             "#,
             <E::Topic as Topic>::NAME,

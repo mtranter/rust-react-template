@@ -1,5 +1,6 @@
 use crate::driver::{Refusal, Users, announced};
 use app_events::EventPayload;
+use app_persistence::Version;
 use app_test_support::assert_json_matches;
 use sqlx::PgPool;
 use users::UserId;
@@ -95,10 +96,13 @@ async fn changing_display_name_announces_the_user_as_they_now_are(pool: PgPool) 
 
     assert_eq!(
         users.announced::<UserDisplayNameChanged>().await,
-        [EventPayload::new(v1::User {
-            display_name: "Alice B".into(),
-            ..announced(&seed::alice()).entity
-        })]
+        [(
+            Version::from_i64(2),
+            EventPayload::new(v1::User {
+                display_name: "Alice B".into(),
+                ..announced(&seed::alice()).entity
+            })
+        )]
     );
 }
 

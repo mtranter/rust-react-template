@@ -36,7 +36,7 @@ impl WidgetService {
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
         self.publisher
-            .publish(&mut tx, events::pending(&widget, event))
+            .publish(&mut tx, events::pending(&widget, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -61,7 +61,7 @@ impl WidgetService {
             .save(&mut tx, &widget, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish(&mut tx, events::pending(&widget, event))
+            .publish(&mut tx, events::pending(&widget, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {

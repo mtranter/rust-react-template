@@ -2,7 +2,7 @@ use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_error::AppResult;
 use app_events::EnvelopeOf;
-use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx};
+use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -32,6 +32,14 @@ app_events::topic! {
         events: PokeEvent, PokeEventKind;
         Poked => Poked: "tests.poked",
     }
+}
+
+pub fn ping(name: &str, version: i64) -> PendingEvent {
+    PendingEvent::on::<PingTopic>(
+        Version::from_i64(version),
+        &Ping { name: name.into() },
+        PingEvent::Pinged,
+    )
 }
 
 /// What every recorder has handled, `<queue>: <subject>`, in order.
@@ -141,15 +149,20 @@ impl Messaging {
         .expect("dead-letter its jobs");
     }
 
+    /// `name` pinged, at its first version.
     pub async fn ping(&self, name: &str) {
+        self.publish(vec![ping(name, 1)]).await.expect("publish");
+    }
+
+    /// Publishes `events` in one unit of work.
+    pub async fn publish(&self, events: Vec<PendingEvent>) -> AppResult<()> {
         let transactions = PgTransactions::new(self.pool.clone());
-        let mut tx = transactions.begin().await.expect("begin");
-        let event = PendingEvent::on::<PingTopic>(&Ping { name: name.into() }, PingEvent::Pinged);
-        PgEventPublisher::new(self.clock.clone())
-            .publish(&mut tx, event)
-            .await
-            .expect("publish");
-        tx.commit().await.expect("commit");
+        let mut tx = transactions.begin().await?;
+        let publisher = PgEventPublisher::new(self.clock.clone());
+        for event in events {
+            publisher.publish(&mut tx, event).await?;
+        }
+        tx.commit().await
     }
 
     /// Every job still to run or dead, oldest first.

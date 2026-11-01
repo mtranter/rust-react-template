@@ -2,7 +2,7 @@
 //! their repository and publish into the same [`Tx`] they save in, so an event is
 //! delivered if and only if the change it announces commits.
 
-use crate::Tx;
+use crate::{Tx, Version};
 use app_error::{AppError, AppResult};
 use app_events::{EventAttributes, EventEnvelope, Topic};
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use uuid::Uuid;
 #[async_trait]
 pub trait EventPublisher: Send + Sync {
     /// Delivered to every subscriber, at least once, if and only if `tx` commits:
-    /// `publisher.publish(&mut tx, PendingEvent::on::<UserTopic>(&user, UserEvent::Registered))`.
+    /// `publisher.publish(&mut tx, PendingEvent::on::<UserTopic>(version, &user, UserEvent::Registered))`.
     async fn publish(&self, tx: &mut Tx, event: PendingEvent) -> AppResult<()>;
 }
 
@@ -29,13 +29,15 @@ pub struct PendingEvent {
 }
 
 impl PendingEvent {
-    /// `event` happened to the root of `T` whose state is now `state`.
-    pub fn on<T: Topic>(state: &T::Entity, event: T::Event) -> Self {
+    /// `event` made the root of `T` `state`, at `version`: the one its save
+    /// returned, or for a deletion the one deleted, [`next`](Version::next).
+    pub fn on<T: Topic>(version: Version, state: &T::Entity, event: T::Event) -> Self {
         let attributes = EventAttributes {
             source: T::SOURCE,
             topic: T::NAME,
             event_type: T::event_type(&event),
             key: T::key(state),
+            version: version.as_i64(),
         };
         let data = T::encode_context(&event).and_then(|context| {
             let mut data = Map::new();

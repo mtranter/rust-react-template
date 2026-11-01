@@ -49,7 +49,7 @@ impl NoteService {
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
         self.publisher
-            .publish(&mut tx, events::pending(&note, event))
+            .publish(&mut tx, events::pending(&note, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -70,7 +70,7 @@ impl NoteService {
             .save(&mut tx, &note, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish(&mut tx, events::pending(&note, event))
+            .publish(&mut tx, events::pending(&note, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -91,11 +91,12 @@ impl NoteService {
             let Some(event) = note.archive(now) else {
                 continue;
             };
-            self.repo
+            let version = self
+                .repo
                 .save(tx, &note, Expected::Version(version))
                 .await?;
             self.publisher
-                .publish(tx, events::pending(&note, event))
+                .publish(tx, events::pending(&note, version, event))
                 .await?;
         }
         Ok(())

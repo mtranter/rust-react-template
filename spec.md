@@ -424,15 +424,29 @@ and only if the write commits:
 - **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
   1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`: the
   event type, `subject`: the key, `time`, `datacontenttype`, `data`: the
-  payload `{ entity, context? }`), with extension attributes `topic` and
-  `partitionkey` (the key, from CloudEvents' partitioning extension);
+  payload `{ entity, context? }`), with extension attributes `topic`,
+  `partitionkey` (the key, from CloudEvents' partitioning extension) and
+  `entityversion`;
   `EnvelopeOf<E>` names it for an event. A service hands the publisher a
   `PendingEvent`, its topic erased so every module's events share one type,
   and the publisher stamps the id and time and stores the whole envelope as
   the outbox `payload`; subscribers receive it, so they have the event's id to
-  deduplicate on. Decoding takes two steps, since `type` and `context` sit at
+  deduplicate on. `time` is when the publishing transaction recorded it, by
+  that instance's clock, before it committed: it doesn't order events.
+  Decoding takes two steps, since `type` and `context` sit at
   different depths, beyond a serde-tagged enum: the envelope with its context
   as raw JSON, then `UserEvent::decode(type, context)`.
+- **Every event carries its root's version**, required by
+  `PendingEvent::on::<T>(version, &state, event)`: on the outbox row
+  (`topic`, `key`, `version`, unique together, so a second event for one save
+  fails it) and in the envelope as `entityversion`. A save publishes the
+  `Version` its `save` returned; a deletion publishes the version it removed
+  plus one (`Version::next()`, `users`' `delete` announces `expected.next()`),
+  so it is strictly the newest event of its key rather than tying with the
+  last update. `entityversion` is a custom extension attribute holding an
+  integer, not CloudEvents' `sequence`, which is a string that must sort
+  lexicographically and has no stated scope; this one is an integer scoped to
+  one `topic` and `partitionkey`.
 - **A subscriber** is how a module reacts: an `app_persistence::Handle<S>`
   impl in its `application/`, registered under a stable queue name in its
   `handlers(..)`. It subscribes either to one event,
