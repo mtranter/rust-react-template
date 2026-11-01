@@ -873,6 +873,10 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
 - Reserved for pure, side-effect-free logic — aggregates and value objects in the
   domain layer are the natural home. Where the state space is combinatorial, use
   **`proptest`** (property-based) rather than example tables.
+- The one exception is `app-persistence`'s subscriber registry (`Handlers`):
+  routing a delivery to its queue's typed handler is shared plumbing every
+  module relies on, so it is tested inline against a hand-written `FakeTx`
+  `TxBackend` rather than only through each module's worker verbs.
 
 **Frontend — Vitest, minimal mocking.**
 - Prefer rendering real components/hooks. When a test must cross the network,

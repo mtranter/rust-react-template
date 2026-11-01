@@ -88,9 +88,12 @@ dependencies = [
  "app-error",
  "app-events",
  "async-trait",
+ "chrono",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
