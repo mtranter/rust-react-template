@@ -55,19 +55,76 @@ impl Worker {
         }
     }
 
-    /// Polls every `interval` until `shutdown` resolves. A failure to reach the
-    /// database is logged and retried at the next poll.
-    pub async fn run(&self, interval: Duration, shutdown: impl Future<Output = ()>) {
+    /// Polls every `interval` until `shutdown` resolves. Refuses to start
+    /// unless [`check_subscriptions`](Self::check_subscriptions) passes; after
+    /// that, a failure to reach the database is logged and retried at the next poll.
+    pub async fn run(
+        &self,
+        interval: Duration,
+        shutdown: impl Future<Output = ()>,
+    ) -> AppResult<()> {
+        self.check_subscriptions().await?;
         tokio::pin!(shutdown);
         loop {
             if let Err(err) = self.run_until_idle().await {
                 tracing::error!(error = %describe(&err), "worker poll failed");
             }
             tokio::select! {
-                _ = &mut shutdown => return,
+                _ = &mut shutdown => return Ok(()),
                 _ = tokio::time::sleep(interval) => {}
             }
         }
+    }
+
+    /// Fails unless `migrate` registered every subscription this worker serves,
+    /// under the same topic; one retired since still runs its pending jobs.
+    /// Warns of each live subscription it doesn't serve: one another build's
+    /// workers must run.
+    pub async fn check_subscriptions(&self) -> AppResult<()> {
+        let registered = sqlx::query!(
+            r#"
+            SELECT queue, event_type, topic, retired_at IS NOT NULL AS "retired!"
+            FROM messaging.subscription
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+        let own: Vec<_> = self.handlers.subscriptions().collect();
+        for s in &own {
+            let found = registered
+                .iter()
+                .find(|r| r.queue == s.queue && r.event_type == s.event_type);
+            match found {
+                None => {
+                    return Err(AppError::internal(Unregistered {
+                        queue: s.queue,
+                        event_type: s.event_type,
+                    }));
+                }
+                Some(r) if r.topic != s.topic => {
+                    return Err(AppError::internal(OtherTopic {
+                        queue: s.queue,
+                        registered: r.topic.clone(),
+                        served: s.topic,
+                    }));
+                }
+                Some(_) => {}
+            }
+        }
+        for r in registered.iter().filter(|r| !r.retired) {
+            if !own
+                .iter()
+                .any(|s| s.queue == r.queue && s.event_type == r.event_type)
+            {
+                tracing::warn!(
+                    queue = r.queue,
+                    event_type = r.event_type,
+                    "a live subscription this worker doesn't serve"
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Relays and runs until nothing is due by the worker's clock, including
@@ -86,14 +143,15 @@ impl Worker {
         }
     }
 
-    /// Copies a batch of undispatched events into their subscribers' queues.
+    /// Copies a batch of undispatched events into the queues registered for
+    /// them in `messaging.subscription`, whatever this worker's own handlers.
     /// Returns how many events it dispatched; one nobody subscribes to is just
     /// marked dispatched.
     pub async fn relay(&self) -> AppResult<usize> {
         let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
-        let events = sqlx::query!(
+        let seqs = sqlx::query_scalar!(
             r#"
-            SELECT seq, event_type, payload FROM messaging.outbox
+            SELECT seq FROM messaging.outbox
             WHERE dispatched_at IS NULL
             ORDER BY seq
             LIMIT $1
@@ -104,31 +162,30 @@ impl Worker {
         .fetch_all(&mut *tx)
         .await
         .map_err(AppError::internal)?;
-        if events.is_empty() {
+        if seqs.is_empty() {
             return Ok(0);
         }
 
         let now = self.clock.now();
-        for event in &events {
-            for queue in self.handlers.subscribers(&event.event_type) {
-                sqlx::query!(
-                    r#"
-                    INSERT INTO messaging.job
-                        (queue, event_type, payload, run_at, max_attempts, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $4)
-                    "#,
-                    queue,
-                    event.event_type,
-                    event.payload,
-                    now,
-                    MAX_ATTEMPTS,
-                )
-                .execute(&mut *tx)
-                .await
-                .map_err(AppError::internal)?;
-            }
-        }
-        let seqs: Vec<i64> = events.iter().map(|e| e.seq).collect();
+        sqlx::query!(
+            r#"
+            INSERT INTO messaging.job
+                (queue, event_type, payload, run_at, max_attempts, created_at)
+            SELECT s.queue, o.event_type, o.payload, $2, $3, $2
+            FROM messaging.outbox o
+            JOIN messaging.subscription s
+              ON s.event_type = o.event_type AND s.topic = o.payload->>'source'
+             AND s.retired_at IS NULL
+            WHERE o.seq = ANY($1)
+            ORDER BY o.seq, s.queue
+            "#,
+            &seqs,
+            now,
+            MAX_ATTEMPTS,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
         sqlx::query!(
             "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
             now,
@@ -138,7 +195,7 @@ impl Worker {
         .await
         .map_err(AppError::internal)?;
         tx.commit().await.map_err(AppError::internal)?;
-        Ok(events.len())
+        Ok(seqs.len())
     }
 
     /// Claims and runs the job due first, if any, of the subscriptions this
@@ -268,6 +325,21 @@ impl Worker {
         .await
         .map_err(AppError::internal)
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("`{queue}` isn't subscribed to `{event_type}`: run `migrate` with this build first")]
+struct Unregistered {
+    queue: &'static str,
+    event_type: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("`{queue}` is registered to the topic `{registered}`, but this build serves `{served}`")]
+struct OtherTopic {
+    queue: &'static str,
+    registered: String,
+    served: &'static str,
 }
 
 /// 10s, doubling per attempt, at most an hour.

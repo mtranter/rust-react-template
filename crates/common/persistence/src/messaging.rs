@@ -23,21 +23,26 @@ pub trait Handle<E: Event>: Send + Sync {
 }
 
 /// What a module's worker runs, by queue: each subscription is one queue,
-/// retried and dead-lettered on its own.
+/// retried and dead-lettered on its own. `migrate` registers what they list
+/// ([`subscriptions`](Self::subscriptions)); the relay fans events out to what
+/// is registered.
 #[derive(Default)]
 pub struct Handlers {
     queues: BTreeMap<&'static str, Queue>,
 }
 
 struct Queue {
+    topic: &'static str,
     event_type: &'static str,
     handler: Arc<dyn ErasedHandler>,
 }
 
-/// A queue and an event type delivered to it.
+/// A queue and an event type of the topic it's bound to: one row of
+/// `messaging.subscription`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Subscription {
     pub queue: &'static str,
+    pub topic: &'static str,
     pub event_type: &'static str,
 }
 
@@ -52,6 +57,7 @@ impl Handlers {
         self.with_queue(
             queue,
             Queue {
+                topic: E::SOURCE,
                 event_type: E::TYPE,
                 handler: Arc::new(TypedHandler::new(handler)),
             },
@@ -66,22 +72,12 @@ impl Handlers {
             .fold(self, |handlers, (queue, q)| handlers.with_queue(queue, q))
     }
 
-    /// The queue of each subscription to `event_type`.
-    pub fn subscribers<'a>(
-        &'a self,
-        event_type: &'a str,
-    ) -> impl Iterator<Item = &'static str> + 'a {
-        self.queues
-            .iter()
-            .filter(move |(_, q)| q.event_type == event_type)
-            .map(|(queue, _)| *queue)
-    }
-
     /// Every `(queue, event type)` these handlers can decode, by queue: what a
     /// worker running them may claim.
     pub fn subscriptions(&self) -> impl Iterator<Item = Subscription> + '_ {
         self.queues.iter().map(|(queue, q)| Subscription {
             queue,
+            topic: q.topic,
             event_type: q.event_type,
         })
     }
@@ -278,23 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn an_events_subscribers_are_every_queue_subscribed_to_it() {
-        let handlers = Handlers::new()
-            .on::<Pinged>("b.on_ping", Recorder("b"))
-            .on::<Ponged>("a.on_pong", Recorder("a"))
-            .on::<Pinged>("a.on_ping", Recorder("a"));
-
-        assert_eq!(
-            handlers.subscribers(Pinged::TYPE).collect::<Vec<_>>(),
-            ["a.on_ping", "b.on_ping"]
-        );
-        assert_eq!(
-            handlers.subscribers(Ponged::TYPE).collect::<Vec<_>>(),
-            ["a.on_pong"]
-        );
-    }
-
-    #[test]
     fn handlers_list_what_each_queue_is_delivered() {
         let handlers = Handlers::new()
             .on::<Pinged>("b.on_ping", Recorder("b"))
@@ -305,21 +284,16 @@ mod tests {
             [
                 Subscription {
                     queue: "a.on_pong",
+                    topic: "/tests",
                     event_type: Ponged::TYPE
                 },
                 Subscription {
                     queue: "b.on_ping",
+                    topic: "/tests",
                     event_type: Pinged::TYPE
                 },
             ]
         );
-    }
-
-    #[test]
-    fn an_event_nobody_subscribes_to_has_no_queues() {
-        let handlers = Handlers::new().on::<Pinged>("a.on_ping", Recorder("a"));
-
-        assert_eq!(handlers.subscribers(Ponged::TYPE).count(), 0);
     }
 
     #[tokio::test]

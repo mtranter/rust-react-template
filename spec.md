@@ -443,6 +443,39 @@ guard. The claim looks up each served pair's first due job by index
 serves don't slow it. (The release that brought this filter wasn't protected
 by it: the build it replaced claimed any queue.)
 
+**Subscriptions live in the database**, in `messaging.subscription`
+(`queue`, `event_type`, `topic`, `registered_at`, `retired_at`), and the relay
+fans out by joining it, so every build relays the same way whatever handlers
+it was built with. They are registered when migrating, never when a worker
+starts: the `migrate` bin, after the migrations, calls
+`app_db::register_subscriptions(&pool, &handlers)` with every module's
+`Handlers` (test drivers call it as they build their worker). Migrations run
+before a rollout (§6), so a new build's subscriptions exist before any of its
+processes publishes or relays, and there's no window in which events go out
+without their new subscribers. A worker never writes the table; on starting
+(`Worker::run`, via `check_subscriptions`) it refuses to run if one of its own
+`(queue, event_type)` pairs is missing or registered under another topic,
+warns of each live subscription it doesn't serve, and still runs the pending
+jobs of a retired one it serves.
+
+- **A subscription receives every event relayed after its registration
+  commits**, and no history: one added to a running system starts empty.
+- **A queue is bound to one topic forever.** Registering an existing queue
+  under another topic fails the migrate step; moving to a new topic means a new
+  queue name.
+- **A retired queue's name is never reused**: registering one fails the
+  migrate step, so a rollback or an old `migrate` can't revive it.
+
+**Retiring a subscription** is a migration, never a side effect of deploying
+code without its handler: it stops relaying to it, and dead-letters what it
+hadn't run yet, where it stays visible:
+
+```sql
+UPDATE messaging.subscription SET retired_at = now() WHERE queue = 'notes.archive_deleted_authors_notes';
+UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired'
+WHERE queue = 'notes.archive_deleted_authors_notes' AND dead_at IS NULL;
+```
+
 Rules:
 - A module never writes another module's data, through its `-api` or otherwise;
   it publishes an event, and the owner reacts. Cross-module work is therefore
@@ -577,7 +610,8 @@ application layer maps onto `app-error`.)
   its own long-lived deployment beside `server`, with the same config
   (`DATABASE_URL`, `APP_*`; `APP_WORKER_POLL_MS` sets its idle poll, default
   1000). Scale it by running more replicas: they share the queue. It needs the
-  migrations applied, like the server, and stops on SIGTERM after the job in hand.
+  migrations applied, like the server, and its subscriptions registered (which
+  `migrate` does; it refuses to start otherwise), and stops on SIGTERM after the job in hand.
   `make dev` runs it beside the server.
 - **The `messaging` schema** (outbox and delivery queue) belongs to no module: `app-db`
   owns its migrations, and `run_migrations` applies them before any module's.
@@ -815,7 +849,8 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   path selects).
 - **Time and background work.** A driver builds its module's `Context` with a
   `FixedClock` (after the seeds' times) and the module's worker
-  (`ctx.worker(module::handlers(&ctx, ..))`), so tests stay synchronous and
+  (`ctx.worker(module::handlers(&ctx, ..))`, its subscriptions registered first
+  with `app_db::register_subscriptions`, as `migrate` does), so tests stay synchronous and
   deterministic: work happens only when a verb runs it (`run_pending_events()`,
   i.e. `Worker::run_until_idle`) and time moves only when one
   advances it (`later(by)`). A subscriber's driver stands in for the publisher

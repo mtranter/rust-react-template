@@ -1,4 +1,4 @@
-use app_db::{PgEventPublisher, PgTransactions, Worker};
+use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_error::AppResult;
 use app_events::{EnvelopeOf, Event, EventPayload, NoContext};
@@ -26,6 +26,20 @@ impl Event for Pinged {
     }
 }
 
+/// `Pinged` under another topic.
+pub struct Poked;
+
+impl Event for Poked {
+    const TYPE: &'static str = "others.poked.v1";
+    const SOURCE: &'static str = "/others";
+    type Entity = Ping;
+    type Context = NoContext;
+
+    fn subject(ping: &Ping) -> String {
+        ping.name.clone()
+    }
+}
+
 /// What every recorder has handled, `<queue>: <subject>`, in order.
 #[derive(Clone, Default)]
 pub struct Log(Arc<Mutex<Vec<String>>>);
@@ -41,12 +55,25 @@ pub struct Recorder {
     log: Log,
 }
 
+impl Recorder {
+    fn record(&self, ping: Ping) -> AppResult<()> {
+        let line = format!("{}: {}", self.queue, ping.name);
+        self.log.0.lock().unwrap().push(line);
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl Handle<Pinged> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Pinged>) -> AppResult<()> {
-        let line = format!("{}: {}", self.queue, event.data.entity.name);
-        self.log.0.lock().unwrap().push(line);
-        Ok(())
+        self.record(event.data.entity)
+    }
+}
+
+#[async_trait]
+impl Handle<Poked> for Recorder {
+    async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Poked>) -> AppResult<()> {
+        self.record(event.data.entity)
     }
 }
 
@@ -69,18 +96,55 @@ impl Messaging {
         }
     }
 
-    /// A worker built with handlers for `queues`, each subscribed to `Pinged`.
+    pub fn recorder(&self, queue: &'static str) -> Recorder {
+        Recorder {
+            queue,
+            log: self.log.clone(),
+        }
+    }
+
+    /// A build's handlers: one for each of `queues`, subscribed to `Pinged`.
+    pub fn handlers(&self, queues: &[&'static str]) -> Handlers {
+        queues.iter().fold(Handlers::new(), |handlers, &queue| {
+            handlers.on::<Pinged>(queue, self.recorder(queue))
+        })
+    }
+
+    /// A worker of the build with handlers for `queues`.
     pub fn worker(&self, queues: &[&'static str]) -> Worker {
-        let handlers = queues.iter().fold(Handlers::new(), |handlers, &queue| {
-            handlers.on::<Pinged>(
-                queue,
-                Recorder {
-                    queue,
-                    log: self.log.clone(),
-                },
-            )
-        });
+        self.worker_of(self.handlers(queues))
+    }
+
+    pub fn worker_of(&self, handlers: Handlers) -> Worker {
         Worker::new(self.pool.clone(), self.clock.clone(), handlers)
+    }
+
+    /// As `migrate` does for the build with handlers for `queues`.
+    pub async fn migrate(&self, queues: &[&'static str]) {
+        self.register(&self.handlers(queues))
+            .await
+            .expect("register the subscriptions");
+    }
+
+    pub async fn register(&self, handlers: &Handlers) -> Result<(), SubscriptionError> {
+        app_db::register_subscriptions(&self.pool, handlers).await
+    }
+
+    /// The migration spec §4 documents.
+    pub async fn retire(&self, queue: &str) {
+        sqlx::query("UPDATE messaging.subscription SET retired_at = now() WHERE queue = $1")
+            .bind(queue)
+            .execute(&self.pool)
+            .await
+            .expect("retire the subscription");
+        sqlx::query(
+            "UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired' \
+             WHERE queue = $1 AND dead_at IS NULL",
+        )
+        .bind(queue)
+        .execute(&self.pool)
+        .await
+        .expect("dead-letter its jobs");
     }
 
     pub async fn ping(&self, name: &str) {
@@ -116,6 +180,13 @@ impl Job {
             queue: queue.into(),
             attempts: 0,
             last_error: None,
+        }
+    }
+
+    pub fn retired(queue: &str) -> Self {
+        Self {
+            last_error: Some("subscription retired".into()),
+            ..Self::untouched(queue)
         }
     }
 }

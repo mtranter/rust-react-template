@@ -5,12 +5,14 @@
 mod errors;
 mod listing;
 mod publishing;
+mod subscriptions;
 mod unit_of_work;
 mod worker;
 
 pub use errors::map_db_error;
 pub use listing::push_list_clauses;
 pub use publishing::PgEventPublisher;
+pub use subscriptions::{SubscriptionError, register_subscriptions};
 pub use unit_of_work::{PgTransactions, conn};
 pub use worker::{DeadLetter, Worker};
 

@@ -118,7 +118,11 @@ impl Users {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
         let mailer = Arc::new(FakeMailer::default());
-        let worker = ctx.worker(users::handlers(&ctx, mailer.clone()));
+        let handlers = users::handlers(&ctx, mailer.clone());
+        app_db::register_subscriptions(&ctx.pool(), &handlers)
+            .await
+            .expect("register users' subscriptions");
+        let worker = ctx.worker(handlers);
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(UsersEndpoints, |app| {
             app.accept(users::provider(&ctx)).data(verifier.clone())

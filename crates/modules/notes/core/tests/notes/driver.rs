@@ -121,7 +121,11 @@ impl Notes {
 
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
-        let worker = ctx.worker(notes::handlers(&ctx, Arc::new(KnownUsers)));
+        let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
+        app_db::register_subscriptions(&ctx.pool(), &handlers)
+            .await
+            .expect("register notes' subscriptions");
+        let worker = ctx.worker(handlers);
         let api = TestApi::new(NotesEndpoints, |app| {
             app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
         });
