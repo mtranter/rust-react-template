@@ -21,4 +21,6 @@ pub trait NoteRepository: Send + Sync {
     /// [`Expected::Version`] updates only if the stored version matches, else
     /// `PreconditionFailed`. Returns the new version.
     async fn save(&self, tx: &mut Tx, note: &Note, expected: Expected) -> AppResult<Version>;
+    /// Only if the stored version is `expected`, else `PreconditionFailed`.
+    async fn delete(&self, tx: &mut Tx, id: NoteId, expected: Version) -> AppResult<()>;
 }

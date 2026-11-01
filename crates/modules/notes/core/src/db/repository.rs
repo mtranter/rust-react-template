@@ -161,4 +161,19 @@ impl NoteRepository for PgNoteRepository {
             }
         }
     }
+
+    async fn delete(&self, tx: &mut Tx, id: NoteId, expected: Version) -> AppResult<()> {
+        let deleted = sqlx::query_scalar!(
+            r#"DELETE FROM notes.note WHERE id = $1 AND version = $2 RETURNING id"#,
+            id.as_uuid(),
+            expected.as_i64(),
+        )
+        .fetch_optional(conn(tx))
+        .await
+        .map_err(AppError::internal)?;
+
+        deleted
+            .map(|_| ())
+            .ok_or_else(|| AppError::precondition_failed("the note was modified by someone else"))
+    }
 }

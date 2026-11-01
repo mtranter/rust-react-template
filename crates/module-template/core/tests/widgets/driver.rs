@@ -11,7 +11,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use std::fmt::Display;
 use std::sync::Arc;
-use widgets::{Widget, WidgetId, WidgetsEndpoints, seed};
+use widgets::{Widget, WidgetsEndpoints, seed};
 use widgets_api::events::v1;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -131,7 +131,7 @@ impl Widgets {
             .await
     }
 
-    pub async fn rename(&self, id: WidgetId, version: i64, name: &str) -> Outcome<WidgetJson> {
+    pub async fn rename(&self, id: impl Display, version: i64, name: &str) -> Outcome<WidgetJson> {
         self.api
             .patch(format!("/api/widgets/{id}"))
             .if_match(version)
@@ -142,7 +142,7 @@ impl Widgets {
 
     pub async fn rename_without_precondition(
         &self,
-        id: WidgetId,
+        id: impl Display,
         name: &str,
     ) -> Outcome<WidgetJson> {
         self.api

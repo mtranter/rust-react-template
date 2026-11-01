@@ -79,6 +79,29 @@ impl NoteService {
         })
     }
 
+    /// Removes the note and announces it, as it was last, in the same transaction.
+    pub async fn delete(&self, id: NoteId, expected: Version) -> AppResult<()> {
+        let current = self.get(id).await?;
+        // Checked here as well as by the delete, so the state announced is the
+        // version deleted; the event announces the version after it, so it's the
+        // newest of its key.
+        if current.version != expected {
+            return Err(AppError::precondition_failed(
+                "the note was modified by someone else",
+            ));
+        }
+        let event = current.entity.delete()?;
+        let mut tx = self.transactions.begin().await?;
+        self.repo.delete(&mut tx, id, expected).await?;
+        self.publisher
+            .publish(
+                &mut tx,
+                events::pending(&current.entity, expected.next(), event),
+            )
+            .await?;
+        tx.commit().await
+    }
+
     /// Saves every note in `tx`, so a failure archives none of them. A note
     /// edited meanwhile is stale and fails it too, to be retried.
     pub async fn archive_notes_by(&self, tx: &mut Tx, author: AuthorId) -> AppResult<()> {

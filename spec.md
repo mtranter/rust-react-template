@@ -375,7 +375,7 @@ and only if the write commits:
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
   unit of work that saves it, one per aggregate changed (`users`: registered,
-  display name changed, deleted; `notes`: created, edited, archived). The
+  display name changed, deleted; `notes`: created, edited, archived, deleted). The
   publisher doesn't know who listens.
 - **Each aggregate root has a topic** (as Kafka has topics): one stream of its
   events, keyed by the root's id. A module's `-api` declares it with
@@ -910,11 +910,13 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
 
   ```
   tests/<module>/
-  ├── main.rs        # mod driver; mod behaviours { mod registering; … }
+  ├── main.rs        # mod driver; mod behaviours { … }; mod journeys { … }
   ├── driver.rs      # the only code that knows routes, JSON, statuses, tokens
-  └── behaviours/
-      ├── registering.rs # one file per behaviour area…
-      └── …
+  ├── behaviours/
+  │   ├── registering.rs # one file per behaviour area…
+  │   └── …
+  └── journeys/
+      └── <aggregate>_lifecycle.rs # a few sequences of verbs (below)
   ```
 
   The target is named after the module because `#[sqlx::test]` derives each
@@ -965,6 +967,23 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   verbs and compare against seed aggregates (`Ok(seed::alices_note().into())`).
   One behaviour per test; a refused action is followed by a check that nothing
   changed.
+- **Journeys: the sequence holds together.** Each behaviour test checks one rule
+  from the seeded start, so none checks that a module's verbs compose: that what
+  one call returns is what the next needs, and that state carries through. A
+  **journey** is one test that walks an aggregate through its life, asserting at
+  each step — `notes`' `a_note_can_be_written_revised_and_removed` creates a
+  note, reads it, edits it with the returned version (`.version()` on the
+  response newtype), reads the edit, has an edit at the old version refused,
+  finds the edit in the list, deletes it and reads it as not found, then checks
+  the versions announced ran 1, 2, 3. It is the one carve-out from "one behaviour
+  per test": a behaviour test checks a rule, a journey checks that a sequence of
+  verbs composes, carries each response's version into the next write, and ends
+  in a state the next read confirms. It doesn't repeat the rules, and a module
+  has only a few, named for the path walked. Journeys live in
+  `tests/<module>/journeys/` in the same target, with the same driver and seed,
+  starting from `X::seeded(pool)` and speaking only driver verbs;
+  `cargo test -p notes journeys::` runs only them. The module template has one
+  (`journeys/lifecycle.rs`), so a scaffolded module starts with one.
 - No separate service tests: every use case is reachable through the `Endpoints`
   or the worker verbs, and
   a fresh database costs the same either way. Add one only when a use case has

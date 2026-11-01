@@ -8,6 +8,7 @@ pub(super) fn pending(note: &Note, version: Version, event: NoteEvent) -> Pendin
         NoteEvent::Created => v1::NoteEvent::Created,
         NoteEvent::Edited => v1::NoteEvent::Edited,
         NoteEvent::Archived => v1::NoteEvent::Archived,
+        NoteEvent::Deleted => v1::NoteEvent::Deleted,
     };
     PendingEvent::on::<NoteTopic>(version, &state(note), event)
 }

@@ -5,7 +5,7 @@ use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
-    OpenApi, Tags,
+    ApiResponse, OpenApi, Tags,
     param::{Header, Path, Query},
     payload::Json,
 };
@@ -15,6 +15,12 @@ type NoteResult = WithETag<NoteResponse>;
 #[derive(Tags)]
 enum ApiTag {
     Notes,
+}
+
+#[derive(ApiResponse)]
+enum Deleted {
+    #[oai(status = 204)]
+    Deleted,
 }
 
 fn note_id(raw: &str) -> ApiResult<NoteId> {
@@ -88,6 +94,20 @@ impl NotesEndpoints {
             )
             .await?;
         Ok(tagged(note))
+    }
+
+    /// Delete a note. Requires `If-Match` with the version the client last read,
+    /// like an edit. An archived note is refused with `409`.
+    #[oai(path = "/:id", method = "delete")]
+    async fn delete(
+        &self,
+        notes: Data<&NoteService>,
+        id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<Deleted> {
+        let expected = if_match_version(if_match.0)?;
+        notes.0.delete(note_id(&id.0)?, expected).await?;
+        Ok(Deleted::Deleted)
     }
 
     /// List notes, paginated. Most-recent first unless `sort` says otherwise:

@@ -216,6 +216,14 @@ macro_rules! json_newtype {
             pub fn id(&self) -> &str {
                 self.0["id"].as_str().expect(concat!(stringify!($name), " has an id"))
             }
+
+            /// The version to send back in `If-Match`, for a versioned resource.
+            pub fn version(&self) -> i64 {
+                self.0["version"]
+                    .as_str()
+                    .and_then(|version| version.parse().ok())
+                    .expect(concat!(stringify!($name), " has a version"))
+            }
         }
 
         impl ::std::ops::Deref for $name {

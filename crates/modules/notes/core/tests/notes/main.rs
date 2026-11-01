@@ -6,7 +6,12 @@ mod driver;
 mod behaviours {
     mod archiving;
     mod creating;
+    mod deleting;
     mod editing;
     mod listing;
     mod reading;
+}
+
+mod journeys {
+    mod note_lifecycle;
 }

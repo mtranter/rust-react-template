@@ -40,6 +40,14 @@ impl Note {
         Ok(NoteEvent::Edited)
     }
 
+    /// What deleting it says happened; an archived note stays, read-only.
+    pub fn delete(&self) -> Result<NoteEvent, NoteError> {
+        if self.archived_at.is_some() {
+            return Err(NoteError::Archived);
+        }
+        Ok(NoteEvent::Deleted)
+    }
+
     /// Read-only from now on. Archiving again changes nothing, keeping the first time.
     pub fn archive(&mut self, now: DateTime<Utc>) -> Option<NoteEvent> {
         if self.archived_at.is_some() {
@@ -151,6 +159,7 @@ mod tests {
         });
         assert_eq!(created, NoteEvent::Created);
         assert_eq!(edited, Ok(NoteEvent::Edited));
+        assert_eq!(note.delete(), Ok(NoteEvent::Deleted));
         assert_eq!(note.archive(Utc::now()), Some(NoteEvent::Archived));
     }
 
@@ -168,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn an_archived_note_refuses_edits_and_keeps_its_first_archive_time() {
+    fn an_archived_note_refuses_edits_and_deletion_and_keeps_its_first_archive_time() {
         let mut note = create("First").unwrap();
         let first = Utc::now();
         assert_eq!(note.archive(first), Some(NoteEvent::Archived));
@@ -183,5 +192,6 @@ mod tests {
         });
         assert_eq!(result, Err(NoteError::Archived));
         assert_eq!(note, before);
+        assert_eq!(note.delete(), Err(NoteError::Archived));
     }
 }
