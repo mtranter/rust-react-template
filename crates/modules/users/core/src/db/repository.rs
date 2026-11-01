@@ -1,8 +1,8 @@
 use crate::application::{
-    Expected, ListQuery, Listed, UserRepository, UserSortKey, Version, Versioned,
+    Expected, ListQuery, Listed, Tx, UserRepository, UserSortKey, Version, Versioned,
 };
 use crate::domain::{Email, User, UserId};
-use app_db::{map_db_error, push_list_clauses};
+use app_db::{conn, map_db_error, push_list_clauses};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -107,7 +107,7 @@ impl UserRepository for PgUserRepository {
         })
     }
 
-    async fn save(&self, user: &User, expected: Expected) -> AppResult<Version> {
+    async fn save(&self, tx: &mut Tx, user: &User, expected: Expected) -> AppResult<Version> {
         match expected {
             // A duplicate email maps to a conflict via `map_sqlx`.
             Expected::New => {
@@ -122,7 +122,7 @@ impl UserRepository for PgUserRepository {
                     user.display_name(),
                     user.created_at(),
                 )
-                .fetch_one(&self.pool)
+                .fetch_one(conn(tx))
                 .await
                 .map_err(map_sqlx)?;
                 Ok(Version::from_i64(version))
@@ -141,7 +141,7 @@ impl UserRepository for PgUserRepository {
                     user.display_name(),
                     expected.as_i64(),
                 )
-                .fetch_optional(&self.pool)
+                .fetch_optional(conn(tx))
                 .await
                 .map_err(map_sqlx)?;
 
@@ -150,5 +150,20 @@ impl UserRepository for PgUserRepository {
                 })
             }
         }
+    }
+
+    async fn delete(&self, tx: &mut Tx, id: UserId, expected: Version) -> AppResult<()> {
+        let deleted = sqlx::query_scalar!(
+            r#"DELETE FROM users.account WHERE id = $1 AND version = $2 RETURNING id"#,
+            id.as_uuid(),
+            expected.as_i64(),
+        )
+        .fetch_optional(conn(tx))
+        .await
+        .map_err(map_sqlx)?;
+
+        deleted
+            .map(|_| ())
+            .ok_or_else(|| AppError::precondition_failed("the account was modified elsewhere"))
     }
 }

@@ -87,7 +87,7 @@ repo/
 │   ├── modules/
 │   │   ├── users/            # example module (with the JWT-guarded route)
 │   │   │   ├── api/          # pkg: users-api — pure: what other modules may use (D7)
-│   │   │   │   └── src/          # UserDirectory trait, v1 published records, seed (§13)
+│   │   │   │   └── src/          # UserDirectory trait, v1 published records, events::v1, seed (§13)
 │   │   │   └── core/         # pkg: users — the module itself
 │   │   │       ├── Cargo.toml
 │   │   │       ├── build.rs      # rerun on migrations/ changes (§6)
@@ -95,8 +95,8 @@ repo/
 │   │   │       ├── migrations/   # module-owned schema (schema `users`, views in `users_api`)
 │   │   │       ├── tests/users/  # the module's one test target (§13)
 │   │   │       └── src/
-│   │   │           ├── lib.rs    # re-exports Endpoints, domain types, migrations
-│   │   │           ├── di.rs     # composition root: provider(pool), directory(pool), module()
+│   │   │           ├── lib.rs    # re-exports Endpoints, domain types, migrations, the ports a driver fakes
+│   │   │           ├── di.rs     # composition root: provider(ctx), directory(ctx), handlers(ctx, mailer), module()
 │   │   │           ├── seed.rs   # `seed` feature only: saves the dataset `users-api` describes (§13)
 │   │   │           ├── web/          # web (HTTP) layer
 │   │   │           │   ├── mod.rs        # re-exports the Endpoints
@@ -105,8 +105,10 @@ repo/
 │   │   │           ├── application/  # application layer
 │   │   │           │   ├── mod.rs        # re-exports service + repo trait
 │   │   │           │   ├── service.rs    # use cases: load → domain action → save
-│   │   │           │   ├── repository.rs # Repository trait (aggregates in/out)
+│   │   │           │   ├── repository.rs # Repository trait (aggregates in/out; writes take &mut Tx)
 │   │   │           │   ├── directory.rs  # impl users_api::UserDirectory
+│   │   │           │   ├── mailer.rs     # Mailer port (an external system; Faked in tests)
+│   │   │           │   ├── welcome.rs    # WelcomeEmail job + its handler
 │   │   │           │   └── error.rs      # domain error → AppError
 │   │   │           ├── domain/       # domain layer (pure, sync)
 │   │   │           │   ├── mod.rs        # re-exports the public domain surface
@@ -115,13 +117,15 @@ repo/
 │   │   │           │   ├── commands.rs   # intents accepted by domain actions
 │   │   │           │   ├── error.rs      # domain error enum
 │   │   │           │   └── ids.rs        # newtype ids via app_domain::uuid_newtype!
-│   │   │           └── db/           # DB layer
-│   │   │               ├── mod.rs        # re-exports repo impl + migrations
-│   │   │               ├── migrations.rs # SCHEMA + embedded MIGRATOR
-│   │   │               └── repository.rs # sqlx Repository impl (insert or version-guarded update)
+│   │   │           ├── db/           # DB layer
+│   │   │           │   ├── mod.rs        # re-exports repo impl + migrations
+│   │   │           │   ├── migrations.rs # SCHEMA + embedded MIGRATOR
+│   │   │           │   └── repository.rs # sqlx Repository impl (insert or version-guarded update)
+│   │   │           └── mail/         # the Mailer adapter the server uses (only logs)
 │   │   ├── notes/            # the reference write module
 │   │   │   ├── api/          # pkg: notes-api — v1 published records + seed, no traits yet
-│   │   │   └── core/         # same shape, schema `notes`; uses users only via `users-api`
+│   │   │   └── core/         # same shape, schema `notes`; uses users only via `users-api`,
+│   │   │                     #   reacts to its UserDeleted (application/reactions.rs)
 │   │   └── note-search/      # read module (D8): joins published views, owns no data
 │   │       └── core/         # web/ + application/ + db/, no domain/ and no migrations/
 │   │
@@ -132,8 +136,8 @@ repo/
 │   │   ├── error/            # pkg: app-error       — pure
 │   │   ├── persistence/      # pkg: app-persistence — pure (versions, list queries)
 │   │   ├── web/              # pkg: app-web         — poem-coupled
-│   │   ├── db/               # pkg: app-db          — sqlx-coupled
-│   │   ├── module/           # pkg: app-module      — poem + app-db: a module's registration (§4)
+│   │   ├── db/               # pkg: app-db          — sqlx-coupled; migrations/ = the `messaging` schema
+│   │   ├── module/           # pkg: app-module      — poem + app-db: Context and a module's registration (§4)
 │   │   └── test-support/     # pkg: app-test-support — dev-only, pure test utilities
 │   │
 │   └── server/
@@ -145,11 +149,15 @@ repo/
 │           ├── main.rs       # config + JWT verifier, then serve build_app()
 │           ├── config.rs     # figment-layered env/file → typed AppConfig
 │           ├── telemetry.rs  # tracing-subscriber init (JSON prod / pretty dev), OTEL seam
+│           ├── shutdown.rs   # SIGTERM / Ctrl-C, shared by server and worker
 │           └── bin/
 │               ├── dump-spec.rs  # print OpenAPI JSON to stdout (DB-free)
 │               ├── migrate.rs    # run all module migrations in order
+│               ├── worker.rs     # deliver events and run jobs for every module (§4)
 │               └── seed.rs       # `seed` feature only: every registered module's seed
-│       └── tests/composed_app.rs # boots build_app() over every module (§4)
+│       └── tests/
+│           ├── composed_app.rs       # boots build_app() over every module (§4)
+│           └── composed_reactions.rs # a real cross-module reaction through the real worker
 │
 └── frontend/
     ├── package.json
@@ -191,7 +199,7 @@ repository** (see D6):
 
 ```
 handler:  request (+ If-Match) ──► command ──► service.method(command, expected)
-service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(&aggregate, Expected::Version(v))
+service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin ──► repo.save(&mut tx, &aggregate, Expected::Version(v)) ──► tx.commit
 ```
 
 - **`web/`** — the HTTP layer. `handlers.rs`: a `#[OpenApi]` impl on a **unit
@@ -201,13 +209,17 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(
   `models.rs`: request/response `Object`s and their conversions from aggregates.
 - **`application/`** — `service.rs`: one service per aggregate
   (`UserService`, holding an `Arc<dyn UserRepository>` rather than being generic
-  over it), one method per use case. A service loads an
-  aggregate from the repository, runs a domain action on it, and saves it. It
+  over it, plus an `Arc<dyn Transactions>` and an `Arc<dyn Clock>`), one method
+  per use case. A service loads an
+  aggregate from the repository, runs a domain action on it, and saves it in a
+  unit of work (below). It
   owns what a single aggregate cannot: rules spanning many aggregates (e.g. email
-  uniqueness), not-found semantics, fresh ids, and the clock. `repository.rs`: the
+  uniqueness), not-found semantics, fresh ids, and the time (`self.clock.now()`).
+  `repository.rs`: the
   module's **`Repository`** trait — it speaks in aggregates, never rows:
-  `get → Option<Versioned<X>>`, `save(&X, Expected) → Version`, and
+  `get → Option<Versioned<X>>`, `save(&mut Tx, &X, Expected) → Version`, and
   `list(&ListQuery<XSortKey>) → Listed<Versioned<X>>` where the module lists.
+  Reads run on the pool; every write takes the caller's `&mut Tx`.
   `error.rs`: an exhaustive
   mapping from the domain error onto `AppError`. Depends only on the domain and
   pure crates.
@@ -226,12 +238,17 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(
   `Expected::New` and a version-guarded `UPDATE` for `Expected::Version`
   (below). `migrations.rs`: the module's schema name and embedded migrator. Owns
   the module's `migrations/` (its own schema).
-- **`di.rs`** — the composition root: `provider(pool, ..)` returns a type
+- **`di.rs`** — the composition root: `provider(ctx, ..)` returns a type
   implementing `app_web::Provide`, which builds the service over the real
-  repository; the server mounts it with `.accept(..)` so each module wires its
+  repository from the shared `app_module::Context` (the pool and the clock, made
+  once by the server); the server mounts it with `.accept(..)` so each module wires its
   own request data. A module offering a `<module>-api` trait also exposes its
-  implementation's constructor here (`users::directory(pool)`). `module()`
+  implementation's constructor here (`users::directory(ctx)`), and a module with
+  subscriptions or jobs a `handlers(ctx, ..)` (below). `module()`
   returns the module's `app_module::Module` (below).
+- **Outbound adapters** — a port the application defines for an external system
+  other than the database (`users`' `Mailer`) gets its real adapter in a folder
+  named for that system (`mail/`), as `db/` is for the repository.
 
 `lib.rs` keeps every layer private and re-exports the module's `Endpoints`, its
 public domain types, its migration bundle and its `di.rs` constructors (plus
@@ -243,9 +260,11 @@ public domain types, its migration bundle and its `di.rs` constructors (plus
 Each module is registered in one place, `crates/server/src/modules.rs`: its
 `Endpoints` in the `Endpoints` tuple (the spec's type and, via `Default`, its
 value) and its `module(..)` in `modules()`. A `Module` bundles the provider,
-the migrations and, under the `seed` feature, the seed (neither for a module
+its worker handlers (`with_handlers`), the migrations and, under the `seed`
+feature, the seed (neither of the last two for a module
 that owns no data, like `note-search`); the server derives everything else from that one ordered list —
-`module_migrations()`, the request data `build_app()` adds, and what the `seed`
+`module_migrations()`, the request data `build_app()` adds, the handlers
+`server::worker()` runs, and what the `seed`
 bin runs. A module that uses another's `<module>-api` takes the provider's
 constructor as an argument (`notes::module(users::directory)`).
 
@@ -304,6 +323,71 @@ aggregates. The version is persistence state, not domain state:
 
 `notes` is the reference (`application/service.rs`, `db/repository.rs`,
 `web/handlers.rs`, `tests/notes/behaviours/editing.rs`).
+
+### Side effects and reactions: units of work, events and jobs
+
+A use case that writes does so in one **unit of work**: `app_persistence::Tx`,
+begun from the service's `Arc<dyn Transactions>` and committed at the end.
+Everything written through it commits together or not at all; dropping it
+uncommitted (as `?` does) rolls it back. It is opaque above `db/`: repositories
+reach the connection with `app_db::conn(tx)`, so `application/` still never
+names the driver.
+
+```
+let mut tx = self.transactions.begin().await?;
+self.repo.save(&mut tx, &a, Expected::Version(v)).await?;
+self.repo.save(&mut tx, &b, Expected::New).await?;
+tx.publish(&SomethingHappened { .. })?;   // an event, for other modules
+tx.enqueue(&DoThisLater { .. })?;         // a job, for this module
+tx.commit().await?;
+```
+
+Anything that must follow a write goes through the same `Tx`, so it happens if
+and only if the write commits:
+
+- **An event** (`tx.publish`) tells other modules something happened. Its type
+  is published in the module's `-api`, versioned and plain-valued
+  (`users_api::events::v1::UserDeleted`, `TYPE = "users.user_deleted.v1"`). It is
+  stored as JSON, so a version only gains fields, each `#[serde(default)]`; a
+  breaking change is a new `TYPE` beside the old one. The publisher doesn't know
+  who listens.
+- **A subscriber** is how a module reacts: an `app_persistence::Handle<E>`
+  impl in its `application/` (`notes`' `application/reactions.rs`, deleting a
+  user archives their notes), registered under a stable queue name in its
+  `handlers(..)` (`Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`).
+  It must tolerate being run twice and in any order.
+- **A job** (`tx.enqueue`, or `tx.schedule(.., run_at)` for later) is work a
+  module asks of itself, private to it: a `Job` type in its `application/`
+  and its `Handle` (`users`' welcome email). A side effect on an external system
+  sits behind a port (`Mailer`) whose adapter lives outside `application/`.
+
+Both are delivered by the **worker** (`app_db::Worker`, run by `server`'s
+`worker` bin). The `Tx` writes events to the shared `messaging.outbox` and jobs
+to `messaging.job` in the same transaction as the aggregates. The worker's relay
+copies each outbox event into one job per subscriber; then each due job is
+claimed with `FOR UPDATE SKIP LOCKED` (so any number of workers share the queue)
+and runs its handler in a fresh `Tx`, which also deletes the job, so a handler
+that only writes to the database takes effect exactly once. A failing handler
+rolls back, backs off (10s, doubling, at most an hour) and is retried; after
+`Job::MAX_ATTEMPTS` attempts (5 for subscriptions) it is **dead-lettered**:
+`dead_at` is set and it stays in `messaging.job` with its `last_error` until
+someone reruns it. A claim is a lease, so a job whose worker died runs again.
+Everything is at-least-once; nothing is ordered.
+
+Rules:
+- A module never writes another module's data, through its `-api` or otherwise;
+  it publishes an event, and the owner reacts. Cross-module work is therefore
+  eventually consistent: the author check in `notes`' `create` and a deletion in
+  `users` are separate transactions.
+- No side effect directly after `commit`: enqueue a job in the `Tx` instead.
+- The worker's time, like the services', is the injected `Clock` (below), so
+  tests control due times and backoff.
+
+The **clock** is `app_domain::Clock`, held by services as `Arc<dyn Clock>`, from
+the one `Context` the server builds (`SystemClock`) and passes to every
+`module(..)`; drivers build it with a `FixedClock` they can `advance()`. Not an
+ambient global or task-local: work spawned off a request would silently read the
+real time in tests.
 
 ### List endpoints
 
@@ -380,12 +464,12 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 
 | Crate | Coupling | Contents | Who depends |
 |---|---|---|---|
-| `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), `now()` (the clock, at `timestamptz` precision; called only by services), `well_known_id` and `seed_time` for seeds | domain and application layers |
+| `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
-| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed` | application and db layers |
+| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `Event` / `Job` / `Handle` / `Handlers` (§4) | application and db layers, `-api` crates (for `Event`) |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
-| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`), `push_list_clauses`, `map_db_error` (constraint name → `AppError`) | db layers, server |
-| `app-module` | poem + `app-db` | `Module`: a module's provider, migrations and seed, registered once with the server (§4) | `di.rs`, server |
+| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `Worker` (relay, job runner, dead letters) | db layers, server |
+| `app-module` | poem + `app-db` | `Context` (the pool and the clock every module is built from), `Module`: a module's provider, handlers, migrations and seed, registered once with the server (§4) | `di.rs`, server, test drivers |
 | `app-test-support` | dev-only, pure | JSON path assertions (`assert_json_matches!`, `assert_json_exists!`, `assert_json_not_exists!`) | module dev-deps only |
 
 The **`error` (pure) vs `web` (poem mapping)** split is deliberate: application
@@ -418,6 +502,14 @@ application layer maps onto `app-error`.)
   `APP_ENV=prod`. The image ships `migrate` (and, with `--build-arg SEED=true`,
   `seed`) beside `server`; a deployment runs them as one-off pre-start tasks
   inside its network (init container, pre-deploy job), never from CI.
+- **The worker** (§4) ships in the same image: `/usr/local/bin/worker`, run as
+  its own long-lived deployment beside `server`, with the same config
+  (`DATABASE_URL`, `APP_*`; `APP_WORKER_POLL_MS` sets its idle poll, default
+  1000). Scale it by running more replicas: they share the queue. It needs the
+  migrations applied, like the server, and stops on SIGTERM after the job in hand.
+  `make dev` runs it beside the server.
+- **The `messaging` schema** (outbox and job queue) belongs to no module: `app-db`
+  owns its migrations, and `run_migrations` applies them before any module's.
 
 ---
 
@@ -541,8 +633,8 @@ Dependency edges (real targets):
 
 Key phony targets:
 - `make dev` — depends on `seed` (which depends on `migrate`) + `generate`; then
-  `make -j` runs `cargo watch` (backend `:8080`) **and** `vite` (`:5173`) in
-  parallel.
+  `make -j` runs `cargo watch` (backend `:8080`), `cargo watch` on the `worker`
+  bin, **and** `vite` (`:5173`) in parallel.
 - `make generate` — alias for the spec-dump + codegen chain. The FE targets
   (`typecheck`, `test-frontend`, `build-frontend`) depend on it, so they never
   run against a stale client.
@@ -639,7 +731,8 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   (`Malformed`). The transport is shared: `app_web::testing`, behind `app-web`'s
   `test` feature (dev-dependencies only), mounts the `Endpoints` with the server's
   error rendering and request ids (`TestApi`), builds requests (`.json`,
-  `.if_match`, `.bearer`, `.queries`), and on `send()` checks that every refusal
+  `.if_match`, `.bearer`, `.queries`), and on `send()` (`send_empty()` for a
+  bodyless success such as a delete) checks that every refusal
   has the error shape, echoes the request id and names fields only for a
   validation error. A driver keeps only its verbs, its `Refusal`, its stubs and
   its response newtypes.
@@ -649,14 +742,27 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   be predicted, like a generated id or timestamp — assert on parts of it with
   `app-test-support`'s JSON path macros (strict match against the first value a
   path selects).
+- **Time and background work.** A driver builds its module's `Context` with a
+  `FixedClock` (after the seeds' times) and the module's worker
+  (`ctx.worker(module::handlers(&ctx, ..))`), so tests stay synchronous and
+  deterministic: work happens only when a verb runs it (`run_pending_events()`,
+  `run_due_jobs()`, both `Worker::run_until_idle`) and time moves only when one
+  advances it (`later(by)`). A subscriber's driver stands in for the publisher
+  by publishing the `-api` event itself (`notes.user_deleted(ALICE)`), as it
+  stubs a `-api` trait; the publisher's driver checks what it published
+  (`Worker::published::<E>()`), and dead letters are `Worker::dead_letters()`.
+  A port to an external system gets a Fake in the driver (`users`' `FakeMailer`,
+  which can be taken down to exercise retries). `crates/server/tests/composed_reactions.rs`
+  runs one reaction for real across modules.
 - **Tests speak the domain, not HTTP.** Names state a behaviour
   (`an_edit_without_a_title_is_rejected_and_changes_nothing`); bodies call driver
   verbs and compare against seed aggregates (`Ok(seed::alices_note().into())`).
   One behaviour per test; a refused action is followed by a check that nothing
   changed.
-- No separate service tests: every use case is reachable through the `Endpoints`, and
-  a fresh database costs the same either way. Add one only when a use case has no
-  HTTP entry point (a job, a consumer) or two outcomes are indistinguishable over
+- No separate service tests: every use case is reachable through the `Endpoints`
+  or the worker verbs, and
+  a fresh database costs the same either way. Add one only when a use case has
+  neither, or two outcomes are indistinguishable over
   HTTP.
 - No in-memory Fakes for Postgres. A hand-written **Fake** behind an interface is
   reserved for an external dependency that cannot be run locally. The other
@@ -720,10 +826,11 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
 
 **Dockerfile (multi-stage):**
 1. `node` stage — `pnpm install` + `vite build` → `frontend/dist`.
-2. `rust` stage — `cargo build --release` (embeds `dist` via rust-embed),
+2. `rust` stage — `cargo build --release` of `server` (embeds `dist` via
+   rust-embed), `worker` and `migrate` (and `seed` with `SEED=true`),
    `SQLX_OFFLINE=true`.
-3. Runtime — `gcr.io/distroless/cc`, copies the single binary. Tiny, secure,
-   glibc (avoids musl/`aws-lc-rs` toolchain friction).
+3. Runtime — `gcr.io/distroless/cc`, copies the binaries; `server` is the
+   entrypoint. Tiny, secure, glibc (avoids musl/`aws-lc-rs` toolchain friction).
 
 **GitHub Actions `ci.yml`** runs the same steps as `make check`:
 - `cargo fmt --check`
@@ -938,6 +1045,42 @@ view uses — the intended tripwire). The read module and its providers share on
 database, so lifting a provider out (D1) means replacing its views with a
 replicated copy first. The SQL check is a grep, not a parser.
 
+### D9 — Units of work, a transactional outbox and a Postgres job queue, hand-rolled
+**Decision.** Writes run in a pure, opaque unit of work (`app_persistence::Tx`)
+that also carries the events and jobs the use case produces; `app-db` writes them
+to one shared outbox and job queue (`messaging`) in the same transaction, and a
+`worker` bin delivers them (§4). Events crossing modules are typed, versioned
+structs in the publisher's `-api`, stored as JSON. **Why.** Atomicity of "save,
+then do something" is the database's to give, and only a shared transaction can
+give it; a typed event in `-api` is the same kind of small, versioned, compiled
+contract as a trait or a published record (D7), and keeps modules writing only
+their own data. **Hand-rolled, not a crate.** `sqlxmq` (0.6) is on `sqlx` 0.8, so a second sqlx
+and a second pool; `pgmq` needs a Postgres extension the stock image lacks.
+`apalis-postgres` 1.0 is on `sqlx` 0.9 and is the one to revisit, but it is a job
+runner, not an outbox: the event fan-out to subscribers, enqueueing inside the
+use case's own transaction, and the injected clock tests depend on would still be
+ours, around its own schema and worker model. What's left to hand-roll is two
+tables and three statements (`relay`, claim with `FOR UPDATE SKIP LOCKED`,
+complete or fail), tested here. **One shared
+`messaging` schema** rather than an outbox per module: one relay query, one place
+for dead letters, and no module writing another's schema when an event fans out
+into the subscriber's queue; it belongs to no module, so it is `app-db`'s, and
+events are namespaced by `TYPE`. Lifting a module out (D1) means relaying its
+events to a broker instead, which is what an outbox is for. **The `Tx` buffers
+events and jobs until `commit`** so it stays pure, while repositories write
+through it immediately. **Each subscription is its own queue**, so one failing
+subscriber neither blocks nor retries another. **Alternatives rejected.** A
+`Tx`-taking `-api` trait to let modules share a transaction (couples their
+transactions, and can't survive lifting one out); opaque JSON events with a
+schema registry (no compiler between publisher and subscriber); passing
+`PgPool` into services (defeats the clippy tripwire); a closure-scoped
+`transaction(|tx| ..)` (async closures over `dyn` services don't compose; a
+dropped `Tx` already rolls back). **Trade-offs.** Delivery is at-least-once and
+unordered, so every handler is idempotent; cross-module consistency is eventual
+(a note created by a user deleted at that moment can escape archiving); a
+handler holds a transaction open while it runs, so a slow external call holds a
+connection; the outbox keeps dispatched rows until someone prunes them.
+
 ---
 
 ## 16. Open items / future variants (not built by default)
@@ -954,9 +1097,12 @@ replicated copy first. The SQL check is a grep, not a parser.
   `tsvector` column published through the view) when data volume needs them.
 - `rust_arkitect` within-crate layering tests, if any module keeps layers as
   sub-modules instead of crates.
-- A controllable clock, once a module has time-based rules (expiry, scheduling).
-  Inject it: one shared context, built once by the server and passed to every
-  `module(..)`, carries a `Clock` that services hold as `Arc<dyn Clock>`, and
-  drivers build it with a `FixedClock` they can `advance()`. Not an ambient
-  global or task-local: work spawned off the request would silently read the
-  real time in tests. Until then `app_domain::now()` reads the system clock.
+- `LISTEN`/`NOTIFY` to wake the worker on commit instead of polling.
+- Pruning dispatched outbox rows (a scheduled job of `app-db`'s own), and an
+  admin surface for dead letters (today: SQL on `messaging.job`).
+- Recurring jobs (cron-like): today a job reschedules its successor from its
+  handler with `tx.schedule(..)`, seeded by a migration; a `Handlers::every(..)`
+  registration would keep one pending.
+- A relay to an external broker (Kafka, SNS) for a module lifted out (D1, D9).
+- Read modules owning projections fed by events, once a provider is lifted out
+  and its published views (D8) can no longer be joined.

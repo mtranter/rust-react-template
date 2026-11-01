@@ -35,7 +35,7 @@ note-search = { path = "crates/modules/note-search/core" }
 poem = "3.1"
 poem-openapi = { version = "5.1", features = ["swagger-ui"] }
 
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 
 sqlx = { version = "0.9", default-features = false, features = [
     "runtime-tokio",
@@ -45,6 +45,7 @@ sqlx = { version = "0.9", default-features = false, features = [
     "migrate",
     "uuid",
     "chrono",
+    "json",
 ] }
 
 async-trait = "0.1"

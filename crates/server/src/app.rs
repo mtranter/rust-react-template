@@ -1,5 +1,6 @@
 use crate::{API_BASE, build_service, modules};
 use app_db::Pool;
+use app_module::Context;
 use app_web::{JwtVerifier, RequestIdMiddleware, health_routes, render_error};
 use poem::{
     Endpoint, EndpointExt, IntoResponse, Response, Route, get, handler,
@@ -9,7 +10,7 @@ use poem::{
 };
 use serde_json::json;
 
-pub fn build_app(pool: Pool, verifier: JwtVerifier, cors_origin: &str) -> impl Endpoint + use<> {
+pub fn build_app(ctx: &Context, verifier: JwtVerifier, cors_origin: &str) -> impl Endpoint + use<> {
     let service = build_service();
     let ui = service.swagger_ui();
     let spec = service.spec_endpoint();
@@ -31,9 +32,9 @@ pub fn build_app(pool: Pool, verifier: JwtVerifier, cors_origin: &str) -> impl E
 
     modules()
         .iter()
-        .fold(app, |app, module| module.provide(pool.clone(), app))
+        .fold(app, |app, module| module.provide(ctx, app))
         // For the readiness probe.
-        .data(pool)
+        .data(ctx.pool())
         .data(verifier)
 }
 

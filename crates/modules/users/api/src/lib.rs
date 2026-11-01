@@ -2,6 +2,7 @@
 //! plain `Uuid`: `UserId` stays private to the users domain.
 
 mod directory;
+pub mod events;
 #[cfg(feature = "seed")]
 pub mod seed;
 pub mod v1;

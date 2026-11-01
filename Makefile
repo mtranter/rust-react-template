@@ -98,11 +98,14 @@ spec: frontend/openapi.json ## Just (re)generate the OpenAPI snapshot
 watch-api: _require-cargo-bin ## Watch backend sources and regenerate the client on change
 	$(CARGO_BIN) cargo-watch -w crates -s 'make generate'
 
-dev: _require-cargo-bin seed generate ## Run backend (:8080) and Vite (:5173) in parallel
-	$(MAKE) -j2 _dev-backend _dev-frontend
+dev: _require-cargo-bin seed generate ## Run backend (:8080), the worker and Vite (:5173) in parallel
+	$(MAKE) -j3 _dev-backend _dev-worker _dev-frontend
 
 _dev-backend:
 	$(CARGO_BIN) cargo-watch -x 'run --bin server'
+
+_dev-worker:
+	$(CARGO_BIN) cargo-watch -x 'run --bin worker'
 
 _dev-frontend:
 	cd frontend && pnpm run dev
@@ -155,8 +158,8 @@ build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
 # Every step CI runs, backend and frontend.
 check: fmt clippy deny check-sql check-deps check-modules build-backend-dev test typecheck lint-frontend build-frontend ## CI mirror (run before calling work done)
 
-build: build-frontend ## Production build: vite build, then the release binary embedding the SPA
-	SQLX_OFFLINE=true $(CARGO) build --release --bin server --features embed-frontend
+build: build-frontend ## Production build: vite build, then the release binaries (the server embeds the SPA)
+	SQLX_OFFLINE=true $(CARGO) build --release --bin server --bin worker --features embed-frontend
 
 clean: ## Remove build artifacts
 	$(CARGO) clean

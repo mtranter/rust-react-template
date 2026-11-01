@@ -102,6 +102,36 @@ loads and saves Aggregates. The Service depends on the interface; the DB layer
 provides the real implementation. This is the seam
 that keeps the database out of the application and domain layers.
 
+### Unit of Work
+One database transaction a Service opens for a use case: every Aggregate it
+saves, and every Event and Job it records, commits together or not at all.
+
+### Event
+Something that happened in a Module, announced for other Modules to react to
+(e.g. a user was deleted). Its type is published in the Module API, versioned
+and holding plain values; it is recorded in the same Unit of Work as the change
+it announces, in the Outbox. The publisher does not know who listens.
+
+### Subscriber
+A Module's reaction to another Module's Event (e.g. archiving a deleted user's
+notes): it changes only its own Module's data, and may run more than once.
+
+### Job
+Work a Module asks of itself, to run outside the request or later (e.g. sending
+a welcome email). Private to the Module, recorded in a Unit of Work like an Event.
+
+### Outbox
+Where a Unit of Work records its Events, so they are delivered if and only if it
+commits. Shared by every Module and owned by none.
+
+### Worker
+The process that delivers Events to their Subscribers and runs due Jobs, each in
+its own Unit of Work, retrying a failure and setting it aside as a **Dead
+Letter** once its attempts run out.
+
+### Clock
+Where the application reads the time. Injected, so a test can fix it and move it.
+
 ### Seed
 A module's deterministic, well-known dataset for tests: named entities with
 stable ids and fixed timestamps, built through the domain's own constructors and
@@ -112,7 +142,8 @@ Seed data only through that.
 
 ### Fake
 A hand-written, in-memory implementation of an interface, used in tests in place
-of a real external dependency when a real one cannot be run locally. The
+of a real external dependency when a real one cannot be run locally (e.g. a mail
+server). The
 database always can, so a Repository is never faked. A Fake is behaviour, not a recorded script — distinct from a
 mock.
 

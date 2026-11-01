@@ -3,15 +3,15 @@
 
 use crate::application::NoteSearchService;
 use crate::db::PgNoteFinder;
-use app_module::Module;
+use app_module::{Context, Module};
 use app_web::Provide;
 use sqlx::PgPool;
 use std::sync::Arc;
 
 pub struct NoteSearchProvider(PgPool);
 
-pub fn provider(pool: PgPool) -> NoteSearchProvider {
-    NoteSearchProvider(pool)
+pub fn provider(ctx: &Context) -> NoteSearchProvider {
+    NoteSearchProvider(ctx.pool())
 }
 
 impl Provide for NoteSearchProvider {

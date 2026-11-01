@@ -10,6 +10,7 @@ pub struct Note {
     title: String,
     body: String,
     created_at: DateTime<Utc>,
+    archived_at: Option<DateTime<Utc>>,
 }
 
 impl Note {
@@ -20,14 +21,23 @@ impl Note {
             title: title(&cmd.title)?,
             body: cmd.body,
             created_at: now,
+            archived_at: None,
         })
     }
 
     /// On error the note is left unchanged.
     pub fn edit(&mut self, cmd: EditNote) -> Result<(), NoteError> {
+        if self.archived_at.is_some() {
+            return Err(NoteError::Archived);
+        }
         self.title = title(&cmd.title)?;
         self.body = cmd.body;
         Ok(())
+    }
+
+    /// Read-only from now on. Archiving again keeps the first time.
+    pub fn archive(&mut self, now: DateTime<Utc>) {
+        self.archived_at.get_or_insert(now);
     }
 
     /// Skips invariants: for repositories rebuilding persisted state only.
@@ -37,6 +47,7 @@ impl Note {
         title: String,
         body: String,
         created_at: DateTime<Utc>,
+        archived_at: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
             id,
@@ -44,6 +55,7 @@ impl Note {
             title,
             body,
             created_at,
+            archived_at,
         }
     }
 
@@ -65,6 +77,10 @@ impl Note {
 
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
+    }
+
+    pub fn archived_at(&self) -> Option<DateTime<Utc>> {
+        self.archived_at
     }
 }
 
@@ -116,6 +132,24 @@ mod tests {
             body: "changed".into(),
         });
         assert_eq!(result, Err(NoteError::EmptyTitle));
+        assert_eq!(note, before);
+    }
+
+    #[test]
+    fn an_archived_note_refuses_edits_and_keeps_its_first_archive_time() {
+        let mut note = create("First").unwrap();
+        let first = Utc::now();
+        note.archive(first);
+        note.archive(first + chrono::TimeDelta::hours(1));
+        assert_eq!(note.archived_at(), Some(first));
+
+        let before = note.clone();
+        let result = note.edit(EditNote {
+            note_id: note.id(),
+            title: "Second".into(),
+            body: String::new(),
+        });
+        assert_eq!(result, Err(NoteError::Archived));
         assert_eq!(note, before);
     }
 }

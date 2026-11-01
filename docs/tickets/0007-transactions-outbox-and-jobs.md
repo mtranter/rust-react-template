@@ -1,7 +1,7 @@
 ---
 id: 0007
 name: Add a transaction seam, a transactional outbox and a background worker
-status: todo
+status: done
 priority: P1
 size: L
 blocked_by: [0002, 0006]
@@ -52,11 +52,11 @@ effects after `save` with no atomicity, or writing through another module's `-ap
    keys), and one side effect behind a port with a Fake.
 
 ## Acceptance criteria
-- [ ] A service can save two aggregates in one transaction, and a failure rolls both back (covered by a test).
-- [ ] A domain event saved with its aggregate is delivered to a subscriber in another module at least once (covered by a test).
-- [ ] A failing handler is retried, then dead-lettered.
-- [ ] The worker is deployable from the same image (documented in spec §6 next to `migrate`/`seed`).
-- [ ] `CLAUDE.md` has a short "side effects and reactions" rule with a pointer to the reference.
+- [x] A service can save two aggregates in one transaction, and a failure rolls both back (covered by a test).
+- [x] A domain event saved with its aggregate is delivered to a subscriber in another module at least once (covered by a test).
+- [x] A failing handler is retried, then dead-lettered.
+- [x] The worker is deployable from the same image (documented in spec §6 next to `migrate`/`seed`).
+- [x] `CLAUDE.md` has a short "side effects and reactions" rule with a pointer to the reference.
 
 ## Open questions
 - Hand-rolled outbox/queue, or a crate (`apalis`, `sqlxmq`, `pgmq` extension)? Weigh

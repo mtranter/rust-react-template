@@ -1,8 +1,8 @@
 use crate::application::{
-    Expected, ListQuery, Listed, Version, Versioned, WidgetRepository, WidgetSortKey,
+    Expected, ListQuery, Listed, Tx, Version, Versioned, WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{Widget, WidgetId};
-use app_db::push_list_clauses;
+use app_db::{conn, push_list_clauses};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -83,7 +83,7 @@ impl WidgetRepository for PgWidgetRepository {
         })
     }
 
-    async fn save(&self, widget: &Widget, expected: Expected) -> AppResult<Version> {
+    async fn save(&self, tx: &mut Tx, widget: &Widget, expected: Expected) -> AppResult<Version> {
         match expected {
             // A duplicate id is an internal error: ids are minted, not client-chosen.
             Expected::New => {
@@ -97,7 +97,7 @@ impl WidgetRepository for PgWidgetRepository {
                     widget.name(),
                     widget.created_at(),
                 )
-                .fetch_one(&self.pool)
+                .fetch_one(conn(tx))
                 .await
                 .map_err(AppError::internal)?;
                 Ok(Version::from_i64(version))
@@ -115,7 +115,7 @@ impl WidgetRepository for PgWidgetRepository {
                     widget.name(),
                     expected.as_i64(),
                 )
-                .fetch_optional(&self.pool)
+                .fetch_optional(conn(tx))
                 .await
                 .map_err(AppError::internal)?;
 

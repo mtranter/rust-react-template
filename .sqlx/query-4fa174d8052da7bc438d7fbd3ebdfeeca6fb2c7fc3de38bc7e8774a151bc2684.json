@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4fa174d8052da7bc438d7fbd3ebdfeeca6fb2c7fc3de38bc7e8774a151bc2684"
+}

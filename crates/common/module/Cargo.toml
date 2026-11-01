@@ -8,6 +8,8 @@ publish = false
 
 [dependencies]
 app-db.workspace = true
+app-domain.workspace = true
 app-error.workspace = true
+app-persistence.workspace = true
 app-web.workspace = true
 poem.workspace = true

@@ -1,34 +1,51 @@
 // The composition root is where the pool meets the repository (spec §4).
 #![allow(clippy::disallowed_types)]
 
-use crate::application::UserService;
+use crate::application::{Mailer, UserService, Welcome};
 use crate::db::{PgUserRepository, migrations};
-use app_module::Module;
+use crate::mail::LogMailer;
+use app_module::{Context, Module};
+use app_persistence::Handlers;
 use app_web::Provide;
-use sqlx::PgPool;
 use std::sync::Arc;
 use users_api::UserDirectory;
 
-pub struct UsersProvider(PgPool);
+pub struct UsersProvider(UserService);
 
-pub fn provider(pool: PgPool) -> UsersProvider {
-    UsersProvider(pool)
+pub fn provider(ctx: &Context) -> UsersProvider {
+    UsersProvider(service(ctx))
 }
 
 impl Provide for UsersProvider {
     type Data = UserService;
 
     fn build(self) -> UserService {
-        UserService::new(Arc::new(PgUserRepository::new(self.0)))
+        self.0
     }
 }
 
-pub fn directory(pool: PgPool) -> Arc<dyn UserDirectory> {
-    Arc::new(UsersProvider(pool).build())
+fn service(ctx: &Context) -> UserService {
+    UserService::new(
+        Arc::new(PgUserRepository::new(ctx.pool())),
+        ctx.transactions(),
+        ctx.clock(),
+    )
+}
+
+pub fn directory(ctx: &Context) -> Arc<dyn UserDirectory> {
+    Arc::new(service(ctx))
+}
+
+/// What the worker runs for users; `mailer` is a Fake in tests.
+pub fn handlers(ctx: &Context, mailer: Arc<dyn Mailer>) -> Handlers {
+    let repo = Arc::new(PgUserRepository::new(ctx.pool()));
+    Handlers::new().job(Welcome::new(repo, mailer))
 }
 
 pub fn module() -> Module {
-    let module = Module::new(provider).with_migrations(migrations());
+    let module = Module::new(provider)
+        .with_handlers(|ctx| handlers(ctx, Arc::new(LogMailer)))
+        .with_migrations(migrations());
     #[cfg(feature = "seed")]
     let module = module.with_seed(|pool| async move { crate::seed::standard(&pool).await });
     module

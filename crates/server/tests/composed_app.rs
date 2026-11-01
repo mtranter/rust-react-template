@@ -2,11 +2,14 @@
 //! tests wire it up themselves, so only this catches a module whose provider or
 //! migrations never reach the composed server: its operations answer 500.
 
+use app_domain::SystemClock;
+use app_module::Context;
 use app_web::JwtVerifier;
 use poem::test::TestClient;
 use serde_json::Value;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 /// Stands in for every path parameter: well-formed, so a lookup reaches the
 /// service and database, and matching nothing, so it ends in a not-found.
@@ -26,7 +29,8 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
         "Bearer {}",
         verifier.issue(NIL_ID, 60).expect("issue token")
     );
-    let client = TestClient::new(server::build_app(pool, verifier, "http://localhost"));
+    let ctx = Context::new(pool, Arc::new(SystemClock));
+    let client = TestClient::new(server::build_app(&ctx, verifier, "http://localhost"));
 
     let spec: Value = serde_json::from_str(&server::build_service().spec()).expect("spec is JSON");
     let mut unread: BTreeSet<&str> = spec["tags"]

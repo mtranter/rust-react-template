@@ -3,12 +3,14 @@
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{Expected, UserRepository};
+use crate::application::{Expected, Transactions, UserRepository};
 use crate::db::PgUserRepository;
 use crate::domain::{RegisterUser, User, UserId};
-use app_domain::seed_time;
+use app_db::PgTransactions;
+use app_domain::{SystemClock, seed_time};
 use app_error::AppResult;
 use sqlx::PgPool;
+use std::sync::Arc;
 use users_api::{seed, v1};
 
 pub const ALICE: UserId = UserId::from_uuid(seed::ALICE);
@@ -39,13 +41,17 @@ pub fn users() -> Vec<User> {
 }
 
 /// Saves only what's missing, so a deployed environment can re-run it on every
-/// release without failing or undoing edits to seeded entities.
+/// release without failing or undoing edits to seeded entities. Saves through the
+/// repository, not the service, so seeded users get no welcome email.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgUserRepository::new(pool.clone());
+    let mut tx = PgTransactions::new(pool.clone(), Arc::new(SystemClock))
+        .begin()
+        .await?;
     for user in users() {
         if repo.get(user.id()).await?.is_none() {
-            repo.save(&user, Expected::New).await?;
+            repo.save(&mut tx, &user, Expected::New).await?;
         }
     }
-    Ok(())
+    tx.commit().await
 }

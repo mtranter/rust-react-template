@@ -1,8 +1,8 @@
 use crate::application::{
-    Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Version, Versioned,
+    Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Tx, Version, Versioned,
 };
-use crate::domain::{Note, NoteId};
-use app_db::push_list_clauses;
+use crate::domain::{AuthorId, Note, NoteId};
+use app_db::{conn, push_list_clauses};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -33,6 +33,7 @@ struct NoteRow {
     title: String,
     body: String,
     created_at: DateTime<Utc>,
+    archived_at: Option<DateTime<Utc>>,
     version: i64,
 }
 
@@ -45,6 +46,7 @@ impl NoteRow {
                 r.title,
                 r.body,
                 r.created_at,
+                r.archived_at,
             ),
             version: Version::from_i64(r.version),
         }
@@ -54,29 +56,24 @@ impl NoteRow {
 #[async_trait::async_trait]
 impl NoteRepository for PgNoteRepository {
     async fn get(&self, id: NoteId) -> AppResult<Option<Versioned<Note>>> {
-        let rec = sqlx::query!(
-            r#"SELECT id, author_id, title, body, created_at, version FROM notes.note WHERE id = $1"#,
+        let row = sqlx::query_as!(
+            NoteRow,
+            r#"
+            SELECT id, author_id, title, body, created_at, archived_at, version
+            FROM notes.note WHERE id = $1
+            "#,
             id.as_uuid(),
         )
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::internal)?;
 
-        Ok(rec.map(|r| Versioned {
-            entity: Note::restore(
-                r.id.into(),
-                r.author_id.into(),
-                r.title,
-                r.body,
-                r.created_at,
-            ),
-            version: Version::from_i64(r.version),
-        }))
+        Ok(row.map(NoteRow::restore))
     }
 
     async fn list(&self, query: &ListQuery<NoteSortKey>) -> AppResult<Listed<Versioned<Note>>> {
         let mut sql = QueryBuilder::new(
-            "SELECT id, author_id, title, body, created_at, version FROM notes.note",
+            "SELECT id, author_id, title, body, created_at, archived_at, version FROM notes.note",
         );
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
         let rows: Vec<NoteRow> = sql
@@ -99,14 +96,32 @@ impl NoteRepository for PgNoteRepository {
         })
     }
 
-    async fn save(&self, note: &Note, expected: Expected) -> AppResult<Version> {
+    async fn unarchived_by(&self, author: AuthorId) -> AppResult<Vec<Versioned<Note>>> {
+        let rows = sqlx::query_as!(
+            NoteRow,
+            r#"
+            SELECT id, author_id, title, body, created_at, archived_at, version
+            FROM notes.note
+            WHERE author_id = $1 AND archived_at IS NULL
+            ORDER BY created_at, id
+            "#,
+            author.as_uuid(),
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+
+        Ok(rows.into_iter().map(NoteRow::restore).collect())
+    }
+
+    async fn save(&self, tx: &mut Tx, note: &Note, expected: Expected) -> AppResult<Version> {
         match expected {
             // A duplicate id is an internal error: ids are minted, not client-chosen.
             Expected::New => {
                 let version = sqlx::query_scalar!(
                     r#"
-                    INSERT INTO notes.note (id, author_id, title, body, created_at, version)
-                    VALUES ($1, $2, $3, $4, $5, 1)
+                    INSERT INTO notes.note (id, author_id, title, body, created_at, archived_at, version)
+                    VALUES ($1, $2, $3, $4, $5, $6, 1)
                     RETURNING version
                     "#,
                     note.id().as_uuid(),
@@ -114,8 +129,9 @@ impl NoteRepository for PgNoteRepository {
                     note.title(),
                     note.body(),
                     note.created_at(),
+                    note.archived_at(),
                 )
-                .fetch_one(&self.pool)
+                .fetch_one(conn(tx))
                 .await
                 .map_err(AppError::internal)?;
                 Ok(Version::from_i64(version))
@@ -125,16 +141,17 @@ impl NoteRepository for PgNoteRepository {
                 let updated = sqlx::query_scalar!(
                     r#"
                     UPDATE notes.note
-                    SET title = $2, body = $3, version = version + 1
-                    WHERE id = $1 AND version = $4
+                    SET title = $2, body = $3, archived_at = $4, version = version + 1
+                    WHERE id = $1 AND version = $5
                     RETURNING version
                     "#,
                     note.id().as_uuid(),
                     note.title(),
                     note.body(),
+                    note.archived_at(),
                     expected.as_i64(),
                 )
-                .fetch_optional(&self.pool)
+                .fetch_optional(conn(tx))
                 .await
                 .map_err(AppError::internal)?;
 

@@ -1,4 +1,4 @@
-use super::{Expected, ListQuery, Listed, Version, Versioned};
+use super::{Expected, ListQuery, Listed, Tx, Version, Versioned};
 use crate::domain::{Email, User, UserId};
 use app_error::AppResult;
 
@@ -9,6 +9,7 @@ pub enum UserSortKey {
     CreatedAt,
 }
 
+/// Reads run on the pool; writes run in the caller's unit of work.
 /// `find_by_email` feeds the uniqueness rule, not a load-for-edit, so unlike
 /// `get` it carries no version.
 #[async_trait::async_trait]
@@ -18,5 +19,7 @@ pub trait UserRepository: Send + Sync {
     /// Most-recent first unless sorted otherwise.
     async fn list(&self, query: &ListQuery<UserSortKey>) -> AppResult<Listed<Versioned<User>>>;
     /// A stale [`Expected::Version`] is refused with `PreconditionFailed`.
-    async fn save(&self, user: &User, expected: Expected) -> AppResult<Version>;
+    async fn save(&self, tx: &mut Tx, user: &User, expected: Expected) -> AppResult<Version>;
+    /// A stale `expected` is refused with `PreconditionFailed`.
+    async fn delete(&self, tx: &mut Tx, id: UserId, expected: Version) -> AppResult<()>;
 }

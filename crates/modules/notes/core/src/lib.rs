@@ -9,6 +9,6 @@ pub mod seed;
 mod web;
 
 pub use db::{MIGRATOR, SCHEMA, migrations};
-pub use di::{NotesProvider, module, provider};
+pub use di::{NotesProvider, handlers, module, provider};
 pub use domain::{AuthorId, CreateNote, EditNote, Note, NoteError, NoteId};
 pub use web::NotesEndpoints;

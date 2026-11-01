@@ -3,12 +3,14 @@
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{Expected, WidgetRepository};
+use crate::application::{Expected, Transactions, WidgetRepository};
 use crate::db::PgWidgetRepository;
 use crate::domain::{CreateWidget, Widget, WidgetId};
-use app_domain::{seed_time, well_known_id};
+use app_db::PgTransactions;
+use app_domain::{SystemClock, seed_time, well_known_id};
 use app_error::AppResult;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// Unique across modules; `make check-modules` enforces it.
 pub const MODULE: u32 = 0;
@@ -37,10 +39,13 @@ pub fn widgets() -> Vec<Widget> {
 /// release without failing or undoing edits to seeded entities.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgWidgetRepository::new(pool.clone());
+    let mut tx = PgTransactions::new(pool.clone(), Arc::new(SystemClock))
+        .begin()
+        .await?;
     for widget in widgets() {
         if repo.get(widget.id()).await?.is_none() {
-            repo.save(&widget, Expected::New).await?;
+            repo.save(&mut tx, &widget, Expected::New).await?;
         }
     }
-    Ok(())
+    tx.commit().await
 }

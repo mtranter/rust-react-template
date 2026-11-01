@@ -23,13 +23,19 @@ name = "migrate"
 path = "src/bin/migrate.rs"
 
 [[bin]]
+name = "worker"
+path = "src/bin/worker.rs"
+
+[[bin]]
 name = "seed"
 path = "src/bin/seed.rs"
 required-features = ["seed"]
 
 [dependencies]
 app-db.workspace = true
+app-domain.workspace = true
 app-module.workspace = true
+app-persistence.workspace = true
 app-web.workspace = true
 users.workspace = true
 notes.workspace = true
@@ -54,9 +60,12 @@ embed-frontend = ["dep:rust-embed", "poem/embed"]
 seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
-# Enables `seed` for the composed-app test.
+# Enables `seed` for the composed-app tests.
 server = { path = ".", features = ["seed"] }
 app-web.workspace = true
+# The seeded ids the reaction test names.
+users-api = { workspace = true, features = ["seed"] }
+notes-api = { workspace = true, features = ["seed"] }
 poem = { workspace = true, features = ["test"] }
 serde_json.workspace = true
 sqlx.workspace = true

@@ -30,6 +30,7 @@ seed = ["users-api/seed"]
 
 [dev-dependencies]
 users = { path = ".", features = ["seed"] }
+chrono.workspace = true
 app-test-support.workspace = true
 app-error.workspace = true
 app-web = { workspace = true, features = ["test"] }

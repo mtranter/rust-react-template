@@ -19,11 +19,11 @@ COPY crates ./crates
 COPY .sqlx ./.sqlx
 # The embedded frontend assets from stage 1.
 COPY --from=frontend /app/frontend/dist ./frontend/dist
-RUN cargo build --release --bin server --bin migrate --features embed-frontend
+RUN cargo build --release --bin server --bin worker --bin migrate --features embed-frontend
 # Non-prod images only: `docker build --build-arg SEED=true`. A separate build so
 # the seed feature never unifies into the server binary.
 ARG SEED=false
-RUN mkdir out && cp target/release/server target/release/migrate out/ \
+RUN mkdir out && cp target/release/server target/release/worker target/release/migrate out/ \
  && if [ "$SEED" = "true" ]; then \
       cargo build --release -p server --bin seed --features seed && cp target/release/seed out/; \
     fi
@@ -32,7 +32,8 @@ RUN mkdir out && cp target/release/server target/release/migrate out/ \
 # distroless/cc: glibc, tiny, no shell. Avoids musl/aws-lc-rs toolchain friction.
 FROM gcr.io/distroless/cc-debian12 AS runtime
 # `migrate` and `seed` run as one-off pre-start tasks from this image, e.g. a
-# Kubernetes init container with `command: ["/usr/local/bin/migrate"]`.
+# Kubernetes init container with `command: ["/usr/local/bin/migrate"]`; `worker`
+# runs as its own long-lived deployment, `command: ["/usr/local/bin/worker"]`.
 COPY --from=backend /app/out/ /usr/local/bin/
 EXPOSE 8080
 ENV APP_HOST=0.0.0.0 APP_PORT=8080 APP_ENV=prod

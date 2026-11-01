@@ -3,11 +3,14 @@
 //! migrations publish the views this module reads, and their seeds fill them
 //! (spec D8).
 
+use app_domain::SystemClock;
+use app_module::Context;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use note_search::NoteSearchEndpoints;
 use serde_json::json;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -59,7 +62,10 @@ impl NoteSearch {
         notes::seed::standard(&pool).await.expect("seed notes");
 
         let api = TestApi::new(NoteSearchEndpoints, |app| {
-            app.accept(note_search::provider(pool))
+            app.accept(note_search::provider(&Context::new(
+                pool,
+                Arc::new(SystemClock),
+            )))
         });
         Self { api }
     }

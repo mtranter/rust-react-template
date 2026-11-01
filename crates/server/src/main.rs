@@ -1,6 +1,9 @@
+use app_domain::SystemClock;
+use app_module::Context;
 use app_web::JwtVerifier;
 use poem::{Server, listener::TcpListener};
-use server::{build_app, config::AppConfig, telemetry};
+use server::{build_app, config::AppConfig, shutdown_signal, telemetry};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,38 +12,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(addr = %config.bind_addr(), env = ?config.env, "starting server");
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
+    let ctx = Context::new(pool, Arc::new(SystemClock));
     let verifier = build_verifier(&config).await?;
-    let app = build_app(pool, verifier, &config.cors_origin);
+    let app = build_app(&ctx, verifier, &config.cors_origin);
 
     Server::new(TcpListener::bind(config.bind_addr()))
         .run_with_graceful_shutdown(app, shutdown_signal(), None)
         .await?;
     tracing::info!("server stopped");
     Ok(())
-}
-
-/// SIGTERM is how orchestrators request shutdown.
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c().await.ok();
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        use tokio::signal::unix::{SignalKind, signal};
-        if let Ok(mut sig) = signal(SignalKind::terminate()) {
-            sig.recv().await;
-        }
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {}
-        _ = terminate => {}
-    }
-    tracing::info!("shutdown signal received, draining connections");
 }
 
 async fn build_verifier(config: &AppConfig) -> Result<JwtVerifier, Box<dyn std::error::Error>> {

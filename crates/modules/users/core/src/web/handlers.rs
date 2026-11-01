@@ -5,7 +5,7 @@ use app_error::AppError;
 use app_web::{ApiResult, JwtAuth, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
-    OpenApi, Tags,
+    ApiResponse, OpenApi, Tags,
     param::{Header, Path, Query},
     payload::Json,
 };
@@ -15,6 +15,12 @@ type UserResult = WithETag<UserResponse>;
 #[derive(Tags)]
 enum ApiTag {
     Users,
+}
+
+#[derive(ApiResponse)]
+enum Deleted {
+    #[oai(status = 204)]
+    Deleted,
 }
 
 fn caller_id(auth: &JwtAuth) -> ApiResult<UserId> {
@@ -90,6 +96,21 @@ impl UsersEndpoints {
             )
             .await?;
         Ok(tagged(user))
+    }
+
+    /// Delete the currently-authenticated user's account. Requires `If-Match`
+    /// with the version the client last read, like a change. Their notes are
+    /// archived shortly after, not in this request.
+    #[oai(path = "/me", method = "delete")]
+    async fn delete(
+        &self,
+        users: Data<&UserService>,
+        auth: JwtAuth,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<Deleted> {
+        let expected = if_match_version(if_match.0)?;
+        users.0.delete(caller_id(&auth)?, expected).await?;
+        Ok(Deleted::Deleted)
     }
 
     /// Fetch a user by id.

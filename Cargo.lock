@@ -30,8 +30,13 @@ dependencies = [
 name = "app-db"
 version = "0.1.0"
 dependencies = [
+ "app-domain",
  "app-error",
  "app-persistence",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",
@@ -57,7 +62,9 @@ name = "app-module"
 version = "0.1.0"
 dependencies = [
  "app-db",
+ "app-domain",
  "app-error",
+ "app-persistence",
  "app-web",
  "poem",
 ]
@@ -65,6 +72,14 @@ dependencies = [
 [[package]]
 name = "app-persistence"
 version = "0.1.0"
+dependencies = [
+ "app-error",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "app-test-support"
@@ -1481,6 +1496,7 @@ name = "note-search"
 version = "0.1.0"
 dependencies = [
  "app-db",
+ "app-domain",
  "app-error",
  "app-module",
  "app-persistence",
@@ -2526,11 +2542,14 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "app-db",
+ "app-domain",
  "app-module",
+ "app-persistence",
  "app-web",
  "figment",
  "note-search",
  "notes",
+ "notes-api",
  "poem",
  "poem-openapi",
  "rust-embed",
@@ -2542,6 +2561,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "users",
+ "users-api",
 ]
 
 [[package]]
@@ -3419,7 +3439,9 @@ version = "0.1.0"
 dependencies = [
  "app-domain",
  "app-error",
+ "app-persistence",
  "async-trait",
+ "serde",
  "uuid",
 ]
 

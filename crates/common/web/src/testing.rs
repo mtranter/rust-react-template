@@ -97,32 +97,50 @@ impl Call<'_> {
                 .await
                 .expect("the response body has the expected shape"));
         }
-        let request_id = response
-            .headers()
-            .get("x-request-id")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned)
-            .expect("a refusal carries its request id");
-        let error: ErrorShape = response
-            .into_body()
-            .into_json()
-            .await
-            .expect("a refusal has the error shape");
-        assert_eq!(
-            error.request_id, request_id,
-            "the body names the request id"
-        );
-        assert!(!error.message.is_empty(), "a refusal explains itself");
-        assert!(error.fields.iter().all(|f| !f.message.is_empty()));
-        assert!(
-            error.fields.is_empty() || error.code == "validation_error",
-            "only a validation error names fields"
-        );
-        Err(Refused {
-            code: error.code,
-            paths: error.fields.into_iter().map(|f| f.path).collect(),
+        Err(refused(response).await.into())
+    }
+
+    /// For an operation that answers with no body, like a delete.
+    pub async fn send_empty<R: From<Refused>>(self) -> Result<(), R> {
+        let response = self.0.send().await.0;
+        if response.status().is_success() {
+            let body = response
+                .into_body()
+                .into_bytes()
+                .await
+                .expect("read the body");
+            assert!(body.is_empty(), "the response has no body");
+            return Ok(());
         }
-        .into())
+        Err(refused(response).await.into())
+    }
+}
+
+async fn refused(response: poem::Response) -> Refused {
+    let request_id = response
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .expect("a refusal carries its request id");
+    let error: ErrorShape = response
+        .into_body()
+        .into_json()
+        .await
+        .expect("a refusal has the error shape");
+    assert_eq!(
+        error.request_id, request_id,
+        "the body names the request id"
+    );
+    assert!(!error.message.is_empty(), "a refusal explains itself");
+    assert!(error.fields.iter().all(|f| !f.message.is_empty()));
+    assert!(
+        error.fields.is_empty() || error.code == "validation_error",
+        "only a validation error names fields"
+    );
+    Refused {
+        code: error.code,
+        paths: error.fields.into_iter().map(|f| f.path).collect(),
     }
 }
 

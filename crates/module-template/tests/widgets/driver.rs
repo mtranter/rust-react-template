@@ -1,10 +1,13 @@
 //! The only place in these tests that knows the transport (spec §13).
 
+use app_domain::{FixedClock, seed_time};
+use app_module::Context;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use serde_json::json;
 use sqlx::PgPool;
 use std::fmt::Display;
+use std::sync::Arc;
 use widgets::{Widget, WidgetId, WidgetsEndpoints, seed};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,7 +69,10 @@ impl Widgets {
             .expect("migrate widgets");
         seed::standard(&pool).await.expect("seed widgets");
 
-        let api = TestApi::new(WidgetsEndpoints, |app| app.accept(widgets::provider(pool)));
+        // Fixed after the seeds, so what a test creates is the newest.
+        let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
+        let ctx = Context::new(pool, clock);
+        let api = TestApi::new(WidgetsEndpoints, |app| app.accept(widgets::provider(&ctx)));
         Self { api }
     }
 

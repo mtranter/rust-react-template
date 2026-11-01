@@ -1,14 +1,23 @@
 //! The only place in these tests that knows the transport (spec §13).
 
+use app_db::{DeadLetter, Worker};
+use app_domain::{FixedClock, SystemClock, seed_time};
+use app_error::{AppError, AppResult};
+use app_module::Context;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
+use async_trait::async_trait;
+use chrono::TimeDelta;
 use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
 use std::fmt::Display;
-use std::sync::Arc;
-use users::{User, UserId, UsersEndpoints, seed};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use users::{Mail, Mailer, User, UserId, UsersEndpoints, seed};
 use users_api::UserDirectory;
+use users_api::events::v1::UserDeleted;
+use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -64,20 +73,94 @@ impl From<User> for UserJson {
 
 pub type UsersPage = Page<UserJson>;
 
+/// Stands in for the mail server, which tests can't run: keeps what it's sent,
+/// and refuses everything while it's down.
+#[derive(Default)]
+struct FakeMailer {
+    sent: Mutex<Vec<Mail>>,
+    down: AtomicBool,
+}
+
+#[async_trait]
+impl Mailer for FakeMailer {
+    async fn send(&self, mail: Mail) -> AppResult<()> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(AppError::internal(std::io::Error::other(
+                "the mail server is down",
+            )));
+        }
+        self.sent.lock().unwrap().push(mail);
+        Ok(())
+    }
+}
+
 pub struct Users {
     api: TestApi,
     verifier: JwtVerifier,
+    worker: Worker,
+    clock: Arc<FixedClock>,
+    mailer: Arc<FakeMailer>,
 }
 
 impl Users {
     pub async fn seeded(pool: PgPool) -> Self {
         migrate_and_seed(&pool).await;
 
+        let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
+        let ctx = Context::new(pool, clock.clone());
+        let mailer = Arc::new(FakeMailer::default());
+        let worker = ctx.worker(users::handlers(&ctx, mailer.clone()));
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(UsersEndpoints, |app| {
-            app.accept(users::provider(pool)).data(verifier.clone())
+            app.accept(users::provider(&ctx)).data(verifier.clone())
         });
-        Self { api, verifier }
+        Self {
+            api,
+            verifier,
+            worker,
+            clock,
+            mailer,
+        }
+    }
+
+    /// Runs whatever background work is due by now.
+    pub async fn run_due_jobs(&self) {
+        self.worker
+            .run_until_idle()
+            .await
+            .expect("the worker reaches the database");
+    }
+
+    pub fn later(&self, by: TimeDelta) {
+        self.clock.advance(by);
+    }
+
+    pub fn mail_sent(&self) -> Vec<Mail> {
+        self.mailer.sent.lock().unwrap().clone()
+    }
+
+    pub fn mail_server_goes_down(&self) {
+        self.mailer.down.store(true, Ordering::SeqCst);
+    }
+
+    pub fn mail_server_comes_back(&self) {
+        self.mailer.down.store(false, Ordering::SeqCst);
+    }
+
+    /// Background work that ran out of attempts.
+    pub async fn given_up_on(&self) -> Vec<DeadLetter> {
+        self.worker.dead_letters().await.expect("read dead letters")
+    }
+
+    /// The users whose deletion has been announced to other modules, in order.
+    pub async fn announced_deletions(&self) -> Vec<Uuid> {
+        self.worker
+            .published::<UserDeleted>()
+            .await
+            .expect("read the outbox")
+            .into_iter()
+            .map(|event| event.user_id)
+            .collect()
     }
 
     pub async fn register(&self, email: &str, display_name: &str) -> Outcome<UserJson> {
@@ -161,6 +244,19 @@ impl Session<'_> {
             .await
     }
 
+    pub async fn delete_account(&self, version: i64) -> Outcome<()> {
+        self.signed(self.users.api.delete("/api/users/me"))
+            .if_match(version)
+            .send_empty()
+            .await
+    }
+
+    pub async fn delete_account_without_precondition(&self) -> Outcome<()> {
+        self.signed(self.users.api.delete("/api/users/me"))
+            .send_empty()
+            .await
+    }
+
     fn signed<'c>(&self, call: Call<'c>) -> Call<'c> {
         match &self.token {
             Some(token) => call.bearer(token),
@@ -172,7 +268,7 @@ impl Session<'_> {
 /// Tested directly: the directory has no HTTP entry point.
 pub async fn seeded_directory(pool: PgPool) -> Arc<dyn UserDirectory> {
     migrate_and_seed(&pool).await;
-    users::directory(pool)
+    users::directory(&Context::new(pool, Arc::new(SystemClock)))
 }
 
 async fn migrate_and_seed(pool: &PgPool) {

@@ -25,6 +25,7 @@ poem-openapi.workspace = true
 sqlx.workspace = true
 
 [dev-dependencies]
+app-domain.workspace = true
 # The providers run for real: their migrations publish the views this module
 # reads and their seeds fill them. Only `migrations()` and `seed::standard` are
 # used: the one core-to-core edge, and test-only (spec D8).

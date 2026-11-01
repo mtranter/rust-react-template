@@ -1,13 +1,18 @@
+use app_db::Worker;
+use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
+use app_module::Context;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
+use chrono::{DateTime, TimeDelta, Utc};
 use notes::{Note, NoteId, NotesEndpoints, seed};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{AssertSqlSafe, PgPool};
 use std::fmt::Display;
 use std::sync::Arc;
 use users_api::UserDirectory;
+use users_api::events::v1::UserDeleted;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -17,6 +22,7 @@ pub enum Refusal {
     /// The request couldn't be parsed.
     Malformed,
     NotFound,
+    Conflict,
     PreconditionRequired,
     Stale,
 }
@@ -33,6 +39,7 @@ impl From<Refused> for Refusal {
             "validation_error" => Refusal::Invalid(refused.paths),
             "malformed_request" => Refusal::Malformed,
             "not_found" => Refusal::NotFound,
+            "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
             other => panic!("unexpected error code {other}"),
@@ -59,6 +66,17 @@ impl From<Note> for NoteJson {
     }
 }
 
+impl NoteJson {
+    /// As the note reads once archived at `at`, by one more save.
+    pub fn archived(&self, at: DateTime<Utc>) -> Self {
+        let mut json = self.0.clone();
+        let version: i64 = json["version"].as_str().unwrap().parse().unwrap();
+        json["archivedAt"] = at.to_rfc3339().into();
+        json["version"] = (version + 1).to_string().into();
+        Self(json)
+    }
+}
+
 pub type NotesPage = Page<NoteJson>;
 
 /// Stands in for the users module, which these tests don't run; the users module
@@ -75,6 +93,9 @@ impl UserDirectory for KnownUsers {
 
 pub struct Notes {
     api: TestApi,
+    ctx: Context,
+    clock: Arc<FixedClock>,
+    worker: Worker,
 }
 
 impl Notes {
@@ -84,10 +105,70 @@ impl Notes {
             .expect("migrate notes");
         seed::standard(&pool).await.expect("seed notes");
 
+        let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
+        let ctx = Context::new(pool, clock.clone());
+        let worker = ctx.worker(notes::handlers(&ctx, Arc::new(KnownUsers)));
         let api = TestApi::new(NotesEndpoints, |app| {
-            app.accept(notes::provider(pool, Arc::new(KnownUsers)))
+            app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
         });
-        Self { api }
+        Self {
+            api,
+            ctx,
+            clock,
+            worker,
+        }
+    }
+
+    pub fn now(&self) -> DateTime<Utc> {
+        self.clock.now()
+    }
+
+    pub fn later(&self, by: TimeDelta) {
+        self.clock.advance(by);
+    }
+
+    /// The users module announcing a deletion, as it would after `DELETE
+    /// /users/me`: the event is the contract, so it stands in for running users.
+    pub async fn user_deleted(&self, user: Uuid) {
+        let mut tx = self.ctx.transactions().begin().await.expect("begin");
+        tx.publish(&UserDeleted { user_id: user }).expect("publish");
+        tx.commit().await.expect("commit");
+    }
+
+    /// Delivers the events announced so far, as the worker would.
+    pub async fn run_pending_events(&self) {
+        self.worker
+            .run_until_idle()
+            .await
+            .expect("the worker reaches the database");
+    }
+
+    /// Fault injection: any save of `note` fails, as on a database error, until
+    /// [`saving_works_again`](Self::saving_works_again).
+    pub async fn saving_fails_for(&self, note: impl Display) {
+        self.sql(
+            "CREATE FUNCTION notes.refuse_save() RETURNS trigger LANGUAGE plpgsql \
+             AS $$ BEGIN RAISE EXCEPTION 'saving this note fails'; END $$"
+                .into(),
+        )
+        .await;
+        self.sql(format!(
+            "CREATE TRIGGER refuse_save BEFORE UPDATE ON notes.note FOR EACH ROW \
+             WHEN (OLD.id = '{note}') EXECUTE FUNCTION notes.refuse_save()"
+        ))
+        .await;
+    }
+
+    pub async fn saving_works_again(&self) {
+        self.sql("DROP TRIGGER refuse_save ON notes.note".into())
+            .await;
+    }
+
+    async fn sql(&self, statement: String) {
+        sqlx::query(AssertSqlSafe(statement))
+            .execute(&self.ctx.pool())
+            .await
+            .expect("inject the fault");
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<NoteJson> {

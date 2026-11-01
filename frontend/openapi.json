@@ -522,6 +522,114 @@
             "JwtAuth": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Delete the currently-authenticated user's account. Requires `If-Match`\nwith the version the client last read, like a change. Their notes are\narchived shortly after, not in this request.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ]
       }
     },
     "/users/{id}": {
@@ -1023,7 +1131,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.",
+        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.\nAn archived note is refused with `409`.",
         "parameters": [
           {
             "name": "id",
@@ -1560,6 +1668,10 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "archivedAt": {
+            "type": "string",
+            "description": "When the note was archived, because its author was deleted. An archived\nnote can't be edited."
           },
           "version": {
             "type": "string",

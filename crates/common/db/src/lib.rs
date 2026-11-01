@@ -4,9 +4,13 @@
 
 mod errors;
 mod listing;
+mod unit_of_work;
+mod worker;
 
 pub use errors::map_db_error;
 pub use listing::push_list_clauses;
+pub use unit_of_work::{PgTransactions, conn};
+pub use worker::{DeadLetter, Worker};
 
 use app_error::{AppError, AppResult};
 use sqlx::migrate::Migrator;
@@ -38,12 +42,20 @@ pub async fn ping(pool: &PgPool) -> AppResult<()> {
         .map_err(AppError::internal)
 }
 
+static MESSAGING: Migrator = sqlx::migrate!("./migrations");
+
 /// Runs each migrator with `search_path` set to the module's schema, so each
 /// module gets its own `_sqlx_migrations` table and versions independently.
+/// The `messaging` schema (the outbox and job queue every module writes) always
+/// comes first.
 pub async fn run_migrations(pool: &PgPool, modules: &[ModuleMigrations]) -> AppResult<()> {
     let mut conn = pool.acquire().await.map_err(AppError::internal)?;
+    let messaging = ModuleMigrations {
+        schema: "messaging",
+        migrator: &MESSAGING,
+    };
 
-    for module in modules {
+    for module in std::iter::once(&messaging).chain(modules) {
         tracing::info!(schema = module.schema, "running migrations");
 
         // Safe: the schema is a `&'static str` from module code, not user input.

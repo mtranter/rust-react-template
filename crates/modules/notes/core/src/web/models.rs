@@ -34,6 +34,10 @@ pub struct NoteResponse {
     pub title: String,
     pub body: String,
     pub created_at: String,
+    /// When the note was archived, because its author was deleted. An archived
+    /// note can't be edited.
+    #[oai(skip_serializing_if_is_none)]
+    pub archived_at: Option<String>,
     /// Optimistic-concurrency version. Echo it back in `If-Match` to edit this
     /// note; a stale value is refused with `412 Precondition Failed`. Also
     /// mirrored in the `ETag` response header for single-item reads.
@@ -49,6 +53,7 @@ impl From<Versioned<Note>> for NoteResponse {
             title: n.title().to_string(),
             body: n.body().to_string(),
             created_at: n.created_at().to_rfc3339(),
+            archived_at: n.archived_at().map(|at| at.to_rfc3339()),
             version: version.as_i64().to_string(),
         }
     }

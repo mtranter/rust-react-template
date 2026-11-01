@@ -3,22 +3,25 @@
 
 use crate::application::WidgetService;
 use crate::db::{PgWidgetRepository, migrations};
-use app_module::Module;
+use app_module::{Context, Module};
 use app_web::Provide;
-use sqlx::PgPool;
 use std::sync::Arc;
 
-pub struct WidgetsProvider(PgPool);
+pub struct WidgetsProvider(WidgetService);
 
-pub fn provider(pool: PgPool) -> WidgetsProvider {
-    WidgetsProvider(pool)
+pub fn provider(ctx: &Context) -> WidgetsProvider {
+    WidgetsProvider(WidgetService::new(
+        Arc::new(PgWidgetRepository::new(ctx.pool())),
+        ctx.transactions(),
+        ctx.clock(),
+    ))
 }
 
 impl Provide for WidgetsProvider {
     type Data = WidgetService;
 
     fn build(self) -> WidgetService {
-        WidgetService::new(Arc::new(PgWidgetRepository::new(self.0)))
+        self.0
     }
 }
 

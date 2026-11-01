@@ -8,6 +8,7 @@ impl From<NoteError> for AppError {
             NoteError::EmptyTitle | NoteError::TitleTooLong { .. } => {
                 AppError::invalid_field("title", err.to_string())
             }
+            NoteError::Archived => AppError::conflict(err.to_string()),
         }
     }
 }

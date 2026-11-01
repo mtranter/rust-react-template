@@ -32,6 +32,8 @@ pub struct AppConfig {
     pub jwt_issuer: Option<String>,
     /// Unset disables audience checking.
     pub jwt_audience: Option<String>,
+    /// How long the `worker` bin waits between polls once nothing is due.
+    pub worker_poll_ms: u64,
 }
 
 impl Default for AppConfig {
@@ -46,6 +48,7 @@ impl Default for AppConfig {
             jwt_secret: DEV_JWT_SECRET.to_string(),
             jwt_issuer: None,
             jwt_audience: None,
+            worker_poll_ms: 1000,
         }
     }
 }

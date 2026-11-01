@@ -66,6 +66,7 @@ impl NotesEndpoints {
 
     /// Edit a note's title and body. Requires `If-Match` with the version the
     /// client last read; a stale value is refused with `412` and changes nothing.
+    /// An archived note is refused with `409`.
     #[oai(path = "/:id", method = "patch")]
     async fn edit(
         &self,

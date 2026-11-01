@@ -5,8 +5,10 @@ mod driver;
 
 mod behaviours {
     mod current_user;
+    mod deleting;
     mod directory;
     mod finding;
     mod listing;
     mod registering;
+    mod welcoming;
 }
