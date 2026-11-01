@@ -1,4 +1,5 @@
-//! Builds the users `users_api::seed` describes, adding what isn't published.
+//! Builds the users `users_api::seed` describes, adding what isn't published
+//! (when they registered).
 
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
@@ -16,11 +17,11 @@ use users_api::{seed, v1};
 pub const ALICE: UserId = UserId::from_uuid(seed::ALICE);
 pub const BOB: UserId = UserId::from_uuid(seed::BOB);
 
-fn user(published: v1::User, email: &str, minutes: i64) -> User {
+fn user(published: v1::User, minutes: i64) -> User {
     User::register(
         UserId::from_uuid(published.id),
         RegisterUser {
-            email: email.into(),
+            email: published.email,
             display_name: published.display_name,
         },
         seed_time(minutes),
@@ -29,11 +30,11 @@ fn user(published: v1::User, email: &str, minutes: i64) -> User {
 }
 
 pub fn alice() -> User {
-    user(seed::alice(), "alice@example.com", 0)
+    user(seed::alice(), 0)
 }
 
 pub fn bob() -> User {
-    user(seed::bob(), "bob@example.com", 1)
+    user(seed::bob(), 1)
 }
 
 pub fn users() -> Vec<User> {
@@ -42,7 +43,7 @@ pub fn users() -> Vec<User> {
 
 /// Saves only what's missing, so a deployed environment can re-run it on every
 /// release without failing or undoing edits to seeded entities. Saves through the
-/// repository, not the service, so seeded users get no welcome email.
+/// repository, not the service, so seeding publishes no events.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgUserRepository::new(pool.clone());
     let mut tx = PgTransactions::new(pool.clone(), Arc::new(SystemClock))

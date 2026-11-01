@@ -1,18 +1,20 @@
 use app_db::Worker;
 use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
+use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use notes::{Note, NoteId, NotesEndpoints, seed};
+use notes_api::events::v1 as notes_events;
 use serde_json::json;
 use sqlx::{AssertSqlSafe, PgPool};
 use std::fmt::Display;
 use std::sync::Arc;
 use users_api::UserDirectory;
-use users_api::events::v1::UserDeleted;
+use users_api::events::v1::{self as users_events, UserDeleted};
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -77,6 +79,17 @@ impl NoteJson {
     }
 }
 
+/// What a notes event carries about `note`.
+pub fn announced(note: &Note) -> EventPayload<notes_events::Note, NoContext> {
+    EventPayload::new(notes_events::Note {
+        id: note.id().as_uuid(),
+        author_id: note.author_id().as_uuid(),
+        title: note.title().to_string(),
+        body: note.body().to_string(),
+        archived_at: note.archived_at(),
+    })
+}
+
 pub type NotesPage = Page<NoteJson>;
 
 /// Stands in for the users module, which these tests don't run; the users module
@@ -127,12 +140,32 @@ impl Notes {
         self.clock.advance(by);
     }
 
-    /// The users module announcing a deletion, as it would after `DELETE
-    /// /users/me`: the event is the contract, so it stands in for running users.
+    /// The users module announcing a seeded user's deletion, as it would after
+    /// `DELETE /users/me`: the event is the contract, so it stands in for running users.
     pub async fn user_deleted(&self, user: Uuid) {
+        let user = [users_api::seed::alice(), users_api::seed::bob()]
+            .into_iter()
+            .find(|seeded| seeded.id == user)
+            .expect("a seeded user");
         let mut tx = self.ctx.transactions().begin().await.expect("begin");
-        tx.publish(&UserDeleted { user_id: user }).expect("publish");
+        tx.publish::<UserDeleted>(EventPayload::new(users_events::User {
+            id: user.id,
+            email: user.email,
+            display_name: user.display_name,
+        }))
+        .expect("publish");
         tx.commit().await.expect("commit");
+    }
+
+    /// Every `E` notes has announced to other modules, oldest first.
+    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+        self.worker
+            .published::<E>()
+            .await
+            .expect("read the outbox")
+            .into_iter()
+            .map(|event| event.data)
+            .collect()
     }
 
     /// Delivers the events announced so far, as the worker would.

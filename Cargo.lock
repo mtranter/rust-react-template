@@ -32,6 +32,7 @@ version = "0.1.0"
 dependencies = [
  "app-domain",
  "app-error",
+ "app-events",
  "app-persistence",
  "async-trait",
  "chrono",
@@ -40,6 +41,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -55,6 +57,16 @@ name = "app-error"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "app-events"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -74,8 +86,8 @@ name = "app-persistence"
 version = "0.1.0"
 dependencies = [
  "app-error",
+ "app-events",
  "async-trait",
- "chrono",
  "serde",
  "serde_json",
  "thiserror",
@@ -1523,6 +1535,7 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-module",
  "app-persistence",
  "app-test-support",
@@ -1548,7 +1561,9 @@ name = "notes-api"
 version = "0.1.0"
 dependencies = [
  "app-domain",
+ "app-events",
  "chrono",
+ "serde",
  "users-api",
  "uuid",
 ]
@@ -3413,6 +3428,7 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-module",
  "app-persistence",
  "app-test-support",
@@ -3439,7 +3455,7 @@ version = "0.1.0"
 dependencies = [
  "app-domain",
  "app-error",
- "app-persistence",
+ "app-events",
  "async-trait",
  "serde",
  "uuid",
@@ -3621,6 +3637,7 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-module",
  "app-persistence",
  "app-test-support",
@@ -3635,6 +3652,16 @@ dependencies = [
  "tokio",
  "uuid",
  "widgets",
+ "widgets-api",
+]
+
+[[package]]
+name = "widgets-api"
+version = "0.1.0"
+dependencies = [
+ "app-events",
+ "serde",
+ "uuid",
 ]
 
 [[package]]

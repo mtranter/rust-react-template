@@ -1,11 +1,13 @@
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_persistence::{Outgoing, Transactions, Tx, TxBackend};
+use app_events::EventEnvelope;
+use app_persistence::{PendingEvent, Transactions, Tx, TxBackend};
 use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use std::sync::Arc;
+use uuid::Uuid;
 
-/// Begins each [`Tx`] on the pool. The clock stamps the events and jobs it writes.
+/// Begins each [`Tx`] on the pool. The clock stamps the events it writes.
 pub struct PgTransactions {
     pool: PgPool,
     clock: Arc<dyn Clock>,
@@ -44,46 +46,30 @@ pub fn conn(tx: &mut Tx) -> &mut PgConnection {
 
 #[async_trait]
 impl TxBackend for PgTx {
-    async fn commit(self: Box<Self>, outgoing: Vec<Outgoing>) -> AppResult<()> {
+    async fn commit(self: Box<Self>, events: Vec<PendingEvent>) -> AppResult<()> {
         let PgTx { mut tx, clock } = *self;
         let now = clock.now();
-        for message in outgoing {
-            match message {
-                Outgoing::Event {
-                    event_type,
-                    payload,
-                } => sqlx::query!(
-                    r#"
-                    INSERT INTO messaging.outbox (event_type, payload, occurred_at)
-                    VALUES ($1, $2, $3)
-                    "#,
-                    event_type,
-                    payload,
-                    now,
-                )
-                .execute(&mut *tx)
-                .await
-                .map_err(AppError::internal)?,
-                Outgoing::Job {
-                    kind,
-                    payload,
-                    run_at,
-                    max_attempts,
-                } => sqlx::query!(
-                    r#"
-                    INSERT INTO messaging.job (queue, payload, run_at, max_attempts, created_at)
-                    VALUES ($1, $2, $3, $4, $5)
-                    "#,
-                    kind,
-                    payload,
-                    run_at.unwrap_or(now),
-                    max_attempts,
-                    now,
-                )
-                .execute(&mut *tx)
-                .await
-                .map_err(AppError::internal)?,
-            };
+        for event in events {
+            let envelope = EventEnvelope::new(
+                Uuid::new_v4(),
+                now,
+                event.source,
+                event.event_type,
+                event.subject,
+                event.data,
+            );
+            sqlx::query!(
+                r#"
+                INSERT INTO messaging.outbox (event_type, payload, occurred_at)
+                VALUES ($1, $2, $3)
+                "#,
+                event.event_type,
+                serde_json::to_value(&envelope).map_err(AppError::internal)?,
+                now,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::internal)?;
         }
         tx.commit().await.map_err(AppError::internal)
     }

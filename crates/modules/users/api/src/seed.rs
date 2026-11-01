@@ -12,17 +12,18 @@ pub const MODULE: u32 = 1;
 pub const ALICE: Uuid = well_known_id(MODULE, 1, 1);
 pub const BOB: Uuid = well_known_id(MODULE, 1, 2);
 
-fn user(id: Uuid, display_name: &str) -> v1::User {
+fn user(id: Uuid, display_name: &str, email: &str) -> v1::User {
     v1::User {
         id,
         display_name: display_name.into(),
+        email: email.into(),
     }
 }
 
 pub fn alice() -> v1::User {
-    user(ALICE, "Alice")
+    user(ALICE, "Alice", "alice@example.com")
 }
 
 pub fn bob() -> v1::User {
-    user(BOB, "Bob")
+    user(BOB, "Bob", "bob@example.com")
 }

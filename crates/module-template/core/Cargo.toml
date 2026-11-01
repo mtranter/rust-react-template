@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 app-domain.workspace = true
 app-error.workspace = true
+app-events.workspace = true
+widgets-api = { path = "../api" }
 app-persistence.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true

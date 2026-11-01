@@ -1,13 +1,14 @@
 //! The only place in these tests that knows the transport (spec §13).
 
 use app_db::{DeadLetter, Worker};
-use app_domain::{FixedClock, SystemClock, seed_time};
+use app_domain::{Clock, FixedClock, SystemClock, seed_time};
 use app_error::{AppError, AppResult};
+use app_events::{EnvelopeOf, Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
 use async_trait::async_trait;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
@@ -16,8 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use users::{Mail, Mailer, User, UserId, UsersEndpoints, seed};
 use users_api::UserDirectory;
-use users_api::events::v1::UserDeleted;
-use uuid::Uuid;
+use users_api::events::v1;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -52,6 +52,15 @@ impl From<Refused> for Refusal {
             other => panic!("unexpected error code {other}"),
         }
     }
+}
+
+/// What a users event carries about `user`.
+pub fn announced(user: &User) -> EventPayload<v1::User, NoContext> {
+    EventPayload::new(v1::User {
+        id: user.id().as_uuid(),
+        email: user.email().to_string(),
+        display_name: user.display_name().to_string(),
+    })
 }
 
 pub type Outcome<T> = Result<T, Refusal>;
@@ -123,12 +132,16 @@ impl Users {
         }
     }
 
-    /// Runs whatever background work is due by now.
-    pub async fn run_due_jobs(&self) {
+    /// Delivers the events announced so far, as the worker would.
+    pub async fn run_pending_events(&self) {
         self.worker
             .run_until_idle()
             .await
             .expect("the worker reaches the database");
+    }
+
+    pub fn now(&self) -> DateTime<Utc> {
+        self.clock.now()
     }
 
     pub fn later(&self, by: TimeDelta) {
@@ -152,15 +165,17 @@ impl Users {
         self.worker.dead_letters().await.expect("read dead letters")
     }
 
-    /// The users whose deletion has been announced to other modules, in order.
-    pub async fn announced_deletions(&self) -> Vec<Uuid> {
-        self.worker
-            .published::<UserDeleted>()
+    /// Every `E` users has announced to other modules, oldest first.
+    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+        self.announced_envelopes::<E>()
             .await
-            .expect("read the outbox")
             .into_iter()
-            .map(|event| event.user_id)
+            .map(|event| event.data)
             .collect()
+    }
+
+    pub async fn announced_envelopes<E: Event>(&self) -> Vec<EnvelopeOf<E>> {
+        self.worker.published::<E>().await.expect("read the outbox")
     }
 
     pub async fn register(&self, email: &str, display_name: &str) -> Outcome<UserJson> {

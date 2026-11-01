@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-modules=(crates/modules/*/core crates/module-template)
+modules=(crates/modules/*/core crates/module-template/core)
 
 schema_of() {
   local file="$1/src/db/migrations.rs"

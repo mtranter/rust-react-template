@@ -104,29 +104,39 @@ that keeps the database out of the application and domain layers.
 
 ### Unit of Work
 One database transaction a Service opens for a use case: every Aggregate it
-saves, and every Event and Job it records, commits together or not at all.
+saves, and every Event it publishes, commits together or not at all.
 
 ### Event
-Something that happened in a Module, announced for other Modules to react to
-(e.g. a user was deleted). Its type is published in the Module API, versioned
-and holding plain values; it is recorded in the same Unit of Work as the change
-it announces, in the Outbox. The publisher does not know who listens.
+Something that happened to an Aggregate, announced for Modules to react to
+(e.g. a user registered, a user was deleted). A fact, named in the past tense,
+never a request for something to be done. Its type is published in the Module
+API, versioned, and it carries an Event Payload. Every change to an Aggregate
+publishes one. It travels in an Event Envelope and is recorded in the same Unit of Work as the change it announces, in the
+Outbox. The publisher does not know who listens.
+
+### Event Payload
+What an Event carries: the entity, the Aggregate root's whole state as it now
+is but its audit fields, so a Subscriber need not call back (event-carried
+state transfer); and a context saying what happened where the state can't
+(e.g. the id of the item removed from a list).
+
+### Event Envelope
+The CloudEvents-shaped wrapper every Event is stored and delivered in: its id,
+source Module, type, subject (the Aggregate's id) and time, around its Event
+Payload.
 
 ### Subscriber
-A Module's reaction to another Module's Event (e.g. archiving a deleted user's
-notes): it changes only its own Module's data, and may run more than once.
-
-### Job
-Work a Module asks of itself, to run outside the request or later (e.g. sending
-a welcome email). Private to the Module, recorded in a Unit of Work like an Event.
+A Module's reaction to an Event, another Module's or its own (e.g. archiving a
+deleted user's notes, welcoming a registered user): it changes only its own
+Module's data, and may run more than once.
 
 ### Outbox
 Where a Unit of Work records its Events, so they are delivered if and only if it
 commits. Shared by every Module and owned by none.
 
 ### Worker
-The process that delivers Events to their Subscribers and runs due Jobs, each in
-its own Unit of Work, retrying a failure and setting it aside as a **Dead
+The process that delivers Events to their Subscribers, each delivery in its own
+Unit of Work, retrying a failure and setting it aside as a **Dead
 Letter** once its attempts run out.
 
 ### Clock

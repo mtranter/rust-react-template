@@ -1,5 +1,6 @@
 mod directory;
 mod error;
+mod events;
 mod mailer;
 mod repository;
 mod service;
@@ -9,4 +10,4 @@ pub use app_persistence::{Expected, ListQuery, Listed, Transactions, Tx, Version
 pub use mailer::{Mail, Mailer};
 pub use repository::{UserRepository, UserSortKey};
 pub use service::UserService;
-pub use welcome::{Welcome, WelcomeEmail};
+pub use welcome::Welcome;

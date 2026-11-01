@@ -1,10 +1,13 @@
+use super::events;
 use super::{
     Expected, ListQuery, Listed, Transactions, Version, Versioned, WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
+use app_events::EventPayload;
 use std::sync::Arc;
+use widgets_api::events::v1::{WidgetCreated, WidgetRenamed};
 
 #[derive(Clone)]
 pub struct WidgetService {
@@ -30,6 +33,7 @@ impl WidgetService {
         let widget = Widget::create(WidgetId::new(), cmd, self.clock.now())?;
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
+        tx.publish::<WidgetCreated>(EventPayload::new(events::widget(&widget)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: widget,
@@ -52,6 +56,7 @@ impl WidgetService {
             .repo
             .save(&mut tx, &widget, Expected::Version(expected))
             .await?;
+        tx.publish::<WidgetRenamed>(EventPayload::new(events::widget(&widget)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: widget,

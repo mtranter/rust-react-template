@@ -1,12 +1,13 @@
+use super::events;
 use super::{
     Expected, ListQuery, Listed, Transactions, UserRepository, UserSortKey, Version, Versioned,
-    WelcomeEmail,
 };
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
+use app_events::EventPayload;
 use std::sync::Arc;
-use users_api::events::v1::UserDeleted;
+use users_api::events::v1::{UserDeleted, UserDisplayNameChanged, UserRegistered};
 
 /// Holds trait objects rather than being generic so the service is one
 /// nameable type; one dynamic call per repository method is noise beside the I/O.
@@ -37,9 +38,7 @@ impl UserService {
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &user, Expected::New).await?;
-        tx.enqueue(&WelcomeEmail {
-            user_id: user.id().as_uuid(),
-        })?;
+        tx.publish::<UserRegistered>(EventPayload::new(events::user(&user)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: user,
@@ -61,6 +60,7 @@ impl UserService {
             .repo
             .save(&mut tx, &user, Expected::Version(expected))
             .await?;
+        tx.publish::<UserDisplayNameChanged>(EventPayload::new(events::user(&user)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: user,
@@ -68,15 +68,20 @@ impl UserService {
         })
     }
 
-    /// Removes the account and announces it in the same transaction; modules
-    /// holding the id react in their own time (spec §4).
+    /// Removes the account and announces it, as it was last, in the same
+    /// transaction; modules holding the id react in their own time (spec §4).
     pub async fn delete(&self, id: UserId, expected: Version) -> AppResult<()> {
-        self.get(id).await?;
+        let current = self.get(id).await?;
+        // Checked here as well as by the delete, so the state announced is the
+        // version deleted, not one read before a concurrent change.
+        if current.version != expected {
+            return Err(AppError::precondition_failed(
+                "the account was modified elsewhere",
+            ));
+        }
         let mut tx = self.transactions.begin().await?;
         self.repo.delete(&mut tx, id, expected).await?;
-        tx.publish(&UserDeleted {
-            user_id: id.as_uuid(),
-        })?;
+        tx.publish::<UserDeleted>(EventPayload::new(events::user(&current.entity)))?;
         tx.commit().await
     }
 

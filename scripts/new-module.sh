@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Scaffolds a write module from crates/module-template — a module named
-# `widgets` whose aggregate is a `widget` — and registers it everywhere
-# scripts/check-modules.sh looks. Its tests pass as generated.
+# Scaffolds a write module, its `core` and `api` crates, from
+# crates/module-template — a module named `widgets` whose aggregate is a
+# `widget` — and registers it everywhere scripts/check-modules.sh looks. Its
+# tests pass as generated.
 #
 #   scripts/new-module.sh <name> [<entity>]    e.g. `order-lines order-line`
 #
@@ -45,15 +46,16 @@ number=$((${last:-0} + 1))
 # the existing modules' schemas must be current there too.
 make --no-print-directory migrate
 
-dir=crates/modules/$name/core
+root=crates/modules/$name
+dir=$root/core
 template=crates/module-template
 while IFS= read -r -d '' source; do
   path=${source#"$template"/}
-  path=${path/#tests\/widgets\//tests/$ident/}
-  path=${path/#src\/domain\/widget.rs/src/domain/$entity_ident.rs}
+  path=${path/#core\/tests\/widgets\//core/tests/$ident/}
+  path=${path/#core\/src\/domain\/widget.rs/core/src/domain/$entity_ident.rs}
   crate=$ident
   [ "$(basename "$source")" = Cargo.toml ] && crate=$name
-  mkdir -p "$(dirname "$dir/$path")"
+  mkdir -p "$(dirname "$root/$path")"
   # One pass, so a replacement is never itself replaced.
   URL=/$name CRATE=$crate PLURAL=$plural_type ENTITY=$entity_ident ENTITY_TYPE=$entity_type \
     ENTITY_UPPER=$entity_upper NUMBER=$number perl -pe '
@@ -63,7 +65,7 @@ while IFS= read -r -d '' source; do
       }
       s{(/widgets|Widgets|widgets|WIDGET|Widget|widget)}{$to{$1}}g;
       s{^pub const MODULE: u32 = \d+;}{pub const MODULE: u32 = $ENV{NUMBER};};
-    ' "$source" >"$dir/$path"
+    ' "$source" >"$root/$path"
 done < <(find "$template" -type f -print0)
 
 after_last() {
@@ -74,6 +76,7 @@ after_last() {
   mv "$file.new" "$file"
 }
 
+after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/modules/' "$name-api = { path = \"$root/api\" }"
 after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/modules/' "$name = { path = \"$dir\" }"
 after_last crates/server/Cargo.toml "^($existing)\.workspace = true" "$name.workspace = true"
 NAME=$name perl -i -pe 's{^(seed = \[.*)\]}{$1, "$ENV{NAME}/seed"]}' crates/server/Cargo.toml
@@ -86,7 +89,7 @@ cargo fmt --all
 
 # `sqlx prepare` checks every crate's queries against the dev database, the
 # template's and the new module's included.
-./scripts/migrate-schema.sh crates/module-template widgets
+./scripts/migrate-schema.sh crates/module-template/core widgets
 ./scripts/migrate-schema.sh "$dir" "$ident"
 SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 
@@ -94,7 +97,7 @@ SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 
 cat <<EOF
 
-Created $dir (module number $number) and registered it in crates/server/src/modules.rs,
+Created $dir and $root/api (module number $number) and registered it in crates/server/src/modules.rs,
 crates/server/Cargo.toml, Cargo.toml and deny.toml.
 
   make test-backend   its tests, and the composed-app test, pass as generated

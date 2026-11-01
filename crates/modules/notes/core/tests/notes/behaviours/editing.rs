@@ -1,7 +1,9 @@
-use crate::driver::{Notes, Refusal};
+use crate::driver::{Notes, Refusal, announced};
+use app_events::EventPayload;
 use app_test_support::assert_json_matches;
 use notes::NoteId;
 use notes::seed::{self, ALICES_NOTE};
+use notes_api::events::v1::{self, NoteEdited};
 use sqlx::PgPool;
 
 #[sqlx::test(migrations = false)]
@@ -16,6 +18,25 @@ async fn editing_a_note_replaces_its_title_and_body(pool: PgPool) {
     assert_json_matches!(edited, "$.title", "Renamed");
     assert_json_matches!(edited, "$.body", "updated");
     assert_eq!(notes.get(ALICES_NOTE).await, Ok(edited));
+}
+
+#[sqlx::test(migrations = false)]
+async fn editing_a_note_announces_it_as_it_now_is(pool: PgPool) {
+    let notes = Notes::seeded(pool).await;
+
+    notes
+        .edit(ALICES_NOTE, 1, "Renamed", "updated")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        notes.announced::<NoteEdited>().await,
+        [EventPayload::new(v1::Note {
+            title: "Renamed".into(),
+            body: "updated".into(),
+            ..announced(&seed::alices_note()).entity
+        })]
+    );
 }
 
 #[sqlx::test(migrations = false)]
@@ -72,6 +93,7 @@ async fn an_edit_against_a_stale_version_is_refused_and_changes_nothing(pool: Pg
         Err(Refusal::Stale)
     );
     assert_eq!(notes.get(ALICES_NOTE).await, Ok(seed::alices_note().into()));
+    assert!(notes.announced::<NoteEdited>().await.is_empty());
 }
 
 #[sqlx::test(migrations = false)]

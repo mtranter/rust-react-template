@@ -8,8 +8,10 @@ publish = false
 
 # Must stay pure (no poem/sqlx): other modules depend on it.
 [dependencies]
+app-events.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+serde.workspace = true
 app-domain = { workspace = true, optional = true }
 users-api = { workspace = true, optional = true }
 

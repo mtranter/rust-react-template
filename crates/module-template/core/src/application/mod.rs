@@ -1,4 +1,5 @@
 mod error;
+mod events;
 mod repository;
 mod service;
 

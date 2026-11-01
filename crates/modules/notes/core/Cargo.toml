@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 app-domain.workspace = true
 app-error.workspace = true
+app-events.workspace = true
 app-persistence.workspace = true
 # Only the pure `users-api`, never the `users` crate itself (spec D7).
 users-api.workspace = true

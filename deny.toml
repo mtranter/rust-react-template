@@ -9,7 +9,7 @@ allow-wildcard-paths = true
 # Keeps pure crates (pure `common` crates, every `<module>-api`) framework-free.
 # Each module core crate ends each list (`make new-module` appends it); never an
 # `-api` crate. `make check-modules` fails on one missing. `widgets` is the module
-# template (crates/module-template).
+# template (crates/module-template/core).
 deny = [
     { crate = "sqlx", wrappers = ["app-db", "server", "widgets", "users", "notes", "note-search"] },
     { crate = "poem", wrappers = ["poem-openapi", "app-web", "app-module", "server", "widgets", "users", "notes", "note-search"] },

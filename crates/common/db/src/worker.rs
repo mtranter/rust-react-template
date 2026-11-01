@@ -1,12 +1,14 @@
 //! Delivers what units of work leave in `messaging` (spec §4): the relay copies
-//! each outbox event into one job per subscriber, then jobs run, each in its own
-//! transaction, with retries and dead-lettering. Any number of workers can run
-//! against one database: every claim skips rows another worker holds.
+//! each outbox event into one delivery per subscriber, a row of `messaging.job`,
+//! then each runs in its own transaction, with retries and dead-lettering. Any
+//! number of workers can run against one database: every claim skips rows
+//! another worker holds.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_persistence::{DEFAULT_MAX_ATTEMPTS, Event, Handlers};
+use app_events::{EnvelopeOf, Event};
+use app_persistence::{Handlers, MAX_ATTEMPTS};
 use chrono::TimeDelta;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -25,7 +27,7 @@ pub struct Worker {
     handlers: Arc<Handlers>,
 }
 
-/// A job that ran out of attempts. Rerun one by clearing its `dead_at` and
+/// A delivery that ran out of attempts. Rerun one by clearing its `dead_at` and
 /// `attempts` in `messaging.job`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeadLetter {
@@ -68,7 +70,7 @@ impl Worker {
     }
 
     /// Relays and runs until nothing is due by the worker's clock, including
-    /// whatever the handlers publish or enqueue. A failed job backs off past
+    /// whatever the handlers publish. A failed delivery backs off past
     /// `now`, so this returns rather than retrying it.
     pub async fn run_until_idle(&self) -> AppResult<()> {
         loop {
@@ -116,7 +118,7 @@ impl Worker {
                     queue,
                     event.payload,
                     now,
-                    DEFAULT_MAX_ATTEMPTS,
+                    MAX_ATTEMPTS,
                 )
                 .execute(&mut *tx)
                 .await
@@ -219,7 +221,7 @@ impl Worker {
     }
 
     /// Every `E` published so far, oldest first: for tests and diagnostics.
-    pub async fn published<E: Event>(&self) -> AppResult<Vec<E>> {
+    pub async fn published<E: Event>(&self) -> AppResult<Vec<EnvelopeOf<E>>> {
         let payloads = sqlx::query_scalar!(
             "SELECT payload FROM messaging.outbox WHERE event_type = $1 ORDER BY seq",
             E::TYPE,

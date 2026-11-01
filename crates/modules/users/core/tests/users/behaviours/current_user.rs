@@ -1,8 +1,10 @@
-use crate::driver::{Refusal, Users};
+use crate::driver::{Refusal, Users, announced};
+use app_events::EventPayload;
 use app_test_support::assert_json_matches;
 use sqlx::PgPool;
 use users::UserId;
 use users::seed::{self, ALICE, BOB};
+use users_api::events::v1::{self, UserDisplayNameChanged};
 
 #[sqlx::test(migrations = false)]
 async fn a_signed_in_user_sees_their_own_profile(pool: PgPool) {
@@ -82,6 +84,25 @@ async fn changing_display_name_affects_only_that_user(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = false)]
+async fn changing_display_name_announces_the_user_as_they_now_are(pool: PgPool) {
+    let users = Users::seeded(pool).await;
+
+    users
+        .signed_in_as(ALICE)
+        .change_display_name(1, "Alice B")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        users.announced::<UserDisplayNameChanged>().await,
+        [EventPayload::new(v1::User {
+            display_name: "Alice B".into(),
+            ..announced(&seed::alice()).entity
+        })]
+    );
+}
+
+#[sqlx::test(migrations = false)]
 async fn a_blank_display_name_is_rejected_and_changes_nothing(pool: PgPool) {
     let users = Users::seeded(pool).await;
     assert_eq!(
@@ -92,6 +113,7 @@ async fn a_blank_display_name_is_rejected_and_changes_nothing(pool: PgPool) {
         Err(Refusal::invalid(["displayName"]))
     );
     assert_eq!(users.get(ALICE).await, Ok(seed::alice().into()));
+    assert!(users.announced::<UserDisplayNameChanged>().await.is_empty());
 }
 
 #[sqlx::test(migrations = false)]
@@ -117,6 +139,7 @@ async fn a_change_against_a_stale_version_is_refused_and_changes_nothing(pool: P
         Err(Refusal::Stale)
     );
     assert_eq!(users.get(ALICE).await, Ok(seed::alice().into()));
+    assert!(users.announced::<UserDisplayNameChanged>().await.is_empty());
 }
 
 #[sqlx::test(migrations = false)]

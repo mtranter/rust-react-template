@@ -1,5 +1,7 @@
 use crate::driver::{Notes, Refusal};
+use app_events::EventPayload;
 use app_test_support::{assert_json_exists, assert_json_matches};
+use notes_api::events::v1::{self, NoteCreated};
 use notes_api::seed::UNKNOWN_AUTHOR;
 use sqlx::PgPool;
 use users_api::seed::ALICE;
@@ -21,6 +23,24 @@ async fn a_created_note_is_kept_with_its_title_trimmed(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = false)]
+async fn creating_a_note_announces_it(pool: PgPool) {
+    let notes = Notes::seeded(pool).await;
+
+    let created = notes.create(ALICE, "Groceries", "hi").await.unwrap();
+
+    assert_eq!(
+        notes.announced::<NoteCreated>().await,
+        [EventPayload::new(v1::Note {
+            id: created.id().parse().unwrap(),
+            author_id: ALICE,
+            title: "Groceries".into(),
+            body: "hi".into(),
+            archived_at: None,
+        })]
+    );
+}
+
+#[sqlx::test(migrations = false)]
 async fn a_note_needs_a_title(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     assert_eq!(
@@ -28,6 +48,7 @@ async fn a_note_needs_a_title(pool: PgPool) {
         Err(Refusal::invalid(["title"]))
     );
     assert_eq!(notes.list().await.total, 3);
+    assert!(notes.announced::<NoteCreated>().await.is_empty());
 }
 
 #[sqlx::test(migrations = false)]

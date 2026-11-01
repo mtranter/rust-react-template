@@ -1,6 +1,8 @@
-use crate::driver::{NoteJson, Notes, Refusal};
+use crate::driver::{NoteJson, Notes, Refusal, announced};
+use app_events::EventPayload;
 use chrono::TimeDelta;
 use notes::seed::{self, ALICES_NOTE, BOBS_NOTE};
+use notes_api::events::v1::{self, NoteArchived};
 use sqlx::PgPool;
 use users_api::seed::ALICE;
 
@@ -20,6 +22,22 @@ async fn a_deleted_authors_notes_are_archived(pool: PgPool) {
         Ok(alices_note().archived(notes.now()))
     );
     assert_eq!(notes.get(BOBS_NOTE).await, Ok(seed::bobs_note().into()));
+}
+
+#[sqlx::test(migrations = false)]
+async fn archiving_a_note_announces_it(pool: PgPool) {
+    let notes = Notes::seeded(pool).await;
+
+    notes.user_deleted(ALICE).await;
+    notes.run_pending_events().await;
+
+    assert_eq!(
+        notes.announced::<NoteArchived>().await,
+        [EventPayload::new(v1::Note {
+            archived_at: Some(notes.now()),
+            ..announced(&seed::alices_note()).entity
+        })]
+    );
 }
 
 #[sqlx::test(migrations = false)]
@@ -75,6 +93,7 @@ async fn if_one_note_fails_to_archive_none_are_until_the_retry_succeeds(pool: Pg
 
     assert_eq!(notes.get(ALICES_NOTE).await, Ok(alices_note()));
     assert_eq!(notes.get(newer.id()).await.as_ref(), Ok(&newer));
+    assert!(notes.announced::<NoteArchived>().await.is_empty());
 
     notes.saving_works_again().await;
     notes.later(TimeDelta::minutes(1));

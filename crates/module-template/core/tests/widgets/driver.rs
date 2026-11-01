@@ -1,7 +1,10 @@
 //! The only place in these tests that knows the transport (spec §13).
 
+use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
+use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
+use app_persistence::Handlers;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use serde_json::json;
@@ -9,6 +12,7 @@ use sqlx::PgPool;
 use std::fmt::Display;
 use std::sync::Arc;
 use widgets::{Widget, WidgetId, WidgetsEndpoints, seed};
+use widgets_api::events::v1;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -56,10 +60,19 @@ impl From<Widget> for WidgetJson {
     }
 }
 
+/// What a widgets event carries about `widget`.
+pub fn announced(widget: &Widget) -> EventPayload<v1::Widget, NoContext> {
+    EventPayload::new(v1::Widget {
+        id: widget.id().as_uuid(),
+        name: widget.name().to_string(),
+    })
+}
+
 pub type WidgetsPage = Page<WidgetJson>;
 
 pub struct Widgets {
     api: TestApi,
+    worker: Worker,
 }
 
 impl Widgets {
@@ -73,7 +86,20 @@ impl Widgets {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock);
         let api = TestApi::new(WidgetsEndpoints, |app| app.accept(widgets::provider(&ctx)));
-        Self { api }
+        // Widgets handles no events or jobs; the worker reads what it published.
+        let worker = ctx.worker(Handlers::new());
+        Self { api, worker }
+    }
+
+    /// Every `E` widgets has announced to other modules, oldest first.
+    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+        self.worker
+            .published::<E>()
+            .await
+            .expect("read the outbox")
+            .into_iter()
+            .map(|event| event.data)
+            .collect()
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<WidgetJson> {

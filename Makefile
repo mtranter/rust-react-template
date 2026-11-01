@@ -84,7 +84,7 @@ seed: migrate ## Load every module's standard seed data (skips what already exis
 	$(CARGO) run -p server --bin seed --features seed
 
 prepare: _require-cargo-bin migrate ## Refresh the checked-in .sqlx offline query cache (needs migrated DB)
-	./scripts/migrate-schema.sh crates/module-template widgets
+	./scripts/migrate-schema.sh crates/module-template/core widgets
 	SQLX_OFFLINE=false DATABASE_URL=$(DATABASE_URL) $(CARGO_BIN) sqlx prepare --workspace -- --all-targets
 
 new-module: _require-cargo-bin db-wait ## Scaffold a write module and register it: make new-module NAME=widgets [ENTITY=widget]

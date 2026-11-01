@@ -9,6 +9,7 @@ use app_persistence::Handlers;
 use app_web::Provide;
 use std::sync::Arc;
 use users_api::UserDirectory;
+use users_api::events::v1::UserRegistered;
 
 pub struct UsersProvider(UserService);
 
@@ -39,7 +40,7 @@ pub fn directory(ctx: &Context) -> Arc<dyn UserDirectory> {
 /// What the worker runs for users; `mailer` is a Fake in tests.
 pub fn handlers(ctx: &Context, mailer: Arc<dyn Mailer>) -> Handlers {
     let repo = Arc::new(PgUserRepository::new(ctx.pool()));
-    Handlers::new().job(Welcome::new(repo, mailer))
+    Handlers::new().on::<UserRegistered>("users.welcome_new_user", Welcome::new(repo, mailer))
 }
 
 pub fn module() -> Module {

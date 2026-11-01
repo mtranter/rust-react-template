@@ -108,7 +108,7 @@ repo/
 │   │   │           │   ├── repository.rs # Repository trait (aggregates in/out; writes take &mut Tx)
 │   │   │           │   ├── directory.rs  # impl users_api::UserDirectory
 │   │   │           │   ├── mailer.rs     # Mailer port (an external system; Faked in tests)
-│   │   │           │   ├── welcome.rs    # WelcomeEmail job + its handler
+│   │   │           │   ├── welcome.rs    # subscribes to its own UserRegistered
 │   │   │           │   └── error.rs      # domain error → AppError
 │   │   │           ├── domain/       # domain layer (pure, sync)
 │   │   │           │   ├── mod.rs        # re-exports the public domain surface
@@ -129,11 +129,14 @@ repo/
 │   │   └── note-search/      # read module (D8): joins published views, owns no data
 │   │       └── core/         # web/ + application/ + db/, no domain/ and no migrations/
 │   │
-│   ├── module-template/      # pkg: widgets — what `make new-module` copies; registered with no server
+│   ├── module-template/      # what `make new-module` copies; registered with no server
+│   │   ├── core/             # pkg: widgets
+│   │   └── api/              # pkg: widgets-api — events::v1
 │   │
 │   ├── common/
 │   │   ├── domain/           # pkg: app-domain      — pure (uuid_newtype! macro)
 │   │   ├── error/            # pkg: app-error       — pure
+│   │   ├── events/           # pkg: app-events      — pure (Event, EventEnvelope)
 │   │   ├── persistence/      # pkg: app-persistence — pure (versions, list queries)
 │   │   ├── web/              # pkg: app-web         — poem-coupled
 │   │   ├── db/               # pkg: app-db          — sqlx-coupled; migrations/ = the `messaging` schema
@@ -153,7 +156,7 @@ repo/
 │           └── bin/
 │               ├── dump-spec.rs  # print OpenAPI JSON to stdout (DB-free)
 │               ├── migrate.rs    # run all module migrations in order
-│               ├── worker.rs     # deliver events and run jobs for every module (§4)
+│               ├── worker.rs     # deliver events to every module's subscribers (§4)
 │               └── seed.rs       # `seed` feature only: every registered module's seed
 │       └── tests/
 │           ├── composed_app.rs       # boots build_app() over every module (§4)
@@ -231,7 +234,7 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin
   no async, no clock, no id minting — constructors take the id and `now`, so the
   same code path serves the service (fresh values) and seeds (well-known values).
   Depends only on pure crates
-  (`app-domain`, `app-error`, `app-persistence`, `chrono`, `uuid`, `thiserror`) — never on `poem`
+  (`app-domain`, `app-error`, `app-events`, `app-persistence`, `chrono`, `uuid`, `thiserror`) — never on `poem`
   or `sqlx`.
 - **`db/`** — `repository.rs`: the `sqlx` implementation of the `Repository`
   trait, the only place raw SQL lives; `save` is an `INSERT` for
@@ -244,7 +247,7 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin
   once by the server); the server mounts it with `.accept(..)` so each module wires its
   own request data. A module offering a `<module>-api` trait also exposes its
   implementation's constructor here (`users::directory(ctx)`), and a module with
-  subscriptions or jobs a `handlers(ctx, ..)` (below). `module()`
+  subscriptions a `handlers(ctx, ..)` (below). `module()`
   returns the module's `app_module::Module` (below).
 - **Outbound adapters** — a port the application defines for an external system
   other than the database (`users`' `Mailer`) gets its real adapter in a folder
@@ -278,12 +281,13 @@ its `seed` feature (for a module with a seed), or either `deny.toml` list, and
 on a missing or duplicated module number (§13).
 
 `make new-module NAME=widgets [ENTITY=widget]` (`scripts/new-module.sh`)
-scaffolds a write module from `crates/module-template/` — every layer, a
-versioned aggregate with create/read/rename/list, `clippy.toml`, `build.rs`, a
+scaffolds a write module, its `core` and `api` crates, from
+`crates/module-template/` — every layer, a versioned aggregate with
+create/read/rename/list publishing `WidgetCreated` / `WidgetRenamed`, `clippy.toml`, `build.rs`, a
 migration, a seed and a test target — allocates the next module number,
 patches all of the above, applies its migrations to the dev database and
-refreshes `.sqlx`, so its tests pass as generated. The template is itself a
-workspace crate (package `widgets`, the token the generator renames): it is
+refreshes `.sqlx`, so its tests pass as generated. The template is itself two
+workspace crates (packages `widgets` and `widgets-api`; `widgets` is the token the generator renames): it is
 compiled, linted and tested with everything else and held to `check-deps` and
 `check-sql`, but registered with no server, so `check-modules` skips it. Its
 migrations reach the dev database only for `make prepare`
@@ -324,7 +328,7 @@ aggregates. The version is persistence state, not domain state:
 `notes` is the reference (`application/service.rs`, `db/repository.rs`,
 `web/handlers.rs`, `tests/notes/behaviours/editing.rs`).
 
-### Side effects and reactions: units of work, events and jobs
+### Side effects and reactions: units of work and events
 
 A use case that writes does so in one **unit of work**: `app_persistence::Tx`,
 begun from the service's `Arc<dyn Transactions>` and committed at the end.
@@ -337,51 +341,87 @@ names the driver.
 let mut tx = self.transactions.begin().await?;
 self.repo.save(&mut tx, &a, Expected::Version(v)).await?;
 self.repo.save(&mut tx, &b, Expected::New).await?;
-tx.publish(&SomethingHappened { .. })?;   // an event, for other modules
-tx.enqueue(&DoThisLater { .. })?;         // a job, for this module
+tx.publish(&AWasChanged { .. })?;
+tx.publish(&BWasCreated { .. })?;
 tx.commit().await?;
 ```
 
 Anything that must follow a write goes through the same `Tx`, so it happens if
 and only if the write commits:
 
-- **An event** (`tx.publish`) tells other modules something happened. Its type
-  is published in the module's `-api`, versioned and plain-valued
-  (`users_api::events::v1::UserDeleted`, `TYPE = "users.user_deleted.v1"`). It is
-  stored as JSON, so a version only gains fields, each `#[serde(default)]`; a
-  breaking change is a new `TYPE` beside the old one. The publisher doesn't know
-  who listens.
-- **A subscriber** is how a module reacts: an `app_persistence::Handle<E>`
-  impl in its `application/` (`notes`' `application/reactions.rs`, deleting a
-  user archives their notes), registered under a stable queue name in its
-  `handlers(..)` (`Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`).
-  It must tolerate being run twice and in any order.
-- **A job** (`tx.enqueue`, or `tx.schedule(.., run_at)` for later) is work a
-  module asks of itself, private to it: a `Job` type in its `application/`
-  and its `Handle` (`users`' welcome email). A side effect on an external system
-  sits behind a port (`Mailer`) whose adapter lives outside `application/`.
+- **An event** (`tx.publish`) tells other modules something happened to an
+  aggregate: a fact in the past tense (`UserRegistered`), never a command in
+  disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
+  unit of work that saves it, one per aggregate changed (`users`: registered,
+  display name changed, deleted; `notes`: created, edited, archived). Its type
+  is a marker implementing `app_events::Event` in the module's `-api`,
+  versioned (`users_api::events::v1::UserDeleted`,
+  `TYPE = "users.user_deleted.v1"`, `SOURCE = "/users"`), naming what it
+  carries (`Entity`, `Context`) and how to find its subject (the root's id).
+  A breaking change is a new `TYPE` beside the old one. The publisher doesn't
+  know who listens.
+- **What an event carries is an `app_events::EventPayload { entity, context }`**
+  (event-carried state transfer, so a subscriber never calls back).
+  `entity` is the aggregate root's whole state as it now is, every property but
+  the audit ones (created/updated at/by): one plain, `Serialize` state type per
+  root in `events::v1` (`users_api::events::v1::User`), shared by all that
+  root's events and built from the aggregate in `application/events.rs`. It is
+  kept apart from the published view record (`users_api::v1::User`, D8): today
+  they hold the same fields, but a view column and an event version change on
+  their own schedules. A deletion carries the state as it was last. More fields
+  are more coupling, which the template accepts in exchange for consumers, not
+  the publisher, deciding what they need. `context` says what happened where
+  the state alone can't: an event about a child of the root (`ToDoItemRemoved`)
+  carries the root (the list) as its entity and the child's id as its context
+  (`ItemRemoved { item_id }`). Each event type fixes its context; `NoContext`,
+  left out of the JSON, where the entity says it all (every event in this repo
+  today: none of its aggregates has children). Both are stored as JSON, so a
+  version only gains fields, each `#[serde(default)]`.
+- **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
+  1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`,
+  `subject`, `time`, `datacontenttype`, `data`: the payload);
+  `EnvelopeOf<E>` names it for an event. The commit stamps the id and
+  time and stores the whole envelope as the outbox `payload`; subscribers
+  receive it, so they have the event's id to deduplicate on and the time it
+  happened.
+- **A subscriber** is how a module reacts: an
+  `app_persistence::Handle<E>` impl in its `application/`, receiving an
+  `EnvelopeOf<E>` (`notes`'
+  `application/reactions.rs`, deleting a user archives their notes), registered
+  under a stable queue name in its `handlers(..)`
+  (`Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`).
+  It must tolerate being run twice and in any order. A module may subscribe to
+  its own events: `users` welcomes a registered user by reacting to its
+  `UserRegistered` (`application/welcome.rs`), rather than the registration
+  ordering the email. A side effect on an external system sits behind a port
+  (`Mailer`) whose adapter lives outside `application/`.
 
-Both are delivered by the **worker** (`app_db::Worker`, run by `server`'s
-`worker` bin). The `Tx` writes events to the shared `messaging.outbox` and jobs
-to `messaging.job` in the same transaction as the aggregates. The worker's relay
-copies each outbox event into one job per subscriber; then each due job is
-claimed with `FOR UPDATE SKIP LOCKED` (so any number of workers share the queue)
-and runs its handler in a fresh `Tx`, which also deletes the job, so a handler
-that only writes to the database takes effect exactly once. A failing handler
-rolls back, backs off (10s, doubling, at most an hour) and is retried; after
-`Job::MAX_ATTEMPTS` attempts (5 for subscriptions) it is **dead-lettered**:
-`dead_at` is set and it stays in `messaging.job` with its `last_error` until
-someone reruns it. A claim is a lease, so a job whose worker died runs again.
-Everything is at-least-once; nothing is ordered.
+There are no jobs or scheduled work: a module that has to do something does it
+in reaction to an event, its own or another module's. Scheduling ("do X at T")
+waits for a module that needs it (§16).
+
+Events are delivered by the **worker** (`app_db::Worker`, run by `server`'s
+`worker` bin). The `Tx` writes events to the shared `messaging.outbox` in the
+same transaction as the aggregates. The worker's relay copies each outbox event
+into one delivery per subscriber, a row of `messaging.job`; then each due
+delivery is claimed with `FOR UPDATE SKIP LOCKED` (so any number of workers
+share the queue) and runs its handler in a fresh `Tx`, which also deletes the
+row, so a handler that only writes to the database takes effect exactly once. A
+failing handler rolls back, backs off (10s, doubling, at most an hour) and is
+retried; after `MAX_ATTEMPTS` (5) it is **dead-lettered**: `dead_at` is set and
+it stays in `messaging.job` with its `last_error` until someone reruns it. A
+claim is a lease, so a delivery whose worker died runs again. Everything is
+at-least-once; nothing is ordered.
 
 Rules:
 - A module never writes another module's data, through its `-api` or otherwise;
   it publishes an event, and the owner reacts. Cross-module work is therefore
   eventually consistent: the author check in `notes`' `create` and a deletion in
   `users` are separate transactions.
-- No side effect directly after `commit`: enqueue a job in the `Tx` instead.
+- No side effect directly after `commit`: publish an event in the `Tx`, and
+  do it in a subscriber.
 - The worker's time, like the services', is the injected `Clock` (below), so
-  tests control due times and backoff.
+  tests control backoff.
 
 The **clock** is `app_domain::Clock`, held by services as `Arc<dyn Clock>`, from
 the one `Context` the server builds (`SystemClock`) and passes to every
@@ -466,9 +506,10 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 |---|---|---|---|
 | `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
-| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `Event` / `Job` / `Handle` / `Handlers` (§4) | application and db layers, `-api` crates (for `Event`) |
+| `app-events` | pure | `Event` (what a module announces), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
+| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `Handle` / `Handlers` (subscribers, §4) | application and db layers |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
-| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `Worker` (relay, job runner, dead letters) | db layers, server |
+| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `Worker` (relay, delivery, dead letters) | db layers, server |
 | `app-module` | poem + `app-db` | `Context` (the pool and the clock every module is built from), `Module`: a module's provider, handlers, migrations and seed, registered once with the server (§4) | `di.rs`, server, test drivers |
 | `app-test-support` | dev-only, pure | JSON path assertions (`assert_json_matches!`, `assert_json_exists!`, `assert_json_not_exists!`) | module dev-deps only |
 
@@ -508,7 +549,7 @@ application layer maps onto `app-error`.)
   1000). Scale it by running more replicas: they share the queue. It needs the
   migrations applied, like the server, and stops on SIGTERM after the job in hand.
   `make dev` runs it beside the server.
-- **The `messaging` schema** (outbox and job queue) belongs to no module: `app-db`
+- **The `messaging` schema** (outbox and delivery queue) belongs to no module: `app-db`
   owns its migrations, and `run_migrations` applies them before any module's.
 
 ---
@@ -746,11 +787,13 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   `FixedClock` (after the seeds' times) and the module's worker
   (`ctx.worker(module::handlers(&ctx, ..))`), so tests stay synchronous and
   deterministic: work happens only when a verb runs it (`run_pending_events()`,
-  `run_due_jobs()`, both `Worker::run_until_idle`) and time moves only when one
+  i.e. `Worker::run_until_idle`) and time moves only when one
   advances it (`later(by)`). A subscriber's driver stands in for the publisher
   by publishing the `-api` event itself (`notes.user_deleted(ALICE)`), as it
-  stubs a `-api` trait; the publisher's driver checks what it published
-  (`Worker::published::<E>()`), and dead letters are `Worker::dead_letters()`.
+  stubs a `-api` trait; the publisher's driver exposes what it published as
+  `announced::<E>()` (over `Worker::published::<E>()`), every state-changing
+  behaviour asserts its event and every refused one that nothing was announced,
+  and dead letters are `Worker::dead_letters()`.
   A port to an external system gets a Fake in the driver (`users`' `FakeMailer`,
   which can be taken down to exercise retries). `crates/server/tests/composed_reactions.rs`
   runs one reaction for real across modules.
@@ -797,7 +840,7 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   `users_api::seed` holds the well-known ids as plain `Uuid`s and, per entity, a
   function returning its **published record** (`users_api::seed::alice() ->
   v1::User`). The core seed builds each aggregate from that record, adding what
-  isn't published (an email, a note's body), so the data has one source. Saving
+  isn't published (a user's registration time, a note's body), so the data has one source. Saving
   stays in the core: `-api` stays pure.
 - A seed may name another module's seed ids **only through that module's
   `-api`**, along the dependency graph: `notes`' seed authors notes as
@@ -1045,11 +1088,11 @@ view uses — the intended tripwire). The read module and its providers share on
 database, so lifting a provider out (D1) means replacing its views with a
 replicated copy first. The SQL check is a grep, not a parser.
 
-### D9 — Units of work, a transactional outbox and a Postgres job queue, hand-rolled
+### D9 — Units of work, a transactional outbox and a Postgres delivery queue, hand-rolled
 **Decision.** Writes run in a pure, opaque unit of work (`app_persistence::Tx`)
-that also carries the events and jobs the use case produces; `app-db` writes them
-to one shared outbox and job queue (`messaging`) in the same transaction, and a
-`worker` bin delivers them (§4). Events crossing modules are typed, versioned
+that also carries the events the use case publishes; `app-db` writes them to one
+shared outbox (`messaging`) in the same transaction, and a `worker` bin fans
+each out to its subscribers' queues and delivers it (§4). Events crossing modules are typed, versioned
 structs in the publisher's `-api`, stored as JSON. **Why.** Atomicity of "save,
 then do something" is the database's to give, and only a shared transaction can
 give it; a typed event in `-api` is the same kind of small, versioned, compiled
@@ -1067,9 +1110,12 @@ for dead letters, and no module writing another's schema when an event fans out
 into the subscriber's queue; it belongs to no module, so it is `app-db`'s, and
 events are namespaced by `TYPE`. Lifting a module out (D1) means relaying its
 events to a broker instead, which is what an outbox is for. **The `Tx` buffers
-events and jobs until `commit`** so it stays pure, while repositories write
+events until `commit`** so it stays pure, while repositories write
 through it immediately. **Each subscription is its own queue**, so one failing
-subscriber neither blocks nor retries another. **Alternatives rejected.** A
+subscriber neither blocks nor retries another. **No jobs.** A job queue for a
+module's own deferred or scheduled work was built and removed: its only use, a
+welcome email, was a command dressed as an event (`UserRegistered` replaced it),
+and nothing needed scheduling. **Alternatives rejected.** A
 `Tx`-taking `-api` trait to let modules share a transaction (couples their
 transactions, and can't survive lifting one out); opaque JSON events with a
 schema registry (no compiler between publisher and subscriber); passing
@@ -1098,11 +1144,11 @@ connection; the outbox keeps dispatched rows until someone prunes them.
 - `rust_arkitect` within-crate layering tests, if any module keeps layers as
   sub-modules instead of crates.
 - `LISTEN`/`NOTIFY` to wake the worker on commit instead of polling.
-- Pruning dispatched outbox rows (a scheduled job of `app-db`'s own), and an
-  admin surface for dead letters (today: SQL on `messaging.job`).
-- Recurring jobs (cron-like): today a job reschedules its successor from its
-  handler with `tx.schedule(..)`, seeded by a migration; a `Handlers::every(..)`
-  registration would keep one pending.
+- Pruning dispatched outbox rows, and an admin surface for dead letters
+  (today: SQL on `messaging.job`).
+- Scheduled and recurring work ("do X at T", cron-like), once a module needs
+  it: rows in `messaging.job` with a future `run_at` already wait their turn, so
+  it's a `Tx` method and a `Handlers` registration on the existing queue.
 - A relay to an external broker (Kafka, SNS) for a module lifted out (D1, D9).
 - Read modules owning projections fed by events, once a provider is lifted out
   and its published views (D8) can no longer be joined.

@@ -75,11 +75,11 @@ jobs:
       - name: scaffold a module
         run: make new-module NAME=gadgets
       - name: clippy
-        run: cargo clippy -p gadgets -p server --all-targets --features server/seed -- -D warnings
+        run: cargo clippy -p gadgets -p gadgets-api -p server --all-targets --features server/seed -- -D warnings
       - name: test
         env:
           DATABASE_URL: postgres://app:app@localhost:5432/postgres
-        run: cargo test -p gadgets -p server
+        run: cargo test -p gadgets -p gadgets-api -p server
 
   frontend:
     runs-on: ubuntu-latest

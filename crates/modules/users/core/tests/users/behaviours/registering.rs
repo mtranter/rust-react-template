@@ -1,7 +1,9 @@
 use crate::driver::{Refusal, Users};
+use app_events::EventPayload;
 use app_test_support::{assert_json_exists, assert_json_matches};
 use sqlx::PgPool;
 use users::seed;
+use users_api::events::v1::{self, UserRegistered};
 
 #[sqlx::test(migrations = false)]
 async fn a_registered_user_is_kept_with_normalized_details(pool: PgPool) {
@@ -22,6 +24,29 @@ async fn a_registered_user_is_kept_with_normalized_details(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = false)]
+async fn registering_announces_the_new_user(pool: PgPool) {
+    let users = Users::seeded(pool).await;
+
+    let carol = users.register("carol@example.com", "Carol").await.unwrap();
+
+    let announced = users.announced_envelopes::<UserRegistered>().await;
+    assert_eq!(announced.len(), 1);
+    let event = &announced[0];
+    assert_eq!(event.source, "/users");
+    assert_eq!(event.event_type, "users.user_registered.v1");
+    assert_eq!(event.subject, carol.id());
+    assert_eq!(event.time, users.now());
+    assert_eq!(
+        event.data,
+        EventPayload::new(v1::User {
+            id: carol.id().parse().unwrap(),
+            email: "carol@example.com".into(),
+            display_name: "Carol".into(),
+        })
+    );
+}
+
+#[sqlx::test(migrations = false)]
 async fn an_email_can_only_be_registered_once(pool: PgPool) {
     let users = Users::seeded(pool).await;
     let taken = seed::alice().email().to_string();
@@ -36,6 +61,7 @@ async fn an_email_can_only_be_registered_once(pool: PgPool) {
         Err(Refusal::Conflict)
     );
     assert_eq!(users.list().await.total, 2);
+    assert!(users.announced::<UserRegistered>().await.is_empty());
 }
 
 #[sqlx::test(migrations = false)]

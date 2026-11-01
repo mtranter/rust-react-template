@@ -1,9 +1,12 @@
+use super::events;
 use super::{
     Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx, Version, Versioned,
 };
 use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
+use app_events::EventPayload;
+use notes_api::events::v1::{NoteArchived, NoteCreated, NoteEdited};
 use std::sync::Arc;
 use users_api::UserDirectory;
 
@@ -43,6 +46,7 @@ impl NoteService {
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
+        tx.publish::<NoteCreated>(EventPayload::new(events::note(&note)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -61,6 +65,7 @@ impl NoteService {
             .repo
             .save(&mut tx, &note, Expected::Version(expected))
             .await?;
+        tx.publish::<NoteEdited>(EventPayload::new(events::note(&note)))?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -81,6 +86,7 @@ impl NoteService {
             self.repo
                 .save(tx, &note, Expected::Version(version))
                 .await?;
+            tx.publish::<NoteArchived>(EventPayload::new(events::note(&note)))?;
         }
         Ok(())
     }

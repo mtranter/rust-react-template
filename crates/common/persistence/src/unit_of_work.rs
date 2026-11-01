@@ -1,11 +1,10 @@
 //! A unit of work (spec §4): everything a use case writes, its aggregates and the
-//! events and jobs they cause, commits together or not at all. Pure: `app-db`
-//! supplies the transaction behind [`Tx`], so `application/` never names the driver.
+//! events they cause, commits together or not at all. Pure: `app-db` supplies
+//! the transaction behind [`Tx`], so `application/` never names the driver.
 
-use crate::messaging::{Event, Job};
 use app_error::{AppError, AppResult};
+use app_events::{Event, PayloadOf};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::any::Any;
 
@@ -19,76 +18,53 @@ pub trait Transactions: Send + Sync {
 /// [`commit`](Self::commit), as `?` does on an error, rolls everything back.
 pub struct Tx {
     backend: Box<dyn TxBackend>,
-    outgoing: Vec<Outgoing>,
+    events: Vec<PendingEvent>,
 }
 
 /// The database transaction behind a [`Tx`]; implemented only by `app-db`.
 #[async_trait]
 pub trait TxBackend: Any + Send {
-    /// Writes `outgoing` to the outbox and job queue, then commits.
-    async fn commit(self: Box<Self>, outgoing: Vec<Outgoing>) -> AppResult<()>;
+    /// Writes `events` to the outbox, then commits.
+    async fn commit(self: Box<Self>, events: Vec<PendingEvent>) -> AppResult<()>;
 }
 
-/// An event or job a unit of work produced, serialized, waiting for its commit.
+/// An event a unit of work published, serialized, waiting for its commit, which
+/// stamps it with an id and time to make its [`EventEnvelope`](app_events::EventEnvelope).
 #[derive(Debug, Clone, PartialEq)]
-pub enum Outgoing {
-    Event {
-        event_type: &'static str,
-        payload: Value,
-    },
-    Job {
-        kind: &'static str,
-        payload: Value,
-        /// `None` runs it as soon as a worker is free.
-        run_at: Option<DateTime<Utc>>,
-        max_attempts: i32,
-    },
+pub struct PendingEvent {
+    pub event_type: &'static str,
+    pub source: &'static str,
+    pub subject: String,
+    pub data: Value,
 }
 
 impl Tx {
     pub fn new(backend: impl TxBackend) -> Self {
         Self {
             backend: Box::new(backend),
-            outgoing: Vec::new(),
+            events: Vec::new(),
         }
     }
 
-    /// Delivered to every subscriber, at least once, if and only if this commits.
-    pub fn publish<E: Event>(&mut self, event: &E) -> AppResult<()> {
-        self.outgoing.push(Outgoing::Event {
+    /// Delivered to every subscriber, at least once, if and only if this commits:
+    /// `tx.publish::<UserRegistered>(EventPayload::new(user))`.
+    pub fn publish<E: Event>(&mut self, payload: PayloadOf<E>) -> AppResult<()> {
+        self.events.push(PendingEvent {
             event_type: E::TYPE,
-            payload: serde_json::to_value(event).map_err(AppError::internal)?,
+            source: E::SOURCE,
+            subject: E::subject(&payload.entity),
+            data: serde_json::to_value(&payload).map_err(AppError::internal)?,
         });
         Ok(())
     }
 
-    /// Runs `job` once this commits, as soon as a worker is free.
-    pub fn enqueue<J: Job>(&mut self, job: &J) -> AppResult<()> {
-        self.push_job(job, None)
-    }
-
-    /// Runs `job` once this commits, no earlier than `run_at` by the worker's clock.
-    pub fn schedule<J: Job>(&mut self, job: &J, run_at: DateTime<Utc>) -> AppResult<()> {
-        self.push_job(job, Some(run_at))
-    }
-
     pub async fn commit(self) -> AppResult<()> {
-        self.backend.commit(self.outgoing).await
+        self.backend.commit(self.events).await
     }
 
     /// The concrete transaction, for the db layer (`app_db::conn`).
     pub fn backend<B: TxBackend>(&mut self) -> Option<&mut B> {
         let backend: &mut dyn Any = &mut *self.backend;
         backend.downcast_mut()
-    }
-
-    fn push_job<J: Job>(&mut self, job: &J, run_at: Option<DateTime<Utc>>) -> AppResult<()> {
-        self.outgoing.push(Outgoing::Job {
-            kind: J::KIND,
-            payload: serde_json::to_value(job).map_err(AppError::internal)?,
-            run_at,
-            max_attempts: J::MAX_ATTEMPTS,
-        });
-        Ok(())
     }
 }

@@ -1,0 +1,13 @@
+[package]
+name = "widgets-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Must stay pure (no poem/sqlx): other modules depend on it.
+[dependencies]
+app-events.workspace = true
+serde.workspace = true
+uuid.workspace = true

@@ -10,18 +10,18 @@
 #   - a write module (one with `src/domain/`) declares `[package.metadata.module] reads`:
 #     only a read module joins another module's views.
 #
-# The module template counts as a module core.
+# The module template's `core` and `api` count as a module's.
 # A module's kind is inferred from its `src/domain/` folder: a read module has none.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Spec §5: the pure `common` crates. Never add a framework-coupled one.
-pure_common='["app-domain", "app-error", "app-persistence", "app-test-support"]'
+pure_common='["app-domain", "app-error", "app-events", "app-persistence", "app-test-support"]'
 
 cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson pure "$pure_common" '
   def rel: ltrimstr($root);
-  def core: .manifest_path | rel | test("^(crates/modules/[^/]+/core|crates/module-template)/Cargo.toml$");
-  def api: .manifest_path | rel | test("^crates/modules/[^/]+/api/Cargo.toml$");
+  def core: .manifest_path | rel | test("^(crates/modules/[^/]+|crates/module-template)/core/Cargo.toml$");
+  def api: .manifest_path | rel | test("^(crates/modules/[^/]+|crates/module-template)/api/Cargo.toml$");
   def shipped: .dependencies[] | select(.path and .kind != "dev");
 
   [.packages[] | select(core) | .name] as $cores

@@ -4,9 +4,9 @@ members = [
     "crates/common/*",
     # Every module's `core` and `api` crates, so a new module needs no entry here.
     "crates/modules/*/*",
-    # What `make new-module` copies: compiled, linted and tested like a module,
-    # but registered with no server.
-    "crates/module-template",
+    # What `make new-module` copies, `core` and `api`: compiled, linted and
+    # tested like a module, but registered with no server.
+    "crates/module-template/*",
     "crates/server",
 ]
 
@@ -20,6 +20,7 @@ publish = false
 [workspace.dependencies]
 app-domain = { path = "crates/common/domain" }
 app-error = { path = "crates/common/error" }
+app-events = { path = "crates/common/events" }
 app-persistence = { path = "crates/common/persistence" }
 app-web = { path = "crates/common/web" }
 app-db = { path = "crates/common/db" }

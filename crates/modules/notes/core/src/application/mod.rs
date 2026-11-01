@@ -2,6 +2,7 @@
 //! so they read as this layer's vocabulary while staying identical across modules.
 
 mod error;
+mod events;
 mod reactions;
 mod repository;
 mod service;
