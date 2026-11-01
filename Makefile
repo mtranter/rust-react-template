@@ -1,8 +1,5 @@
 # Orchestrator for the full stack. Real file targets do the work; phony targets
 # are ergonomic aliases. `make` uses its dependency graph for cross-stack builds.
-#
-# NOTE: the frontend/ tree is not scaffolded yet. Backend targets work today;
-# the FE targets (node_modules, generate, typecheck) activate once it exists.
 
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
@@ -37,7 +34,6 @@ CARGO_BIN ?= cargo bin
 
 # Regenerate the OpenAPI snapshot whenever backend sources change. DB-free.
 frontend/openapi.json: $(shell find crates -name '*.rs' 2>/dev/null) $(wildcard crates/server/Cargo.toml)
-	@mkdir -p frontend
 	SQLX_OFFLINE=true $(CARGO) run --quiet --bin dump-spec > frontend/openapi.json
 	@echo "wrote frontend/openapi.json"
 
@@ -52,8 +48,9 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # ---------------------------------------------------------------------------
 # Phony targets
 # ---------------------------------------------------------------------------
-.PHONY: help setup dev generate watch-api migrate prepare typecheck check build \
-        db-up db-down db-wait fmt clippy deny test test-db-clean spec clean _require-cargo-bin
+.PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
+        build-backend-dev build-frontend db-up db-down db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
+        test-frontend test-db-clean spec clean _require-cargo-bin
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -83,23 +80,26 @@ db-down: ## Stop local Postgres
 migrate: db-wait ## Apply all module migrations in dependency order
 	$(CARGO) run --bin migrate
 
+seed: migrate ## Load every module's standard seed data (skips what already exists)
+	$(CARGO) run -p server --bin seed --features seed
+
 prepare: _require-cargo-bin migrate ## Refresh the checked-in .sqlx offline query cache (needs migrated DB)
+	./scripts/migrate-schema.sh crates/module-template widgets
 	SQLX_OFFLINE=false DATABASE_URL=$(DATABASE_URL) $(CARGO_BIN) sqlx prepare --workspace -- --all-targets
 
-generate: frontend/openapi.json ## Dump spec + run FE codegen (codegen no-ops until FE exists)
-	@if [ -f frontend/openapi-ts.config.ts ]; then $(MAKE) frontend/src/api; else echo "frontend not scaffolded yet; wrote openapi.json only"; fi
+new-module: _require-cargo-bin db-wait ## Scaffold a write module and register it: make new-module NAME=widgets [ENTITY=widget]
+	@test -n "$(NAME)" || { echo "usage: make new-module NAME=<module> [ENTITY=<aggregate>]"; exit 1; }
+	./scripts/new-module.sh $(NAME) $(ENTITY)
+
+generate: frontend/src/api ## Dump spec + run FE codegen
 
 spec: frontend/openapi.json ## Just (re)generate the OpenAPI snapshot
 
 watch-api: _require-cargo-bin ## Watch backend sources and regenerate the client on change
 	$(CARGO_BIN) cargo-watch -w crates -s 'make generate'
 
-dev: _require-cargo-bin migrate generate ## Run backend (:8080) and Vite (:5173) in parallel
-	@if [ -d frontend ]; then \
-	  $(MAKE) -j2 _dev-backend _dev-frontend; \
-	else \
-	  echo "frontend not scaffolded; running backend only"; $(MAKE) _dev-backend; \
-	fi
+dev: _require-cargo-bin seed generate ## Run backend (:8080) and Vite (:5173) in parallel
+	$(MAKE) -j2 _dev-backend _dev-frontend
 
 _dev-backend:
 	$(CARGO_BIN) cargo-watch -x 'run --bin server'
@@ -111,13 +111,30 @@ fmt: ## rustfmt check
 	$(CARGO) fmt --all --check
 
 clippy: ## clippy with per-crate disallowed-types, warnings as errors
-	$(CARGO) clippy --workspace --all-targets -- -D warnings
+	$(CARGO) clippy --workspace --all-targets --features server/seed -- -D warnings
 
 deny: _require-cargo-bin ## cargo-deny bans/licenses/advisories
 	$(CARGO_BIN) cargo-deny check
 
-test: db-wait ## Backend tests (#[sqlx::test], one fresh DB per test on docker-compose Postgres)
+build-backend-dev: ## Debug build of every crate, including the seed bin (no DB needed)
+	SQLX_OFFLINE=true $(CARGO) build --workspace --features server/seed
+
+check-sql: ## Modules' SQL names only their own schema and the published views they declare (spec D8)
+	./scripts/check-sql-schemas.sh
+
+check-deps: ## No module core depends on another, -api crates stay pure, write modules declare no reads (spec §4)
+	./scripts/check-module-deps.sh
+
+check-modules: ## Every module is registered with the server, cargo-deny and the seed feature; module numbers are unique
+	./scripts/check-modules.sh
+
+test: test-backend test-frontend ## Backend + frontend tests
+
+test-backend: db-wait ## Backend tests (#[sqlx::test], one fresh DB per test on docker-compose Postgres)
 	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) test --workspace
+
+test-frontend: frontend/src/api ## Frontend Vitest (MSW-mocked network; no backend needed)
+	cd frontend && pnpm run test
 
 test-db-clean: db-wait ## Drop leftover per-test databases (failed or renamed tests leave them behind)
 	@dbs=$$(docker compose exec -T postgres psql -U app -d postgres -Atc \
@@ -126,19 +143,20 @@ test-db-clean: db-wait ## Drop leftover per-test databases (failed or renamed te
 	docker compose exec -T postgres psql -U app -d postgres -qc "drop schema if exists _sqlx_test cascade"; \
 	echo "dropped $$(echo $$dbs | wc -w | tr -d ' ') test database(s)"
 
-typecheck: ## Frontend tsc (no-op until FE exists)
-	@if [ -d frontend ]; then cd frontend && pnpm run typecheck; else echo "frontend not scaffolded; skipping"; fi
+typecheck: frontend/src/api ## Frontend tsc
+	cd frontend && pnpm run typecheck
 
-check: fmt clippy deny test typecheck ## CI mirror: fmt + clippy + deny + tests + typecheck
+lint-frontend: frontend/node_modules ## Biome lint + format check, and feature import boundaries (as CI runs them)
+	cd frontend && pnpm biome ci . && pnpm run lint:imports
 
-build: ## Production build: (vite build) then release binary embedding the SPA
-	@if [ -d frontend ]; then \
-	  cd frontend && pnpm run build && cd .. && \
-	  SQLX_OFFLINE=true $(CARGO) build --release --bin server --features embed-frontend; \
-	else \
-	  echo "frontend not scaffolded; building backend only"; \
-	  SQLX_OFFLINE=true $(CARGO) build --release --bin server; \
-	fi
+build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
+	cd frontend && pnpm run build
+
+# Every step CI runs, backend and frontend.
+check: fmt clippy deny check-sql check-deps check-modules build-backend-dev test typecheck lint-frontend build-frontend ## CI mirror (run before calling work done)
+
+build: build-frontend ## Production build: vite build, then the release binary embedding the SPA
+	SQLX_OFFLINE=true $(CARGO) build --release --bin server --features embed-frontend
 
 clean: ## Remove build artifacts
 	$(CARGO) clean

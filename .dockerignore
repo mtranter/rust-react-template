@@ -1,0 +1,11 @@
+.git
+.bin
+target
+.env
+.env.*
+!.env.example
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/src/api
+**/*.tsbuildinfo

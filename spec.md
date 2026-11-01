@@ -46,11 +46,14 @@ Terminology in this document follows [`CONTEXT.md`](./CONTEXT.md).
 | Frontend build | Vite + React + TypeScript | latest |
 | Type codegen | `@hey-api/openapi-ts` + `@tanstack/react-query` plugin + `@hey-api/client-fetch` | pin exact (pre-1.0) |
 | Data fetching | `@tanstack/react-query` | `5` |
+| Routing | `@tanstack/react-router` (code-based routes) | `1` |
+| UI components | shadcn/ui (Base UI primitives, Tailwind v4, `base-nova`) + TanStack Table | table `9` |
 | Package manager | `pnpm` | — |
 | FE lint/format | Biome | latest |
 | FE tests | Vitest + React Testing Library + MSW | latest |
 | Task runner | GNU `make` | — |
 | Arch enforcement | Cargo graph + `cargo-deny` + per-crate `clippy.toml` | `cargo-deny` `0.20` |
+| Rust CLI tools | `cargo-run-bin` (repo-local `./.bin`, see §10) | pinned in `Cargo.toml` |
 | Git hooks | `lefthook` | latest |
 | Prod runtime image | `gcr.io/distroless/cc` | — |
 
@@ -67,7 +70,7 @@ Terminology in this document follows [`CONTEXT.md`](./CONTEXT.md).
 
 ```
 repo/
-├── Cargo.toml                # workspace: members = crates/{common,modules,server}/*
+├── Cargo.toml                # workspace: members = crates/common/*, crates/modules/*/*, crates/server
 ├── Cargo.lock
 ├── rust-toolchain.toml       # pin latest stable; MSRV floor 1.94 (sqlx 0.9)
 ├── deny.toml                 # cargo-deny bans (keep sqlx out of non-db layers)
@@ -83,65 +86,92 @@ repo/
 ├── crates/                   # all Rust workspace members
 │   ├── modules/
 │   │   ├── users/            # example module (with the JWT-guarded route)
-│   │   │   ├── Cargo.toml
-│   │   │   ├── clippy.toml   # disallowed-types: sqlx::* banned outside db
-│   │   │   ├── migrations/   # module-owned schema (schema `users`)
-│   │   │   └── src/
-│   │   │       ├── lib.rs    # re-exports Api, service, repo trait, domain types
-│   │   │       ├── api/          # API layer
-│   │   │       │   ├── mod.rs        # re-exports the Api
-│   │   │       │   ├── handlers.rs   # #[OpenApi] impl (unit struct) → commands
-│   │   │       │   └── models.rs     # request/response Objects
-│   │   │       ├── application/  # application layer
-│   │   │       │   ├── mod.rs        # re-exports service + repo trait
-│   │   │       │   ├── service.rs    # use cases: load → domain action → save
-│   │   │       │   ├── repository.rs # Repository trait (aggregates in/out)
-│   │   │       │   └── error.rs      # domain error → AppError
-│   │   │       ├── domain/       # domain layer (pure, sync)
-│   │   │       │   ├── mod.rs        # re-exports the public domain surface
-│   │   │       │   ├── user.rs       # the aggregate + domain actions
-│   │   │       │   ├── email.rs      # value object
-│   │   │       │   ├── commands.rs   # intents accepted by domain actions
-│   │   │       │   ├── error.rs      # domain error enum
-│   │   │       │   └── ids.rs        # newtype identifiers
-│   │   │       └── db/           # DB layer
-│   │   │           ├── mod.rs        # re-exports repo impl + migrations
-│   │   │           ├── migrations.rs # SCHEMA + embedded MIGRATOR
-│   │   │           └── repository.rs # sqlx Repository impl (save = upsert)
-│   │   └── notes/            # second module (proves cross-module isolation)
-│   │       └── … (same shape, schema `notes`)
+│   │   │   ├── api/          # pkg: users-api — pure: what other modules may use (D7)
+│   │   │   │   └── src/          # UserDirectory trait, v1 published records, seed (§13)
+│   │   │   └── core/         # pkg: users — the module itself
+│   │   │       ├── Cargo.toml
+│   │   │       ├── build.rs      # rerun on migrations/ changes (§6)
+│   │   │       ├── clippy.toml   # disallowed-types: sqlx::* banned outside db
+│   │   │       ├── migrations/   # module-owned schema (schema `users`, views in `users_api`)
+│   │   │       ├── tests/users/  # the module's one test target (§13)
+│   │   │       └── src/
+│   │   │           ├── lib.rs    # re-exports Endpoints, domain types, migrations
+│   │   │           ├── di.rs     # composition root: provider(pool), directory(pool), module()
+│   │   │           ├── seed.rs   # `seed` feature only: saves the dataset `users-api` describes (§13)
+│   │   │           ├── web/          # web (HTTP) layer
+│   │   │           │   ├── mod.rs        # re-exports the Endpoints
+│   │   │           │   ├── handlers.rs   # #[OpenApi] impl (unit struct) → commands
+│   │   │           │   └── models.rs     # request/response Objects
+│   │   │           ├── application/  # application layer
+│   │   │           │   ├── mod.rs        # re-exports service + repo trait
+│   │   │           │   ├── service.rs    # use cases: load → domain action → save
+│   │   │           │   ├── repository.rs # Repository trait (aggregates in/out)
+│   │   │           │   ├── directory.rs  # impl users_api::UserDirectory
+│   │   │           │   └── error.rs      # domain error → AppError
+│   │   │           ├── domain/       # domain layer (pure, sync)
+│   │   │           │   ├── mod.rs        # re-exports the public domain surface
+│   │   │           │   ├── user.rs       # the aggregate + domain actions
+│   │   │           │   ├── email.rs      # value object
+│   │   │           │   ├── commands.rs   # intents accepted by domain actions
+│   │   │           │   ├── error.rs      # domain error enum
+│   │   │           │   └── ids.rs        # newtype ids via app_domain::uuid_newtype!
+│   │   │           └── db/           # DB layer
+│   │   │               ├── mod.rs        # re-exports repo impl + migrations
+│   │   │               ├── migrations.rs # SCHEMA + embedded MIGRATOR
+│   │   │               └── repository.rs # sqlx Repository impl (insert or version-guarded update)
+│   │   ├── notes/            # the reference write module
+│   │   │   ├── api/          # pkg: notes-api — v1 published records + seed, no traits yet
+│   │   │   └── core/         # same shape, schema `notes`; uses users only via `users-api`
+│   │   └── note-search/      # read module (D8): joins published views, owns no data
+│   │       └── core/         # web/ + application/ + db/, no domain/ and no migrations/
+│   │
+│   ├── module-template/      # pkg: widgets — what `make new-module` copies; registered with no server
 │   │
 │   ├── common/
-│   │   ├── config/           # pkg: app-config     — pure
-│   │   ├── error/            # pkg: app-error      — pure
-│   │   ├── telemetry/        # pkg: app-telemetry  — tracing + OTEL seam
-│   │   ├── web/              # pkg: app-web        — poem-coupled
-│   │   ├── db/               # pkg: app-db         — sqlx-coupled
+│   │   ├── domain/           # pkg: app-domain      — pure (uuid_newtype! macro)
+│   │   ├── error/            # pkg: app-error       — pure
+│   │   ├── persistence/      # pkg: app-persistence — pure (versions, list queries)
+│   │   ├── web/              # pkg: app-web         — poem-coupled
+│   │   ├── db/               # pkg: app-db          — sqlx-coupled
+│   │   ├── module/           # pkg: app-module      — poem + app-db: a module's registration (§4)
 │   │   └── test-support/     # pkg: app-test-support — dev-only, pure test utilities
 │   │
 │   └── server/
 │       ├── Cargo.toml
 │       └── src/
-│           ├── main.rs       # assemble service, middleware, embed FE, serve
+│           ├── lib.rs        # build_service() + module_migrations(), shared by the bins
+│           ├── modules.rs    # the module registry: the Endpoints tuple + modules() (§4)
+│           ├── app.rs        # build_app(): routes, middleware, every module's request data, embedded FE
+│           ├── main.rs       # config + JWT verifier, then serve build_app()
+│           ├── config.rs     # figment-layered env/file → typed AppConfig
+│           ├── telemetry.rs  # tracing-subscriber init (JSON prod / pretty dev), OTEL seam
 │           └── bin/
 │               ├── dump-spec.rs  # print OpenAPI JSON to stdout (DB-free)
-│               └── migrate.rs    # run all module migrations in order
+│               ├── migrate.rs    # run all module migrations in order
+│               └── seed.rs       # `seed` feature only: every registered module's seed
+│       └── tests/composed_app.rs # boots build_app() over every module (§4)
 │
 └── frontend/
     ├── package.json
     ├── pnpm-lock.yaml
     ├── vite.config.ts        # dev proxy /api -> :8080
+    ├── vitest.setup.ts       # MSW server; absolute baseUrl for the client under Node
     ├── openapi-ts.config.ts  # hey-api codegen config
+    ├── components.json       # shadcn/ui config
     ├── biome.json
     ├── tsconfig.json (+ app/node references)
     ├── openapi.json          # spec snapshot (generated; input to codegen)
     └── src/
         ├── api/              # generated client (never hand-edited)
-        ├── main.tsx
-        └── App.tsx
+        ├── features/<module>/ # one per backend module (§8)
+        ├── pages/            # thin route targets
+        ├── components/       # shared: ui/ (vendored shadcn), data-table/
+        ├── hooks/, lib/      # shared
+        ├── router.tsx        # TanStack Router route tree
+        └── main.tsx
 ```
 
-**Naming**: crate *folders* under `common/` are short (`config`, `web`…) but
+**Naming**: crate *folders* under `common/` are short (`web`, `db`…) but
 package **names** are prefixed `app-*` to avoid crates.io collisions and read
 clearly at the `use` site.
 
@@ -153,20 +183,20 @@ Each module is one crate exposing four internal layers as sub-module
 **folders**. Each layer splits its contents across files by concern and
 re-exports them from its `mod.rs`, so the rest of the crate addresses a layer
 (`crate::domain::User`), never a file inside it. Growing a layer means adding
-files (or nested folders, e.g. `api/handlers/` per resource), not growing one.
+files (or nested folders, e.g. `web/handlers/` per resource), not growing one.
 
-Dependencies point inward — `api → application → domain`, with `db` implementing
+Dependencies point inward — `web → application → domain`, with `db` implementing
 the application's `Repository` — and every use case flows **handler → service →
 repository** (see D6):
 
 ```
-handler:  request ──► command ──► service.method(command)
-service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(&aggregate)
+handler:  request (+ If-Match) ──► command ──► service.method(command, expected)
+service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(&aggregate, Expected::Version(v))
 ```
 
-- **`api/`** — `handlers.rs`: a `#[OpenApi]` impl on a **unit struct** (no
-  fields). Operations obtain the pool via `poem::web::Data<PgPool>`, not via
-  struct state, build a **command** from the request, call the service, and map
+- **`web/`** — the HTTP layer. `handlers.rs`: a `#[OpenApi]` impl on a **unit
+  struct** named `XEndpoints` (no fields). Operations obtain the service via
+  `poem::web::Data<&XService>`, not via struct state, build a **command** from the request, call the service, and map
   the result (an `AppResult`) to HTTP via `app-web`. No business logic.
   `models.rs`: request/response `Object`s and their conversions from aggregates.
 - **`application/`** — `service.rs`: one service per aggregate
@@ -175,8 +205,10 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(
   aggregate from the repository, runs a domain action on it, and saves it. It
   owns what a single aggregate cannot: rules spanning many aggregates (e.g. email
   uniqueness), not-found semantics, fresh ids, and the clock. `repository.rs`: the
-  module's **`Repository`** trait — it speaks in aggregates, never rows
-  (`get → Option<Aggregate>`, `save(&Aggregate)`). `error.rs`: an exhaustive
+  module's **`Repository`** trait — it speaks in aggregates, never rows:
+  `get → Option<Versioned<X>>`, `save(&X, Expected) → Version`, and
+  `list(&ListQuery<XSortKey>) → Listed<Versioned<X>>` where the module lists.
+  `error.rs`: an exhaustive
   mapping from the domain error onto `AppError`. Depends only on the domain and
   pure crates.
 - **`domain/`** — the aggregate (private fields, getters, a constructor and
@@ -187,33 +219,157 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► repo.save(
   no async, no clock, no id minting — constructors take the id and `now`, so the
   same code path serves the service (fresh values) and seeds (well-known values).
   Depends only on pure crates
-  (`app-config`, `app-error`, `chrono`, `uuid`, `thiserror`) — never on `poem`
+  (`app-domain`, `app-error`, `app-persistence`, `chrono`, `uuid`, `thiserror`) — never on `poem`
   or `sqlx`.
 - **`db/`** — `repository.rs`: the `sqlx` implementation of the `Repository`
-  trait, the only place raw SQL lives; `save` is an upsert on the primary key.
-  `migrations.rs`: the module's schema name and embedded migrator. Owns the
-  module's `migrations/` (its own schema).
+  trait, the only place raw SQL lives; `save` is an `INSERT` for
+  `Expected::New` and a version-guarded `UPDATE` for `Expected::Version`
+  (below). `migrations.rs`: the module's schema name and embedded migrator. Owns
+  the module's `migrations/` (its own schema).
+- **`di.rs`** — the composition root: `provider(pool, ..)` returns a type
+  implementing `app_web::Provide`, which builds the service over the real
+  repository; the server mounts it with `.accept(..)` so each module wires its
+  own request data. A module offering a `<module>-api` trait also exposes its
+  implementation's constructor here (`users::directory(pool)`). `module()`
+  returns the module's `app_module::Module` (below).
 
-`lib.rs` keeps every layer private and re-exports the module's `Api`, its
-public domain types, and its migration bundle; nothing else is visible outside
-(services and repositories are internal — tests go through the `Api`, §13).
+`lib.rs` keeps every layer private and re-exports the module's `Endpoints`, its
+public domain types, its migration bundle and its `di.rs` constructors (plus
+`pub mod seed` under the `seed` feature); nothing else is visible outside
+(services and repositories are internal — tests go through the `Endpoints`, §13).
+
+### Registering a module
+
+Each module is registered in one place, `crates/server/src/modules.rs`: its
+`Endpoints` in the `Endpoints` tuple (the spec's type and, via `Default`, its
+value) and its `module(..)` in `modules()`. A `Module` bundles the provider,
+the migrations and, under the `seed` feature, the seed (neither for a module
+that owns no data, like `note-search`); the server derives everything else from that one ordered list —
+`module_migrations()`, the request data `build_app()` adds, and what the `seed`
+bin runs. A module that uses another's `<module>-api` takes the provider's
+constructor as an argument (`notes::module(users::directory)`).
+
+Each module's own tests wire it themselves, so two checks cover the server:
+`crates/server/tests/composed_app.rs` migrates and seeds through the registry,
+builds the real app and requests every `GET` in the spec, failing on any `5xx`
+(a missing provider or migration), and requires a probed `GET` for each tag;
+`scripts/check-modules.sh` (`make check-modules`, in `make check` and CI) fails
+on a module core crate missing from `modules.rs`, the server's dependencies,
+its `seed` feature (for a module with a seed), or either `deny.toml` list, and
+on a missing or duplicated module number (§13).
+
+`make new-module NAME=widgets [ENTITY=widget]` (`scripts/new-module.sh`)
+scaffolds a write module from `crates/module-template/` — every layer, a
+versioned aggregate with create/read/rename/list, `clippy.toml`, `build.rs`, a
+migration, a seed and a test target — allocates the next module number,
+patches all of the above, applies its migrations to the dev database and
+refreshes `.sqlx`, so its tests pass as generated. The template is itself a
+workspace crate (package `widgets`, the token the generator renames): it is
+compiled, linted and tested with everything else and held to `check-deps` and
+`check-sql`, but registered with no server, so `check-modules` skips it. Its
+migrations reach the dev database only for `make prepare`
+(`scripts/migrate-schema.sh`), so `.sqlx` covers its queries. CI still scaffolds
+a module (`gadgets`) to test the generator itself. Read modules are rare enough
+to copy `note-search` by hand.
+
+Only `db/mod.rs`, `di.rs`, `seed.rs` and test targets carry
+`#![allow(clippy::disallowed_types)]` (they wire or receive the pool); never
+`application/` or `domain/`.
+
+### Optimistic concurrency
+
+Load → act → save has a lost-update window, so every write module versions its
+aggregates. The version is persistence state, not domain state:
+`app-persistence` defines `Version`, `Versioned<T> { entity, version }` and
+`Expected::{New, Version(v)}`, and the aggregate never sees them.
+
+- **db**: the table has `version bigint`. `save(&x, Expected::New)` inserts at
+  `Version::FIRST`; `save(&x, Expected::Version(v))` runs
+  `UPDATE … SET …, version = version + 1 WHERE id = $1 AND version = v RETURNING version`
+  and maps no row to `AppError::PreconditionFailed`. The check is atomic in
+  that statement.
+- **application**: an edit takes the caller's `expected: Version`, loads the
+  aggregate first (so a missing one is not-found rather than stale), runs the
+  action and saves with `Expected::Version(expected)`; it returns the
+  `Versioned<X>`.
+- **web**: single-resource responses are `app_web::WithETag<XResponse>` (strong
+  quoted `ETag`), and the body mirrors the version as a `version: string` field
+  so the generated client can read it. Edits take
+  `#[oai(name = "If-Match")] Header<Option<String>>` and parse it with
+  `app_web::if_match_version` — the only source of the expected version, never
+  the request body. Absent is `428 Precondition Required`; stale is
+  `412 Precondition Failed`.
+- **tests**: the driver's edit verb takes the version; `Refusal::PreconditionRequired`
+  and `Refusal::Stale` cover the two refusals.
+
+`notes` is the reference (`application/service.rs`, `db/repository.rs`,
+`web/handlers.rs`, `tests/notes/behaviours/editing.rs`).
+
+### List endpoints
+
+A list use case takes an `app_persistence::ListQuery<XSortKey>` (optional
+`PageRequest`, `Vec<Sort<XSortKey>>`) and returns `Listed<T>` (`total` only
+when paged). Limits default to 20 and are clamped to 100.
+
+- `XSortKey` is a closed enum in `application/repository.rs`, so no
+  caller-supplied text reaches SQL. The db layer maps each key to a fixed column
+  and builds the SQL with `QueryBuilder` + `app_db::push_list_clauses` — the one
+  sanctioned use of runtime SQL, since `query!` can't vary `ORDER BY` — always
+  ending the order in a unique tiebreak.
+- Over HTTP the handler takes `limit`, `offset` and `sort: Query<Option<Vec<XSort>>>`
+  as separate params (poem-openapi has no parameter structs), builds the query
+  with `app_web::paged(..).sorted(app_web::sorts(..))`, and returns
+  `ListResult<XResponse>`. `XSort` is a poem `Enum` in `web/models.rs` whose
+  values are the response's camelCase field names, `-`-prefixed for descending,
+  implementing `SortParam` — so the generated TypeScript union names exactly the
+  sortable columns.
+- Omit `sort` for an unsortable list, and `limit`/`offset` (with
+  `ListQuery::all()`) for an unpaged one.
 
 ### Isolation enforcement (layered defenses)
 
 1. **Cargo workspace graph (primary).** A module crate that does not list a
    sibling in `[dependencies]` physically cannot import it. This carries ~80% of
-   the isolation for free and is stronger than a test — it won't compile.
-2. **`cargo-deny` `[bans]`.** `sqlx` is denied workspace-wide with a `wrappers`
-   allow-list permitting only `app-db` (and module `db` layers) to depend on it.
-   Bans target third-party crates; the Cargo graph handles internal edges.
+   the isolation for free and is stronger than a test — it won't compile. It
+   holds only while nobody adds the line, so
+   `scripts/check-module-deps.sh` (`make check-deps`, in `make check` and CI)
+   reads `cargo metadata` and fails if a module core's normal or build
+   dependencies include another module core (dev-dependencies may: a read
+   module's tests run its providers), or if an `-api` crate depends on a
+   workspace crate other than a pure `common` crate or another `-api`.
+2. **`cargo-deny` `[bans]`.** `sqlx` and `poem` are denied workspace-wide with a
+   `wrappers` allow-list of the crates that may depend on them directly
+   (`app-db` for sqlx, `app-web` and `server` for poem, and every module core
+   crate — read modules included — for both; a new module is added to both
+   lists, an `-api` crate never). Every pure crate — the pure
+   `common` crates and every `<module>-api` crate — is therefore kept
+   framework-free. Bans target third-party crates; the Cargo graph handles
+   internal edges.
 3. **Per-crate `clippy.toml` (`disallowed-types`/`disallowed-methods`).** In each
    module, bans `sqlx::PgPool`, `sqlx::Pool` and `sqlx::Postgres` from being
-   *named* anywhere in the crate; `db/mod.rs` and `api/handlers.rs` opt out, so
+   *named* anywhere in the crate; `db/mod.rs`, `di.rs` and `seed.rs` opt out, so
    the application and domain layers cannot. Run with `-D warnings`. This is a
    tripwire, not a boundary: other sqlx types, `poem`, and a local `#[allow]`
    all get past it.
-4. **`rust_arkitect`** — noted for within-crate layering assertions, but not
+4. **Cross-module use goes through `<module>-api` (D7).** A module that needs
+   another depends on that module's pure `-api` crate, never its core crate, so
+   the graph still forbids reaching into internals.
+5. **`rust_arkitect`** — noted for within-crate layering assertions, but not
    wired: crate-per-module makes it largely unnecessary.
+6. **Cross-module SQL goes through published views (D8).**
+   `scripts/check-sql-schemas.sh` (`make check-sql`, in `make check` and CI)
+   scans each module's `src/db/` and `migrations/` and refuses any
+   `<schema>.<object>` that is neither the module's own schema, its own
+   `<schema>_api`, nor a view listed in its `[package.metadata.module] reads`.
+   Only a read module may declare `reads`: `make check-deps` fails a module
+   with a `src/domain/` (a write module) that does, so a write module never
+   joins across schemas.
+7. **Frontend feature boundaries (§8).** `frontend/scripts/check-feature-imports.mjs`
+   (`pnpm run lint:imports`, part of `make lint-frontend`, `pnpm run lint` and
+   CI) resolves every `@/` and relative import under `src/` and fails if a
+   feature imports another feature, or if code outside a feature imports a
+   file inside one rather than its `index.ts`. A script, because Biome 1.9's
+   `noRestrictedImports` matches exact module names only.
 
 ---
 
@@ -224,11 +380,12 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 
 | Crate | Coupling | Contents | Who depends |
 |---|---|---|---|
-| `app-config` | pure | `figment`-layered env/file → typed `AppConfig` | anyone |
-| `app-error` | pure | `thiserror` canonical error kinds | anyone (incl. domain, application) |
-| `app-telemetry` | tracing/OTEL | `tracing-subscriber` init (JSON prod / pretty dev), OTEL seam | server, modules |
-| `app-web` | poem | `app-error` → `ApiResponse` mapping, request-id middleware, `/health`, pagination types, **JWT `SecurityScheme`** | api layers, server |
-| `app-db` | sqlx | `PgPool` construction, migration runner, `Repository` conventions | db layers, server |
+| `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), `now()` (the clock, at `timestamptz` precision; called only by services), `well_known_id` and `seed_time` for seeds | domain and application layers |
+| `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
+| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed` | application and db layers |
+| `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
+| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`), `push_list_clauses`, `map_db_error` (constraint name → `AppError`) | db layers, server |
+| `app-module` | poem + `app-db` | `Module`: a module's provider, migrations and seed, registered once with the server (§4) | `di.rs`, server |
 | `app-test-support` | dev-only, pure | JSON path assertions (`assert_json_matches!`, `assert_json_exists!`, `assert_json_not_exists!`) | module dev-deps only |
 
 The **`error` (pure) vs `web` (poem mapping)** split is deliberate: application
@@ -243,29 +400,39 @@ application layer maps onto `app-error`.)
 - **PostgreSQL**, accessed with **`sqlx` macros** (`query!`) for compile-time
   checking. Local Postgres via `docker-compose.yml`.
 - **Schema-per-module**: each module writes to its own Postgres schema
-  (`users`, `notes`, …).
+  (`users`, `notes`, …). A module that publishes views for other modules' SQL
+  creates them in a second schema, `<schema>_api` (D8).
 - **Per-module migrations**: each module crate owns a `migrations/` directory.
   `server/src/bin/migrate.rs` applies them in a deterministic, dependency-aware
-  order via the `app-db` runner.
+  order via the `app-db` runner. `sqlx::migrate!` embeds them at compile time,
+  so each crate with migrations has a `build.rs` that reruns on `migrations/`
+  changes — without it Cargo can reuse a build that lacks a new migration.
 - **Offline compile**: the `.sqlx/` query cache is checked in and
   `SQLX_OFFLINE=true` is the default, so `cargo build` and CI need **no live
   database**. `make prepare` regenerates the cache against the docker Postgres.
-- **Migrations run explicitly** via `make migrate` (which `make dev` depends on)
-  — never silently on server startup, so production controls migration timing.
+- **Migrations run explicitly** via `make migrate` — never silently on server
+  startup, so production controls migration timing.
+- **Seeding non-prod environments** follows the same rule: `server`'s `seed` bin
+  (`make seed`, which depends on `migrate` and which `make dev` depends on) runs every module's
+  `seed::standard`. It exists only with `server`'s `seed` feature and refuses
+  `APP_ENV=prod`. The image ships `migrate` (and, with `--build-arg SEED=true`,
+  `seed`) beside `server`; a deployment runs them as one-off pre-start tasks
+  inside its network (init container, pre-deploy job), never from CI.
 
 ---
 
 ## 7. OpenAPI spec generation
 
 - The **code is the source of truth**. `server` builds an `OpenApiService` from
-  the tuple of every module's `Api` (mind poem-openapi's 16-element tuple cap —
-  group into sub-tuples past 16 modules).
+  the `Endpoints` tuple in `modules.rs` (§4), built with `Endpoints::default()`
+  — group into sub-tuples past 12 modules, where std stops deriving `Default`
+  (poem-openapi's own cap is 16).
 - `OpenApiService::spec()` returns the spec JSON **synchronously, with no server
   and no async runtime**. `dump-spec.rs` constructs the *same* service
   configuration (shared `build_service()` fn — identical `title`/`version`/
   `server` url as runtime) and prints the JSON to stdout.
-- Because handlers take the pool via `Data<PgPool>` and `Api` structs are unit
-  structs, **`dump-spec` needs no database and no pool** — spec generation is a
+- Because handlers take their service via `Data<&XService>` and `Endpoints`
+  structs are unit structs, **`dump-spec` needs no database and no pool** — spec generation is a
   pure, sub-second step. This is the linchpin of the fast inner loop.
 - At runtime the server also serves the spec at `/api/spec.json` and Swagger UI
   at `/docs`.
@@ -285,6 +452,62 @@ application layer maps onto `app-error`.)
 - **Loop**: backend source → `dump-spec` → `frontend/openapi.json` → hey-api
   codegen → `frontend/src/api/` → `tsc -b --noEmit` typecheck. A backend API
   change that breaks the frontend surfaces as a **TypeScript compile error**.
+- **Errors are part of the contract.** Every operation returns
+  `app_web::ApiResult<T>`, so the spec declares the same error responses
+  (400/401/403/404/409/412/428/500) on each, all with one `ErrorBody` schema:
+  `code` (a closed `ErrorCode` enum, the thing to branch on), `message`, optional
+  `fields: [{path, message}]` naming the inputs at fault, and `requestId` (also
+  the `x-request-id` header). poem/poem-openapi's own failures (bad JSON, a
+  missing field, an unknown enum value, failed auth, unknown routes) go through
+  `app_web::render_error` via `catch_all_error`, so they have the same shape
+  (`malformed_request` for unparseable input). The generated client therefore
+  types every error as `ErrorBody`. A flat body rather than RFC 9457
+  `problem+json`, and one error set for every operation rather than only the
+  statuses each can return: simpler, at the cost of precision.
+- **Forms**: TanStack Form. A form saves in `validators.onSubmitAsync` and returns
+  `submitErrors(error)` (`src/lib/api-errors.ts`), which places each field error
+  on the input its `path` names; the mutation's `meta.formFields` lists those
+  inputs, and the `QueryClient` from `src/lib/query-client.ts` toasts every other
+  failed mutation. `NewNoteForm` is the reference.
+- **Wire types**: the domain uses `Uuid` and `chrono`, but request/response
+  types expose ids, timestamps and versions as plain `string`, so the generated
+  client needs no date or uuid dependency.
+
+**Code organisation.**
+- **By feature, mirroring backend modules.** Module `modules/<module>` gets
+  `src/features/<module>/`: its components, hooks and tests, with an `index.ts`
+  re-exporting the public components (import `@/features/notes`, never a file
+  inside it). Features never import each other (`pnpm run lint:imports`
+  enforces both, §4); shared code lives in
+  `src/components/`, `src/hooks/` or `src/lib/`. A feature that needs another
+  module's data calls that module's generated client directly — the API is the
+  contract, as `<module>-api` is on the backend.
+- **Pages** (`src/pages/<name>-page.tsx`) are thin: they lay out features and
+  own URL concerns (params, search). Promote one to a folder only when it grows
+  private pieces.
+- **Routing** is TanStack Router, code-based (no file-route codegen): routes
+  live in `src/router.tsx`, and `router.test.tsx` renders
+  `createAppRouter(createMemoryHistory(..))` to check each URL lands on its
+  page. The prod server falls back to `index.html`, so deep links work (§9).
+
+**Design system: shadcn/ui** (Base UI primitives, Tailwind v4, `base-nova`
+style; config in `components.json`). The whole registry is vendored as source in
+`src/components/ui/` (plus `src/hooks/`, `src/lib/highlighter.tsx`): use an
+existing component before writing one, and compose rather than restyle. Theme by
+editing the CSS variables in `src/index.css` (`:root` / `.dark`), not
+per-component classes. `Toaster` and `TooltipProvider` are mounted in
+`main.tsx`. Refresh from upstream with `pnpm dlx shadcn@latest add --all --overwrite`,
+then `pnpm run format` (the CLI writes its own style) and re-check local edits.
+`biome.json` disables the specific rules upstream code trips for the vendored
+paths only; app code keeps the full rule set.
+
+**Lists** use `src/components/data-table/` (TanStack Table, server-paged and
+server-sorted against §4's list endpoints): `useListParams<XSort>({ sortable: [...] })`
+holds the table state and yields the `query` for the generated `getXOptions`
+(`sortable` is typed against the generated sort union), `useDataTable` binds the
+`ListResult<T>` response, and `DataTable` / `DataTablePagination` /
+`DataTableViewOptions` render it. `src/features/notes/notes-table.tsx` is the
+reference.
 
 ---
 
@@ -317,16 +540,26 @@ Dependency edges (real targets):
   → runs hey-api codegen
 
 Key phony targets:
-- `make dev` — depends on `migrate` + `generate`; then `make -j` runs
-  `cargo watch` (backend `:8080`) **and** `vite` (`:5173`) in parallel.
-- `make generate` — alias for the spec-dump + codegen chain.
+- `make dev` — depends on `seed` (which depends on `migrate`) + `generate`; then
+  `make -j` runs `cargo watch` (backend `:8080`) **and** `vite` (`:5173`) in
+  parallel.
+- `make generate` — alias for the spec-dump + codegen chain. The FE targets
+  (`typecheck`, `test-frontend`, `build-frontend`) depend on it, so they never
+  run against a stale client.
 - `make watch-api` — optional: watches backend, auto-regenerates the client.
 - `make migrate` / `make prepare` — DB migrations / sqlx offline cache refresh.
-- `make typecheck` — `tsc -b --noEmit`.
-- `make check` — fmt + clippy + cargo-deny + typecheck + tests (the CI mirror).
+- `make new-module NAME=..` — scaffold and register a write module (§4);
+  `make check-modules` checks every module is registered.
+- `make check` — the CI mirror, every step of both CI jobs (§14).
 - `make build` — `vite build` then `cargo build --release` (embeds the SPA).
 
-Requires `cargo-watch` (dev only).
+**Repo-local tooling.** Rust CLI tools (`cargo-deny`, `cargo-watch`,
+`sqlx-cli`) are pinned in the root `Cargo.toml` `[workspace.metadata.bin]` and
+installed by `cargo-run-bin` into a gitignored `./.bin`, so every clone and CI
+run uses the same versions and nothing goes into `~/.cargo/bin` but the one
+bootstrap. `make setup` installs it and the tools; the Makefile runs them as
+`cargo bin <tool>`. Frontend tools are repo-local already via `package.json`.
+`lefthook` (a Go binary) is the exception and is installed separately.
 
 ---
 
@@ -351,12 +584,13 @@ Requires `cargo-watch` (dev only).
 
 ## 12. Observability
 
-- `app-telemetry` initializes `tracing-subscriber`: JSON output in prod, pretty
+- `server::telemetry` initializes `tracing-subscriber`: JSON output in prod, pretty
   in dev.
-- `poem`'s `Tracing` middleware + a request-id / correlation-id middleware in
-  `app-web`.
+- `poem`'s `Tracing` middleware inside a request-id / correlation-id
+  middleware in `app-web` (outermost, so access logs and every response, errors
+  included, carry the id; error bodies echo it as `requestId`).
 - `/health` (and readiness) endpoint in `app-web`.
-- OpenTelemetry export left as a commented seam in `app-telemetry`.
+- OpenTelemetry export left as a commented seam in `server::telemetry`.
 
 ---
 
@@ -383,46 +617,61 @@ Requires `cargo-watch` (dev only).
 
   ```
   tests/<module>/
-  ├── main.rs        # declares the files below
+  ├── main.rs        # mod driver; mod behaviours { mod registering; … }
   ├── driver.rs      # the only code that knows routes, JSON, statuses, tokens
-  ├── registering.rs # one file per behaviour area…
-  └── …
+  └── behaviours/
+      ├── registering.rs # one file per behaviour area…
+      └── …
   ```
 
-  The **driver** boots the module's `Api` over the per-test pool (migrate, seed,
-  build), exposes domain verbs (`notes.edit(FIRST_NOTE, ..)`,
-  `users.signed_in_as(ALICE).me()`), and turns each response into
-  `Result<View, Refusal>` (`Invalid`, `NotFound`, `Conflict`, `NotSignedIn`).
-  A view wraps the returned JSON (`Deref<Target = serde_json::Value>`), so a test
+  The target is named after the module because `#[sqlx::test]` derives each
+  test's database name from its path (`users::behaviours::registering::…`): a
+  name shared across modules would give same-named tests the same database.
+
+  The **driver** boots the module's `Endpoints` over the per-test pool
+  (`Notes::seeded(pool)`: migrate, seed, build), exposes domain verbs
+  (`notes.edit(ALICES_NOTE, version, ..)`, `users.signed_in_as(ALICE).me()`), and
+  turns each response into `Result<XJson, Refusal>`, declaring only the variants
+  the module produces from `Invalid` (with the paths of the fields at fault),
+  `Malformed`, `NotFound`, `Conflict`, `NotSignedIn`, `PreconditionRequired` and
+  `Stale`. It maps the error body's `code`, not the status (`From<Refused>`), so a
+  broken domain rule (`Invalid`) is told apart from an unparseable request
+  (`Malformed`). The transport is shared: `app_web::testing`, behind `app-web`'s
+  `test` feature (dev-dependencies only), mounts the `Endpoints` with the server's
+  error rendering and request ids (`TestApi`), builds requests (`.json`,
+  `.if_match`, `.bearer`, `.queries`), and on `send()` checks that every refusal
+  has the error shape, echoes the request id and names fields only for a
+  validation error. A driver keeps only its verbs, its `Refusal`, its stubs and
+  its response newtypes.
+  A response newtype (`json_newtype!(pub NoteJson)`; `Page<NoteJson>` for a list)
+  wraps the returned JSON (`Deref<Target = serde_json::Value>`), so a test
   can compare it whole against a seed aggregate, or — when some properties can't
   be predicted, like a generated id or timestamp — assert on parts of it with
   `app-test-support`'s JSON path macros (strict match against the first value a
   path selects).
 - **Tests speak the domain, not HTTP.** Names state a behaviour
   (`an_edit_without_a_title_is_rejected_and_changes_nothing`); bodies call driver
-  verbs and compare against seed aggregates (`Ok(seed::first_note().into())`).
+  verbs and compare against seed aggregates (`Ok(seed::alices_note().into())`).
   One behaviour per test; a refused action is followed by a check that nothing
   changed.
-- No separate service tests: every use case is reachable through the `Api`, and
+- No separate service tests: every use case is reachable through the `Endpoints`, and
   a fresh database costs the same either way. Add one only when a use case has no
   HTTP entry point (a job, a consumer) or two outcomes are indistinguishable over
   HTTP.
 - No in-memory Fakes for Postgres. A hand-written **Fake** behind an interface is
-  reserved for an external dependency that cannot be run locally.
-- Known edges of `#[sqlx::test]`: with Postgres down, each test binary waits
-  sqlx's fixed 30s pool timeout, then panics `PoolTimedOut`. Per-test database
-  names derive from the test path, so two concurrent runs against one server
-  collide. A failed test leaves its database behind (the next passing run of that
-  test drops it); `make test-db-clean` removes all of them.
+  reserved for an external dependency that cannot be run locally. The other
+  sanctioned stand-in is a consumer's driver stubbing a `<module>-api` trait (D7).
 
 **Backend — seeding (first-class).**
-- Every module owns `src/seed.rs`, compiled only with its `seed` cargo feature.
-  The crate enables the feature for its own tests with a self dev-dependency
-  (`users = { path = ".", features = ["seed"] }`); production builds never do.
+- Every module that owns data owns `src/seed.rs`, compiled only with its `seed`
+  cargo feature. The crate enables the feature for its own tests with a self
+  dev-dependency (`users = { path = ".", features = ["seed"] }`); production
+  builds never do. A module that owns no data (`note-search`) has no seed.
 - A seed module exposes: a **named `const` id** per well-known entity
   (`users::seed::ALICE`), a function returning that aggregate
   (`seed::alice() -> User`) for expected values, and `seed::standard(&pool)`,
-  which saves the standard dataset through the real repository.
+  which saves whichever of the standard dataset is missing through the real
+  repository — so the `seed` bin can re-run it on every deploy (§6).
 - Seeds are built with the real domain constructors — which take the id and
   timestamp as arguments — so they satisfy every invariant and there is no second
   copy of the SQL. Timestamps are fixed and spaced apart so ordering is
@@ -431,15 +680,26 @@ Requires `cargo-watch` (dev only).
   data by constant, never by ids captured at runtime.
 - Well-known ids are readable UUIDs: `MMMMMMMM-KKKK-0000-0000-NNNNNNNNNNNN` —
   module number, entity kind within the module, sequence (e.g. Alice is
-  `00000001-0001-0000-0000-000000000001`). Module numbers:
-
-  | Module | Number | Kinds |
-  |---|---|---|
-  | `users` | `1` | `1` user |
-  | `notes` | `2` | `1` note, `2` author |
-
-  Seeds never reference another module's seed ids (isolation, §D1); cross-module
-  scenarios choose values in the test.
+  `00000001-0001-0000-0000-000000000001`), built with
+  `app_domain::well_known_id(MODULE, kind, sequence)`. Each module with a seed
+  declares its number once, as `pub const MODULE: u32` (in its `-api` seed if it
+  has one, else its core seed), and its kinds in that seed's doc comment;
+  `make check-modules` fails on a missing number or one two modules share, and
+  `make new-module` allocates the next one.
+- **What other modules may know of a seed is published in its `-api`** (D7).
+  Under the `-api` crate's own `seed` feature (enabled by the core's),
+  `users_api::seed` holds the well-known ids as plain `Uuid`s and, per entity, a
+  function returning its **published record** (`users_api::seed::alice() ->
+  v1::User`). The core seed builds each aggregate from that record, adding what
+  isn't published (an email, a note's body), so the data has one source. Saving
+  stays in the core: `-api` stays pure.
+- A seed may name another module's seed ids **only through that module's
+  `-api`**, along the dependency graph: `notes`' seed authors notes as
+  `users_api::seed::{ALICE, BOB}`, and `notes`' driver stubs `UserDirectory` with
+  exactly those users. A seed saves only its own module's data. Tests of a
+  module that reads others' data (a read module) run the providers' migrations
+  and `seed::standard` and assert against their `-api` seed records, never their
+  aggregates.
 
 **Backend — inline unit tests (the ~10%).**
 - Reserved for pure, side-effect-free logic — aggregates and value objects in the
@@ -449,7 +709,10 @@ Requires `cargo-watch` (dev only).
 **Frontend — Vitest, minimal mocking.**
 - Prefer rendering real components/hooks. When a test must cross the network,
   mock at the **network boundary with MSW** — never module/import mocks — so the
-  real generated client stays in the path. One example test ships.
+  real generated client stays in the path. Node's fetch rejects the client's
+  relative `/api` base, so `vitest.setup.ts` gives it an absolute one.
+- Feature tests render the feature's components against MSW; page-level
+  behaviour is only which URL renders what (`router.test.tsx`).
 
 ---
 
@@ -462,17 +725,27 @@ Requires `cargo-watch` (dev only).
 3. Runtime — `gcr.io/distroless/cc`, copies the single binary. Tiny, secure,
    glibc (avoids musl/`aws-lc-rs` toolchain friction).
 
-**GitHub Actions `ci.yml`** mirrors `make check`:
+**GitHub Actions `ci.yml`** runs the same steps as `make check`:
 - `cargo fmt --check`
-- `cargo clippy -- -D warnings` (incl. per-crate `disallowed-types`)
+- `cargo clippy --all-targets --features server/seed -- -D warnings` (incl.
+  per-crate `disallowed-types`; the feature brings the `seed` bin in)
 - `cargo deny check`
-- `cargo build` with `SQLX_OFFLINE=true`
+- `scripts/check-sql-schemas.sh` (D8)
+- `scripts/check-module-deps.sh` (§4)
+- `scripts/check-modules.sh` (§4)
+- `cargo build --features server/seed` with `SQLX_OFFLINE=true`
 - `docker compose up -d --wait postgres`, then backend tests with
   `DATABASE_URL` → the compose server's `postgres` database
 - frontend: `pnpm install`, `make generate`, `tsc -b --noEmit`, `biome ci`,
-  `vitest run`, `vite build`
+  `pnpm run lint:imports`, `vitest run`, `tsc -b --noEmit && vite build`
+- scaffold: `make new-module NAME=gadgets`, then its clippy and tests and the
+  composed-app test (CI only: it edits the tree; the template itself is covered by
+  the backend steps)
 
-**Git hooks** — `lefthook` pre-commit: rustfmt, clippy, biome, `tsc`.
+A step added to one must be added to the other.
+
+**Git hooks** — `lefthook` pre-commit: rustfmt, clippy (same features as CI),
+biome on staged files, `tsc`.
 
 ---
 
@@ -488,6 +761,15 @@ microservice. **Alternatives rejected.** Crate-per-layer-per-module (max
 enforcement, 3× the Cargo churn — over-engineered for a template); single crate
 with `mod` boundaries (isolation is convention-only). **Trade-off.** More crates
 and a 16-element `OpenApiService` tuple cap to design around.
+
+No foreign keys between modules: a module's tables never reference another
+module's tables or views. A cross-module id is a plain `uuid` column, checked
+when written through the provider's `-api` trait where the business rules need
+it (D7). References can dangle — a user is removed — and every consumer
+tolerates that (a note-search result without an author name). A foreign key
+would couple migration order, deletes and locks across modules and stop one
+being lifted out; `make check-sql` refuses one, as it does any cross-schema
+reference that isn't a listed view (§4.6).
 
 ### D2 — `common` split by pure vs framework-coupled
 **Decision.** No single `common` crate; several focused crates, split on whether
@@ -525,13 +807,15 @@ while keeping HMR-grade local DX. **Alternative noted.** Serve `dist/` from disk
 (`StaticFilesEndpoint`, free SPA fallback) or ship to S3/CloudFront (documented
 future variant).
 
-### D5 — Handlers take the pool via `Data<PgPool>`
-**Decision.** `Api` structs are unit structs; the pool is injected as a request
-extension. **Why.** Makes `dump-spec` a pure, DB-free, sub-second step — the
-fast inner loop depends on it. Testability comes from the `Repository` trait,
-not from pool-on-struct DI.
+### D5 — Handlers take their service via `Data<&XService>`
+**Decision.** `Endpoints` structs are unit structs; each module's provider
+(`di.rs`) builds its service over the pool, and the server injects it as request
+data. **Why.** Makes `dump-spec` a pure, DB-free, sub-second step — the fast
+inner loop depends on it. Handlers never see the pool, so the web layer needs no
+sqlx; testability comes from the `Repository` trait, not from state on the
+`Endpoints` struct.
 
-### D6 — Application layer between api and domain
+### D6 — Application layer between web and domain
 **Decision.** Four layers per module. Handlers call an application **service**;
 the service loads an **aggregate** from a **repository**, runs a domain action
 with a **command**, and saves the aggregate. The `Repository` trait belongs to
@@ -545,8 +829,114 @@ functions taking `&impl Repository` (the original shape) — fine for CRUD, but
 logic and I/O interleave and there is no single home for invariants. **Trade-off.**
 More types per feature (command, aggregate action, service method, repo method)
 and ceremony that is overkill for the example modules. Load→act→save has a
-lost-update window under concurrent writes; add a version column and optimistic
-check in `save` when a module needs it.
+lost-update window under concurrent writes, so every write module closes it with
+a version column and `If-Match` (§4, Optimistic concurrency); the version stays
+out of the domain, in `app-persistence`'s `Versioned` wrapper.
+
+### D7 — Cross-module dependencies go through a pure `<module>-api` crate
+**Decision.** A module that other modules may use is split into two crates under
+`crates/modules/<module>/`: `api/` (package `<module>-api`) and `core/`
+(package `<module>`). The `-api` crate holds only what consumers may see —
+capability traits (`users_api::UserDirectory`), published records and seed
+descriptions (below) — and is pure (no poem/sqlx, enforced by cargo-deny). Ids
+cross it as plain `Uuid`: the provider's typed id (`UserId`) stays in its domain,
+and each consumer keeps its own typed id, so the newtype protection lives on both
+sides and the seam is a single `as_uuid()`. Consumers depend on `-api`, never
+on the core crate. The core crate implements the traits (in its application
+layer) and exposes a constructor from its composition root
+(`users::directory(pool)`); the server passes it to each consumer's
+`module(..)` (`notes::module(users::directory)`), which hands it to the provider. A consumer keeps its own
+domain types (`notes::AuthorId`) and converts at the call in its application
+layer, so its domain names no other module. Consumers' tests stub
+the trait in their driver (the other module isn't run); the provider tests its
+implementation against Postgres directly, since it has no HTTP entry point.
+
+**Which mechanism.** The choice follows *why* the data is needed, not how much
+of it. When a module's business logic needs to know something about another
+module's data, to decide or validate, it calls the provider's trait — at any
+size: a bulk need gets a batch method (`users_exist(ids)`, implemented with
+`WHERE id = ANY($1)`), not a view. When an endpoint presents data spanning
+modules — listing, searching, filtering, sorting or paging by another module's
+columns — it lives in a read module over published views (D8). A write module
+never reads views, and never joins across schemas; a list it can't serve from its
+own schema moves to a read module.
+
+**Published records.** Each published view (D8) has a plain Rust row type in
+the provider's `-api`, in a module named for the view's version:
+`users_api::v1::User` is a row of `users_api.user_v1`. It is written with its
+version path (`v1::User`), never imported bare, so it can't be mistaken for the
+aggregate, and is `#[non_exhaustive]`: consumers never build one, so the field a
+view gains can't break them. A breaking change is `v2::User` beside `v1::User`,
+as `user_v2` beside `user_v1`. Records describe the data product only: a trait
+returns its own types, so a view gaining a column never changes a trait's
+signature or a consumer's stub. Under a `seed` feature the `-api` also publishes
+the module's well-known seed ids and records (§13); consumers' seeds and tests
+name another module's seed data only through it.
+
+**Why.** The Cargo graph keeps enforcing that no module
+reaches into another's internals, while giving cross-module calls a small,
+named, versionable surface. Contracts between crates also allow two modules to
+use each other without a crate cycle. Publishing seed data in `-api` lets data
+line up across modules (notes by Alice) along the same edges the code already
+has, without a consumer depending on a provider's core or constructors.
+**Alternatives rejected.** Depending on
+the sibling's core crate (drags in its poem/sqlx and all its internals);
+`api/`/`private/` folders inside one crate (nothing enforces them); a
+consumer-owned port with every adapter in `server` (fine for one edge, but the
+glue piles up in `server`); choosing by size, views for anything bulk (puts
+views, and the providers' migrations, into write modules' validation and
+tests). **Naming.** `-api` names the in-process capability
+surface; the HTTP layer inside a module is therefore `web/`, with
+`XEndpoints` structs.
+
+### D8 — Cross-module reads go through published views and a read module
+**Decision.** When a read must combine data owned by several modules — filter,
+sort or page notes by their author's name — the join happens in Postgres, not in
+application code. Each provider **publishes** what others may read as versioned
+views in a schema of its own, `<schema>_api` (`users_api.user_v1`,
+`notes_api.note_v1`), created by its own migrations: only the columns it is
+willing to support, never its tables. A published view is a **data product**: a
+versioned, read-only dataset the module publishes for querying (read modules
+now, perhaps reporting or exports later), as opposed to a trait, which is a
+capability shaped by one consumer's use case (D7). A view evolves only additively
+(`CREATE OR REPLACE VIEW` may append columns); a breaking change ships as `_v2`
+beside `_v1` until every reader has moved, and its published record (D7) moves
+with it. A **read module** (`note-search`)
+does the joining: it owns no source data and no domain layer — just
+`web/`, `application/` (a service and a `NoteFinder` trait returning read
+models, not aggregates) and `db/` (the SQL). It reads other modules' data only
+through views, even for a single row, never calls `-api` traits, and never
+writes another module's data. It declares every view it reads in
+`[package.metadata.module] reads` in its `Cargo.toml`, and `make check-sql`
+refuses any other cross-module reference (§4.6). It has no Rust dependency on
+the providers in production; its tests run the providers' real migrations and
+seeds (dev-dependencies on their core crates — the only core-to-core edge, and
+test-only) instead of stubbing, because the views are what is under test, and
+assert against the providers' `-api` seed records (§13). A read module that owns
+no data has no migrations and no seed (`note-search`); one may later own
+*derived* data — embeddings, search indexes, projections built from the views it
+reads — and then has its own schema, migrations and seed like any module. The
+server registers it like any module (§4). **Why.** Joins, sorting and paging across
+modules stay one indexed query, always transactionally consistent — no
+projection to rebuild, no events, no lag — while each provider keeps its tables
+private and its published surface small, named and versioned, exactly as
+`<module>-api` does in Rust (D7). Keeping the join in a read module rather than
+in `notes` keeps the write modules' tests and schemas free of each other.
+**Alternatives rejected.** Composing in application code (fetch matching ids
+from `users-api`, then `WHERE author_id = ANY(..)`): fine for a filter, but
+can't sort or page by the other module's columns. A BFF calling each module:
+the same limitation, plus N+1 calls. Event-carried state transfer into a
+projection: the right tool once modules are separate services, but a lot of
+machinery and eventual consistency for a monolith that shares one database.
+Letting `notes` join `users_api` itself: works, but couples the write module's
+tests and migrations to users'. Creating the views from the `-api` crate's own
+migrations: a view depends on the tables at a given version, and two migrators
+per module have independent version sequences, so nothing keeps them ordered
+(and `-api` would need sqlx). **Trade-offs.** Providers' migrations must keep
+the published views compiling (Postgres refuses to drop or retype a column a
+view uses — the intended tripwire). The read module and its providers share one
+database, so lifting a provider out (D1) means replacing its views with a
+replicated copy first. The SQL check is a grep, not a parser.
 
 ---
 
@@ -556,9 +946,17 @@ check in `save` when a module needs it.
 - Playwright E2E.
 - Kafka (or other) module external deps — add them as docker-compose services
   the same way; testcontainers remains an option for deps tests must own.
-- `make seed` — a `server` bin that runs every module's `seed::standard` against
-  the local docker-compose database, for a populated dev environment.
 - Migrate + seed once into a template database and clone it per test, if
   per-test migration becomes the bottleneck.
+- Per-module Postgres roles, each granted `SELECT` on other modules' `_api`
+  schemas only — the database-enforced version of `make check-sql` (D8).
+- Search indexes for read modules (`pg_trgm` for `ILIKE '%…%'`, or a
+  `tsvector` column published through the view) when data volume needs them.
 - `rust_arkitect` within-crate layering tests, if any module keeps layers as
   sub-modules instead of crates.
+- A controllable clock, once a module has time-based rules (expiry, scheduling).
+  Inject it: one shared context, built once by the server and passed to every
+  `module(..)`, carries a `Clock` that services hold as `Arc<dyn Clock>`, and
+  drivers build it with a `FixedClock` they can `advance()`. Not an ambient
+  global or task-local: work spawned off the request would silently read the
+  real time in tests. Until then `app_domain::now()` reads the system clock.

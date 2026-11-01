@@ -1,0 +1,39 @@
+[package]
+name = "note-search"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# A read module (spec D8): owns no tables and reads only these published views.
+# `make check-sql` refuses any other cross-module reference in its SQL.
+[package.metadata.module]
+reads = ["users_api.user_v1", "notes_api.note_v1"]
+
+[dependencies]
+app-error.workspace = true
+app-persistence.workspace = true
+async-trait.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+app-web.workspace = true
+app-db.workspace = true
+app-module.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+# The providers run for real: their migrations publish the views this module
+# reads and their seeds fill them. Only `migrations()` and `seed::standard` are
+# used: the one core-to-core edge, and test-only (spec D8).
+users = { workspace = true, features = ["seed"] }
+notes = { workspace = true, features = ["seed"] }
+# What the tests assert against: the providers' seed data as published.
+users-api = { workspace = true, features = ["seed"] }
+notes-api = { workspace = true, features = ["seed"] }
+app-test-support.workspace = true
+app-web = { workspace = true, features = ["test"] }
+tokio = { workspace = true }
+serde_json.workspace = true

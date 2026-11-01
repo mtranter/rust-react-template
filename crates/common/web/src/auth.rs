@@ -1,16 +1,5 @@
-//! JWT Bearer authentication (spec §11).
-//!
-//! One `SecurityScheme` that flows into the OpenAPI spec (and thus the generated
-//! client), with two verification modes behind a single type:
-//!
-//! * **Symmetric (HS256)** — a shared secret. Self-contained and can also
-//!   *issue* tokens, which dev examples and integration tests rely on.
-//! * **JWKS** — verify-only against an OIDC provider's published public keys,
-//!   discovered from its `/.well-known/openid-configuration`. This is the
-//!   production path: no user store, no token issuance — still just a seam.
-//!
-//! The server chooses the mode from config: set `jwt_issuer` for JWKS, otherwise
-//! the HS256 secret is used. Everything beyond this remains a documented seam.
+//! JWT Bearer authentication (spec §11): HS256 (dev/tests; can also issue) or
+//! verify-only JWKS discovered from an OIDC issuer (prod).
 
 use app_error::{AppError, AppResult};
 use jsonwebtoken::jwk::JwkSet;
@@ -24,21 +13,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Standard JWT claims used by the example guarded route.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    /// Subject — the authenticated principal's id.
     pub sub: String,
-    /// Issued-at (unix seconds). Optional: some OIDC providers omit it.
+    // Optional: some OIDC providers omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iat: Option<usize>,
-    /// Expiry (unix seconds). Validated automatically.
     pub exp: usize,
 }
 
-/// Build a [`Validation`] for the given algorithms, optionally enforcing the
-/// `iss` and `aud` claims. `exp` is always required; issuer/audience are checked
-/// only when supplied (audience checking is disabled entirely when `None`).
 fn validation(
     algorithms: &[Algorithm],
     issuer: Option<&str>,
@@ -56,9 +39,7 @@ fn validation(
     validation
 }
 
-/// Verifies (and, for the symmetric mode, issues) bearer tokens. Cloneable and
-/// injected into request data by the server (`AddData`) so the security-scheme
-/// checker can reach it.
+/// Held in request data so `jwt_checker` can reach it.
 #[derive(Clone)]
 pub struct JwtVerifier(Arc<Mode>);
 
@@ -77,26 +58,14 @@ struct Jwks {
     jwks_uri: String,
     http: reqwest::Client,
     validation: Validation,
-    /// Signing keys by `kid`, refreshed on demand when a token presents an
-    /// unknown key id (handles provider key rotation).
     keys: RwLock<HashMap<String, DecodingKey>>,
 }
 
 impl JwtVerifier {
-    /// HS256 verifier from a shared secret, enforcing no issuer/audience. Can both
-    /// verify and [`issue`] tokens. Convenience for the dev path and tests; use
-    /// [`symmetric`] to also validate `iss`/`aud`.
-    ///
-    /// [`issue`]: JwtVerifier::issue
-    /// [`symmetric`]: JwtVerifier::symmetric
     pub fn new(secret: &str) -> Self {
         Self::symmetric(secret, None, None)
     }
 
-    /// HS256 verifier from a shared secret, optionally validating the `iss` and
-    /// `aud` claims. Can both verify and [`issue`] tokens.
-    ///
-    /// [`issue`]: JwtVerifier::issue
     pub fn symmetric(secret: &str, issuer: Option<&str>, audience: Option<&str>) -> Self {
         Self(Arc::new(Mode::Symmetric(Symmetric {
             decoding: DecodingKey::from_secret(secret.as_bytes()),
@@ -105,19 +74,11 @@ impl JwtVerifier {
         })))
     }
 
-    /// Verify-only verifier built from an OIDC issuer's discovery document.
-    ///
-    /// Fetches `{issuer}/.well-known/openid-configuration`, then the advertised
-    /// `jwks_uri`, and caches the signing keys by `kid`. Tokens are validated for
-    /// signature, expiry, issuer, and (when `audience` is given) audience. Keys
-    /// are refetched on demand when a token presents an unknown `kid`.
     pub async fn from_discovery(issuer: &str, audience: Option<&str>) -> AppResult<Self> {
         let http = reqwest::Client::new();
         let jwks_uri = discover_jwks_uri(&http, issuer).await?;
         let keys = fetch_keys(&http, &jwks_uri).await?;
 
-        // Accept the asymmetric algorithms an OIDC provider might sign with, and
-        // always pin the issuer to the discovery URL (audience is optional).
         let validation = validation(
             &[
                 Algorithm::RS256,
@@ -138,9 +99,6 @@ impl JwtVerifier {
         }))))
     }
 
-    /// Verify a bearer token, returning its claims. Any failure (bad signature,
-    /// expired, malformed, unknown key, wrong issuer/audience) collapses to
-    /// [`AppError::Unauthorized`].
     pub async fn verify(&self, token: &str) -> AppResult<Claims> {
         match &*self.0 {
             Mode::Symmetric(s) => decode::<Claims>(token, &s.decoding, &s.validation)
@@ -150,12 +108,7 @@ impl JwtVerifier {
         }
     }
 
-    /// Dev/test helper: mint a token for `subject` valid for `ttl_secs`.
-    ///
-    /// Only the symmetric mode can issue (JWKS is verify-only); calling this on a
-    /// JWKS verifier is a configuration error. No issuance backend ships (spec
-    /// §11); this exists so examples and integration tests can exercise guarded
-    /// routes.
+    /// Dev/test only: no issuance backend ships (spec §11). Fails in JWKS mode.
     pub fn issue(&self, subject: impl Into<String>, ttl_secs: u64) -> AppResult<String> {
         let Mode::Symmetric(s) = &*self.0 else {
             return Err(AppError::internal(AuthError::NotIssuable));
@@ -181,9 +134,7 @@ impl Jwks {
         let key = match self.key(&kid) {
             Some(key) => key,
             None => {
-                // Unknown key id: the provider may have rotated. Refetch once and
-                // retry — but only for a genuinely-unseen kid, so an expired or
-                // forged token can't trigger a refetch storm.
+                // Unknown kid: the provider may have rotated its keys.
                 self.refresh().await?;
                 self.key(&kid).ok_or(AppError::Unauthorized)?
             }
@@ -205,7 +156,6 @@ impl Jwks {
     }
 }
 
-/// The `jwks_uri` field of the OIDC discovery document (other fields ignored).
 #[derive(Deserialize)]
 struct Discovery {
     jwks_uri: String,
@@ -244,8 +194,7 @@ async fn fetch_keys(
 
     let mut keys = HashMap::new();
     for jwk in &set.keys {
-        // Keys without a `kid`, or that we can't turn into a decoding key
-        // (unsupported type), are skipped rather than failing the whole set.
+        // Skip unusable keys rather than failing the whole set.
         if let (Some(kid), Ok(key)) = (jwk.common.key_id.clone(), DecodingKey::from_jwk(jwk)) {
             keys.insert(kid, key);
         }

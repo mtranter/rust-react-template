@@ -1,0 +1,18 @@
+[package]
+name = "users-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Must stay pure (no poem/sqlx): consumers' application layers depend on it.
+[dependencies]
+app-error.workspace = true
+async-trait.workspace = true
+uuid.workspace = true
+app-domain = { workspace = true, optional = true }
+
+[features]
+# Never enabled in production builds; `users/seed` enables it.
+seed = ["dep:app-domain"]

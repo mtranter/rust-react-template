@@ -8,5 +8,9 @@ publish = false
 
 [dependencies]
 app-error.workspace = true
+app-persistence.workspace = true
 sqlx.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

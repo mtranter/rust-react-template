@@ -1,9 +1,6 @@
-//! Print the OpenAPI spec JSON to stdout. **No database, no async runtime** — the
-//! linchpin of the fast inner loop (spec §7). `make` pipes this into
-//! `frontend/openapi.json`.
+//! Needs no database or async runtime (spec §7): `Endpoints` are unit structs
+//! and services arrive as request data.
 
 fn main() {
-    // `spec()` is synchronous and needs no pool because `Api` structs are unit
-    // structs and handlers take the pool via `Data<PgPool>` at request time.
     print!("{}", server::build_service().spec());
 }

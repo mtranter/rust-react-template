@@ -6,6 +6,4 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-# A pure crate: storage-facing vocabulary shared across modules, with no poem or
-# sqlx dependency, so the domain and application layers may use it freely.
 [dependencies]

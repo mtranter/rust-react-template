@@ -18,3 +18,11 @@ uuid.workspace = true
 jsonwebtoken.workspace = true
 reqwest.workspace = true
 tracing.workspace = true
+tokio.workspace = true
+
+[features]
+# Test-driver plumbing (`app_web::testing`); enabled only from dev-dependencies.
+test = ["poem/test"]
+
+[dev-dependencies]
+poem = { workspace = true, features = ["test"] }

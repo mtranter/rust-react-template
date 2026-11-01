@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO widgets.widget (id, name, created_at, version)\n                    VALUES ($1, $2, $3, 1)\n                    RETURNING version\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "widgets.widget",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c91aa7e53ef5ff67c3ca3dc8464610c92b70db69b91e215d763f7e214f3755e1"
+}

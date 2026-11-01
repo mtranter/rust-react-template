@@ -32,11 +32,17 @@ jobs:
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --features server/seed -- -D warnings
       - name: cargo-deny
         run: cargo bin cargo-deny check
+      - name: cross-module SQL boundaries
+        run: ./scripts/check-sql-schemas.sh
+      - name: module dependencies
+        run: ./scripts/check-module-deps.sh
+      - name: module registration
+        run: ./scripts/check-modules.sh
       - name: build (offline)
-        run: cargo build --workspace
+        run: cargo build --workspace --features server/seed
       # Same Postgres as local dev; `#[sqlx::test]` creates a fresh database per
       # test on it. `--wait` blocks on the compose healthcheck.
       - name: start Postgres (docker compose)
@@ -46,18 +52,47 @@ jobs:
           DATABASE_URL: postgres://app:app@localhost:5432/postgres
         run: cargo test --workspace
 
+  # The template compiles in the workspace; this checks the generator: renaming,
+  # registration and numbering, and that a scaffolded module passes as generated.
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-run-bin
+        run: cargo binstall -y cargo-run-bin
+      - name: Cache repo-local tools (.bin)
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: cargo-bin-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+      - name: start Postgres (docker compose)
+        run: docker compose up -d --wait postgres
+      - name: scaffold a module
+        run: make new-module NAME=gadgets
+      - name: clippy
+        run: cargo clippy -p gadgets -p server --all-targets --features server/seed -- -D warnings
+      - name: test
+        env:
+          DATABASE_URL: postgres://app:app@localhost:5432/postgres
+        run: cargo test -p gadgets -p server
+
   frontend:
     runs-on: ubuntu-latest
-    # Activates once the frontend/ tree is scaffolded.
-    if: ${{ hashFiles('frontend/package.json') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
       - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: cd frontend && pnpm install --frozen-lockfile
@@ -67,6 +102,8 @@ jobs:
         run: cd frontend && pnpm run typecheck
       - name: lint
         run: cd frontend && pnpm biome ci
+      - name: feature import boundaries
+        run: cd frontend && pnpm run lint:imports
       - name: unit tests
         run: cd frontend && pnpm run test
       - name: build

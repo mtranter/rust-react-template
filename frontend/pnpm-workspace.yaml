@@ -1,0 +1,8 @@
+allowBuilds:
+  '@biomejs/biome': true
+  esbuild: true
+  msw: true
+overrides:
+  # jsdom's selector engine: 2.2.27 recurses on :fullscreen until the stack
+  # overflows, which stalls any test that opens a Base UI popup for ~15s.
+  nwsapi: ^2.2.28

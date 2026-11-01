@@ -1,0 +1,43 @@
+[package]
+name = "notes"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+app-domain.workspace = true
+app-error.workspace = true
+app-persistence.workspace = true
+# Only the pure `users-api`, never the `users` crate itself (spec D7).
+users-api.workspace = true
+notes-api.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+app-web.workspace = true
+app-db.workspace = true
+app-module.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[features]
+# Never enabled in production builds.
+seed = ["notes-api/seed"]
+
+[dev-dependencies]
+# Enables `seed` for this crate's integration tests.
+notes = { path = ".", features = ["seed"] }
+# The users its seeded notes are by, for the `UserDirectory` stub.
+users-api = { workspace = true, features = ["seed"] }
+app-test-support.workspace = true
+app-error.workspace = true
+app-web = { workspace = true, features = ["test"] }
+tokio = { workspace = true }
+serde_json.workspace = true
+uuid.workspace = true

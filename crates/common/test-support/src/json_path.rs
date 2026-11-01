@@ -1,5 +1,3 @@
-//! Assertions on JSON values addressed by JSONPath.
-//!
 //! ```
 //! use app_test_support::{assert_json_exists, assert_json_matches, assert_json_not_exists};
 //! use serde_json::json;
@@ -18,7 +16,6 @@ use assert_json_diff::{CompareMode, Config, assert_json_matches_no_panic};
 use jsonpath_rust::JsonPath;
 use serde_json::Value;
 
-/// A newtype wrapper around serde_json::Value for JSON path assertions
 #[derive(Debug)]
 pub struct PathValue(Value);
 
@@ -75,18 +72,11 @@ where
     }
 }
 
-/// Trait for asserting on JSON paths within a value
 pub trait JsonPathAssert {
-    /// Assert that the value at the given JSON path matches the expected value
     fn assert_path_matches<T: Into<PathValue>>(&self, path: &str, expected: T);
-
-    /// Assert that the value at the given JSON path exists
     fn assert_path_exists(&self, path: &str);
-
-    /// Assert that the value at the given JSON path does not exist
     fn assert_path_not_exists(&self, path: &str);
-
-    /// Get the value at the given JSON path, panics if path is invalid
+    /// Panics if `path` is not valid JSONPath.
     fn get_path_value(&self, path: &str) -> Option<Value>;
 }
 
@@ -142,10 +132,8 @@ impl JsonPathAssert for Value {
 }
 
 // The macros call through a fully-qualified `Value` receiver, so callers need no
-// trait import and anything that derefs to `serde_json::Value` (e.g. a driver's
-// view newtype) works as `$value`.
+// trait import and anything that derefs to `Value` (a driver's view) works.
 
-/// Asserts that a JSON value at the given path matches the expected value
 #[macro_export]
 macro_rules! assert_json_matches {
     ($value:expr, $path:expr, $expected:expr) => {
@@ -155,7 +143,6 @@ macro_rules! assert_json_matches {
     };
 }
 
-/// Asserts that a JSON value exists at the given path
 #[macro_export]
 macro_rules! assert_json_exists {
     ($value:expr, $path:expr) => {
@@ -163,7 +150,6 @@ macro_rules! assert_json_exists {
     };
 }
 
-/// Asserts that a JSON value does not exist at the given path
 #[macro_export]
 macro_rules! assert_json_not_exists {
     ($value:expr, $path:expr) => {

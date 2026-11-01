@@ -1,0 +1,7 @@
+# Keeps application/domain driver-free (spec §4). `db/`, `di.rs` and `seed.rs`
+# opt out with `#![allow(clippy::disallowed_types)]`.
+disallowed-types = [
+    { path = "sqlx::PgPool", reason = "application/domain must reach persistence via the Repository trait, not the driver" },
+    { path = "sqlx::Pool", reason = "application/domain must not name the database driver" },
+    { path = "sqlx::Postgres", reason = "application/domain must not name the database driver" },
+]

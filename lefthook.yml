@@ -7,14 +7,12 @@ pre-commit:
       run: cargo fmt --all --check
     clippy:
       glob: "*.rs"
-      run: cargo clippy --workspace --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets --features server/seed -- -D warnings
     biome:
-      glob: "frontend/**/*.{ts,tsx,js,json}"
-      run: cd frontend && pnpm biome ci {staged_files}
-      skip:
-        - run: test ! -d frontend
+      # `root` makes {staged_files} relative to frontend/ (and keeps only files under it).
+      root: "frontend/"
+      glob: "*.{ts,tsx,js,json}"
+      run: pnpm biome ci {staged_files}
     tsc:
       glob: "frontend/**/*.{ts,tsx}"
       run: cd frontend && pnpm run typecheck
-      skip:
-        - run: test ! -d frontend

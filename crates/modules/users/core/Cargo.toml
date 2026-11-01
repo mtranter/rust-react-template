@@ -1,0 +1,39 @@
+[package]
+name = "users"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+app-domain.workspace = true
+app-error.workspace = true
+app-persistence.workspace = true
+users-api.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+app-web.workspace = true
+app-db.workspace = true
+app-module.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[features]
+# Never enabled in production; tests enable it via the self dev-dependency.
+seed = ["users-api/seed"]
+
+[dev-dependencies]
+users = { path = ".", features = ["seed"] }
+app-test-support.workspace = true
+app-error.workspace = true
+app-web = { workspace = true, features = ["test"] }
+tokio = { workspace = true }
+proptest.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

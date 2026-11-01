@@ -1,0 +1,19 @@
+[package]
+name = "notes-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Must stay pure (no poem/sqlx): other modules depend on it.
+[dependencies]
+uuid.workspace = true
+chrono.workspace = true
+app-domain = { workspace = true, optional = true }
+users-api = { workspace = true, optional = true }
+
+[features]
+# Never enabled in production builds; `notes/seed` enables it. Notes are
+# authored by `users_api::seed` users.
+seed = ["dep:app-domain", "dep:users-api", "users-api/seed"]

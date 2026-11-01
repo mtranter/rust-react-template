@@ -16,8 +16,9 @@ standalone microservice with minimal surgery, because it declares its own
 dependencies and never reaches into another module's internals.
 
 ### Layer
-A horizontal concern *within* a module. There are exactly four:
-- **API layer** — the module's externally-visible HTTP surface (its operations,
+A horizontal concern *within* a module. There are exactly four (a Read Module
+has no Domain layer):
+- **Web layer** — the module's externally-visible HTTP surface (its operations,
   request/response shapes). The only layer that knows about the web framework.
   Translates requests into Commands and hands them to a Service.
 - **Application layer** — the module's use cases, expressed as Services. Defines
@@ -47,7 +48,7 @@ construction (e.g. an email address). Holding one proves it passed validation.
 
 ### Command
 A named intent to change the domain (e.g. register a user, edit a note). Built
-at the API layer from a request, passed through a Service to an Aggregate's
+at the Web layer from a request, passed through a Service to an Aggregate's
 domain action.
 
 ### Modular Monolith
@@ -55,6 +56,38 @@ The overall architecture: many isolated modules compiled and deployed as a
 single artifact. Isolation is real (enforced by the compiler and CI, see
 `spec.md`), not merely conventional; the single artifact is a deployment choice,
 not an isolation compromise.
+
+### Module API
+The small, pure surface a Module offers to *other modules* in-process:
+capability traits, Published Records and a description of its Seed (ids cross
+it as plain values), in its own `<module>-api` crate. The only way one Module
+may depend on another. Distinct from the Web layer, which is
+a Module's HTTP surface for clients.
+
+### Published View
+A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that
+other Modules' SQL may read, kept in a schema named after the Module's API: a
+data product the Module publishes for querying. It is to SQL what the Module
+API is to Rust: the Module chooses what it exposes and keeps its tables private.
+A Published View only gains columns; a breaking change is a new version beside
+the old. Only Read Modules read them.
+
+### Published Record
+The plain Rust row of a Published View (e.g. `users_api::v1::User` for
+`users_api.user_v1`), in the providing Module's API. It describes the Module's
+Seed data to other Modules and is what their tests assert against; it never
+stands in for the Aggregate, and a capability trait never returns it.
+
+### Read Module
+A Module that owns no source data and enforces no business rules: it answers
+queries that span Modules by joining their Published Views, returning Read
+Models. It reads other Modules' data only through Published Views. It has a Web
+layer, an Application layer and a DB layer, but no Domain layer. It may own data
+derived from the views it reads (such as a search index), never data of its own.
+
+### Read Model
+A shape assembled for reading — a query result such as a note with its author's
+name — rather than an Aggregate. It is never saved and protects no invariants.
 
 ### Common
 Shared cross-cutting capability that is not owned by any one module. Split into
@@ -73,7 +106,9 @@ that keeps the database out of the application and domain layers.
 A module's deterministic, well-known dataset for tests: named entities with
 stable ids and fixed timestamps, built through the domain's own constructors and
 saved through the real Repository. Tests start from a Seed and refer to its
-entities by name. A module's Seed never references another module's.
+entities by name. A Module seeds only data it owns; what other Modules may know
+of its Seed is described in its Module API, and a Seed names another Module's
+Seed data only through that.
 
 ### Fake
 A hand-written, in-memory implementation of an interface, used in tests in place

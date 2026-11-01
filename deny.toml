@@ -1,23 +1,22 @@
-# cargo-deny 0.20 configuration.
-# Primary isolation is the Cargo workspace graph (a module can't import a sibling
-# it doesn't depend on). This file adds a third-party ban: sqlx may only be
-# depended on by the db-coupled crates. Domain/api layers physically cannot pull
-# it in without tripping this check.
-
 [graph]
 all-features = true
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Internal workspace crates are declared as path deps (`app-error.workspace = true`),
-# which resolve to a `*` version requirement. `wildcards = "deny"` is meant to catch
-# external crates pinned to `*`; exempt our own path crates so it keeps doing that.
+# Workspace path deps resolve to `*`; only external `*` pins should be denied.
 allow-wildcard-paths = true
+# Keeps pure crates (pure `common` crates, every `<module>-api`) framework-free.
+# Each module core crate ends each list (`make new-module` appends it); never an
+# `-api` crate. `make check-modules` fails on one missing. `widgets` is the module
+# template (crates/module-template).
+deny = [
+    { crate = "sqlx", wrappers = ["app-db", "server", "widgets", "users", "notes", "note-search"] },
+    { crate = "poem", wrappers = ["poem-openapi", "app-web", "app-module", "server", "widgets", "users", "notes", "note-search"] },
+]
 
 
 [licenses]
-# Permissive licenses expected across the dependency tree.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -36,17 +35,20 @@ confidence-threshold = 0.9
 [advisories]
 version = 2
 yanked = "deny"
-# Advisories with no fix reachable from the pinned stack. Revisit when bumping poem
-# (§2) or jsonwebtoken; drop an entry once its crate has a patched release we can take.
+# No fix reachable from the pinned stack; revisit when bumping poem (§2) or jsonwebtoken.
 ignore = [
-    # rsa (via jsonwebtoken): Marvin timing side-channel. Upstream has no patched
-    # release ("No safe upgrade is available!"); only exploitable by a network
-    # attacker observing timing, which our minimal JWT seam does not expose.
+    # rsa (via jsonwebtoken), Marvin timing attack: no patched release upstream, and
+    # our JWT seam doesn't expose the network timing it needs.
     "RUSTSEC-2023-0071",
-    # quick-xml 0.36 (via poem/poem-openapi): fixed in >=0.41, but poem-openapi 5.1
-    # pins ^0.36.1, so the fix is unreachable without moving off the pinned poem stack.
+    # quick-xml 0.36 (via poem-openapi): fixed in >=0.41, but poem-openapi 5.1 pins ^0.36.1.
     "RUSTSEC-2026-0194", # quadratic run time on duplicate start-tag attributes
     "RUSTSEC-2026-0195", # unbounded namespace-declaration allocation in NsReader
+    # crypto-bigint 0.5 (via jsonwebtoken -> p256/p384 -> elliptic-curve 0.13): fixed in
+    # >=0.7.6, which elliptic-curve 0.13 can't take. We only verify ES256/ES384 tokens
+    # (public inputs) and never sign with an EC private key, so there's no secret to time.
+    "RUSTSEC-2026-0387",
+    # unsafe-libyaml (via poem -> serde_yaml): unmaintained, no successor on the poem 3.1 stack.
+    "RUSTSEC-2024-0449",
 ]
 
 [sources]

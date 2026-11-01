@@ -11,6 +11,9 @@
   ],
   "tags": [
     {
+      "name": "NoteSearch"
+    },
+    {
       "name": "Notes"
     },
     {
@@ -53,6 +56,86 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       },
@@ -60,7 +143,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "List users, most-recent first (paginated).",
+        "summary": "List users, paginated. Most-recent first unless `sort` says otherwise:\nrepeat it to sort by several keys, `-` prefix for descending.",
         "parameters": [
           {
             "name": "limit",
@@ -83,6 +166,19 @@
             "required": false,
             "deprecated": false,
             "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/UserSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
           }
         ],
         "responses": {
@@ -91,7 +187,87 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_UserResponse"
+                  "$ref": "#/components/schemas/ListResult_UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -122,6 +298,86 @@
                 "deprecated": false,
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -179,6 +435,86 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -225,6 +561,86 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -264,6 +680,86 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       },
@@ -271,7 +767,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "List notes, most-recent first (paginated).",
+        "summary": "List notes, paginated. Most-recent first unless `sort` says otherwise:\nrepeat it to sort by several keys, `-` prefix for descending.",
         "parameters": [
           {
             "name": "limit",
@@ -294,6 +790,19 @@
             "required": false,
             "deprecated": false,
             "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/NoteSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
           }
         ],
         "responses": {
@@ -302,7 +811,87 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_NoteResponse"
+                  "$ref": "#/components/schemas/ListResult_NoteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -344,6 +933,86 @@
                 "deprecated": false,
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -406,6 +1075,233 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/note-search": {
+      "get": {
+        "tags": [
+          "NoteSearch"
+        ],
+        "summary": "Search notes, each with its author's name, paginated. `q` matches\ncase-insensitively anywhere in a note's title or its author's name; omit\nit to list every note. Most-recent first unless `sort` says otherwise:\nrepeat it to sort by several keys, `-` prefix for descending.",
+        "parameters": [
+          {
+            "name": "q",
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/NoteSummarySort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_NoteSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -418,10 +1314,10 @@
         "title": "ChangeDisplayNameRequest",
         "description": "Request body for changing the current user's display name. Carries no\nversion: the concurrency token travels only in the `If-Match` header.",
         "required": [
-          "display_name"
+          "displayName"
         ],
         "properties": {
-          "display_name": {
+          "displayName": {
             "type": "string"
           }
         }
@@ -430,13 +1326,13 @@
         "type": "object",
         "title": "CreateNoteRequest",
         "required": [
-          "author_id",
+          "authorId",
           "title"
         ],
         "properties": {
-          "author_id": {
+          "authorId": {
             "type": "string",
-            "description": "Author id (a plain uuid; not validated against the users module)."
+            "description": "Author id: the uuid of a registered user."
           },
           "title": {
             "type": "string"
@@ -453,13 +1349,13 @@
         "description": "Request body for creating a user.",
         "required": [
           "email",
-          "display_name"
+          "displayName"
         ],
         "properties": {
           "email": {
             "type": "string"
           },
-          "display_name": {
+          "displayName": {
             "type": "string"
           }
         }
@@ -481,22 +1377,179 @@
           }
         }
       },
+      "ErrorBody": {
+        "type": "object",
+        "title": "ErrorBody",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "description": "Branch on this, not on `message`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "description": "Branch on this, not on `message`."
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "description": "The same id as the `x-request-id` header."
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "validation_error",
+          "malformed_request",
+          "unauthorized",
+          "forbidden",
+          "not_found",
+          "method_not_allowed",
+          "conflict",
+          "unsupported_media_type",
+          "precondition_required",
+          "precondition_failed",
+          "internal_error"
+        ]
+      },
+      "FieldError": {
+        "type": "object",
+        "title": "FieldError",
+        "description": "One input at fault. `path` names it as the client sent it (e.g. `title`).",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ListResult_NoteResponse": {
+        "type": "object",
+        "title": "ListResult_NoteResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ListResult_NoteSummaryResponse": {
+        "type": "object",
+        "title": "ListResult_NoteSummaryResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteSummaryResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ListResult_UserResponse": {
+        "type": "object",
+        "title": "ListResult_UserResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "NoteResponse": {
         "type": "object",
         "title": "NoteResponse",
         "required": [
           "id",
-          "author_id",
+          "authorId",
           "title",
           "body",
-          "created_at",
+          "createdAt",
           "version"
         ],
         "properties": {
           "id": {
             "type": "string"
           },
-          "author_id": {
+          "authorId": {
             "type": "string"
           },
           "title": {
@@ -505,7 +1558,7 @@
           "body": {
             "type": "string"
           },
-          "created_at": {
+          "createdAt": {
             "type": "string"
           },
           "version": {
@@ -514,75 +1567,53 @@
           }
         }
       },
-      "Page_NoteResponse": {
+      "NoteSort": {
+        "type": "string",
+        "enum": [
+          "title",
+          "-title",
+          "createdAt",
+          "-createdAt"
+        ]
+      },
+      "NoteSummaryResponse": {
         "type": "object",
-        "title": "Page_NoteResponse",
-        "description": "A single page of results plus the metadata a client needs to page further.",
+        "title": "NoteSummaryResponse",
         "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
+          "id",
+          "title",
+          "authorId",
+          "createdAt"
         ],
         "properties": {
-          "items": {
-            "type": "array",
-            "description": "The items on this page.",
-            "items": {
-              "$ref": "#/components/schemas/NoteResponse"
-            }
+          "id": {
+            "type": "string"
           },
-          "total": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Total number of matching items across all pages."
+          "title": {
+            "type": "string"
           },
-          "limit": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The `limit` that was applied."
+          "authorId": {
+            "type": "string"
           },
-          "offset": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The `offset` that was applied."
+          "authorName": {
+            "type": "string",
+            "description": "The author's display name; absent when no user has the note's author id."
+          },
+          "createdAt": {
+            "type": "string"
           }
         }
       },
-      "Page_UserResponse": {
-        "type": "object",
-        "title": "Page_UserResponse",
-        "description": "A single page of results plus the metadata a client needs to page further.",
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "description": "The items on this page.",
-            "items": {
-              "$ref": "#/components/schemas/UserResponse"
-            }
-          },
-          "total": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Total number of matching items across all pages."
-          },
-          "limit": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The `limit` that was applied."
-          },
-          "offset": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The `offset` that was applied."
-          }
-        }
+      "NoteSummarySort": {
+        "type": "string",
+        "enum": [
+          "title",
+          "-title",
+          "authorName",
+          "-authorName",
+          "createdAt",
+          "-createdAt"
+        ]
       },
       "UserResponse": {
         "type": "object",
@@ -591,8 +1622,8 @@
         "required": [
           "id",
           "email",
-          "display_name",
-          "created_at",
+          "displayName",
+          "createdAt",
           "version"
         ],
         "properties": {
@@ -602,10 +1633,10 @@
           "email": {
             "type": "string"
           },
-          "display_name": {
+          "displayName": {
             "type": "string"
           },
-          "created_at": {
+          "createdAt": {
             "type": "string"
           },
           "version": {
@@ -613,6 +1644,17 @@
             "description": "Optimistic-concurrency version. Echo it back in `If-Match` to change this\nuser; a stale value is refused with `412 Precondition Failed`. Also\nmirrored in the `ETag` response header for single-item reads."
           }
         }
+      },
+      "UserSort": {
+        "type": "string",
+        "enum": [
+          "email",
+          "-email",
+          "displayName",
+          "-displayName",
+          "createdAt",
+          "-createdAt"
+        ]
       }
     },
     "securitySchemes": {

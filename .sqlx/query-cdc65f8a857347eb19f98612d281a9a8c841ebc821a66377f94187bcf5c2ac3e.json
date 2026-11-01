@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE widgets.widget\n                    SET name = $2, version = version + 1\n                    WHERE id = $1 AND version = $3\n                    RETURNING version\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "widgets.widget",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cdc65f8a857347eb19f98612d281a9a8c841ebc821a66377f94187bcf5c2ac3e"
+}

@@ -22,25 +22,42 @@ path = "src/bin/dump-spec.rs"
 name = "migrate"
 path = "src/bin/migrate.rs"
 
+[[bin]]
+name = "seed"
+path = "src/bin/seed.rs"
+required-features = ["seed"]
+
 [dependencies]
-app-config.workspace = true
 app-db.workspace = true
-app-telemetry.workspace = true
+app-module.workspace = true
 app-web.workspace = true
 users.workspace = true
 notes.workspace = true
+note-search.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
+figment.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
-# Frontend embedding (spec §9). Off by default so the backend builds before the
-# frontend exists; the Dockerfile enables it once `frontend/dist` is present.
-# `mime-guess` provides `EmbeddedFile::metadata().mimetype()` for correct
-# Content-Type headers on the embedded SPA assets.
+# Optional so the backend builds before `frontend/dist` exists (spec §9).
+# `mime-guess` supplies the embedded assets' Content-Type.
 rust-embed = { version = "8", optional = true, features = ["mime-guess"] }
 
 [features]
 default = []
 embed-frontend = ["dep:rust-embed", "poem/embed"]
+# Builds the `seed` bin; prod images are built without it (spec §6).
+seed = ["users/seed", "notes/seed"]
+
+[dev-dependencies]
+# Enables `seed` for the composed-app test.
+server = { path = ".", features = ["seed"] }
+app-web.workspace = true
+poem = { workspace = true, features = ["test"] }
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
