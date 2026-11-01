@@ -39,6 +39,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "thiserror",
  "tokio",
  "tracing",
  "uuid",
@@ -66,6 +67,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "thiserror",
  "uuid",
 ]
 

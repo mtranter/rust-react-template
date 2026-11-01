@@ -1,13 +1,15 @@
 //! Delivers what units of work leave in `messaging` (spec §4): the relay copies
 //! each outbox event into one delivery per subscriber, a row of `messaging.job`,
-//! then each runs in its own transaction, with retries and dead-lettering. Any
-//! number of workers can run against one database: every claim skips rows
-//! another worker holds.
+//! then each runs in its own transaction, with retries and dead-lettering, in
+//! order per key within each queue. Any number of workers can run against one
+//! database: one relays at a time, every claim skips rows another worker holds,
+//! and a worker claims only the subscriptions its own handlers can decode, so
+//! builds can differ during a rolling deploy.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::{EnvelopeOf, Event};
+use app_events::{EnvelopeOf, Event, Topic};
 use app_persistence::{Handlers, MAX_ATTEMPTS};
 use chrono::TimeDelta;
 use serde_json::Value;
@@ -20,6 +22,8 @@ use std::time::Duration;
 /// longer may run twice at once; one whose worker dies runs again after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
+/// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
+const RELAY_LOCK: i64 = 0x72_656c_6179;
 
 pub struct Worker {
     pool: PgPool,
@@ -27,8 +31,10 @@ pub struct Worker {
     handlers: Arc<Handlers>,
 }
 
-/// A delivery that ran out of attempts. Rerun one by clearing its `dead_at` and
-/// `attempts` in `messaging.job`.
+/// A delivery that ran out of attempts; the later versions of its key run past
+/// it. Rerun one by clearing its `dead_at` and `attempts` in `messaging.job`:
+/// it then runs after any later versions already handled, out of order, which
+/// is why a subscriber keeping a copy of state compares versions (spec §4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeadLetter {
     pub queue: String,
@@ -54,19 +60,76 @@ impl Worker {
         }
     }
 
-    /// Polls every `interval` until `shutdown` resolves. A failure to reach the
-    /// database is logged and retried at the next poll.
-    pub async fn run(&self, interval: Duration, shutdown: impl Future<Output = ()>) {
+    /// Polls every `interval` until `shutdown` resolves. Refuses to start
+    /// unless [`check_subscriptions`](Self::check_subscriptions) passes; after
+    /// that, a failure to reach the database is logged and retried at the next poll.
+    pub async fn run(
+        &self,
+        interval: Duration,
+        shutdown: impl Future<Output = ()>,
+    ) -> AppResult<()> {
+        self.check_subscriptions().await?;
         tokio::pin!(shutdown);
         loop {
             if let Err(err) = self.run_until_idle().await {
                 tracing::error!(error = %describe(&err), "worker poll failed");
             }
             tokio::select! {
-                _ = &mut shutdown => return,
+                _ = &mut shutdown => return Ok(()),
                 _ = tokio::time::sleep(interval) => {}
             }
         }
+    }
+
+    /// Fails unless `migrate` registered every subscription this worker serves,
+    /// under the same topic; one retired since still runs its pending jobs.
+    /// Warns of each live subscription it doesn't serve: one another build's
+    /// workers must run.
+    pub async fn check_subscriptions(&self) -> AppResult<()> {
+        let registered = sqlx::query!(
+            r#"
+            SELECT queue, event_type, topic, retired_at IS NOT NULL AS "retired!"
+            FROM messaging.subscription
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+        let own: Vec<_> = self.handlers.subscriptions().collect();
+        for s in &own {
+            let found = registered
+                .iter()
+                .find(|r| r.queue == s.queue && r.event_type == s.event_type);
+            match found {
+                None => {
+                    return Err(AppError::internal(Unregistered {
+                        queue: s.queue,
+                        event_type: s.event_type,
+                    }));
+                }
+                Some(r) if r.topic != s.topic => {
+                    return Err(AppError::internal(OtherTopic {
+                        queue: s.queue,
+                        registered: r.topic.clone(),
+                        served: s.topic,
+                    }));
+                }
+                Some(_) => {}
+            }
+        }
+        for r in registered.iter().filter(|r| !r.retired) {
+            if !own
+                .iter()
+                .any(|s| s.queue == r.queue && s.event_type == r.event_type)
+            {
+                tracing::warn!(
+                    queue = r.queue,
+                    event_type = r.event_type,
+                    "a live subscription this worker doesn't serve"
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Relays and runs until nothing is due by the worker's clock, including
@@ -85,47 +148,45 @@ impl Worker {
         }
     }
 
-    /// Copies a batch of undispatched events into their subscribers' queues.
+    /// Copies a batch of undispatched events into the queues registered for
+    /// them in `messaging.subscription`, whatever this worker's own handlers.
     /// Returns how many events it dispatched; one nobody subscribes to is just
-    /// marked dispatched.
+    /// marked dispatched. Only one relay runs at a time; another returns 0.
+    ///
+    /// A key's versions commit in order (each save waits on the row lock of the
+    /// one before), so a statement that sees one sees every earlier one: with one
+    /// relay at a time, reading in `seq` order, a key's earlier job always exists,
+    /// ran, or was filtered out before its later one does.
     pub async fn relay(&self) -> AppResult<usize> {
         let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
-        let events = sqlx::query!(
+        // Its own statement, so the batch's snapshot is taken once the lock is held.
+        let relaying = sqlx::query_scalar!(
+            r#"SELECT pg_try_advisory_xact_lock($1) AS "locked!""#,
+            RELAY_LOCK,
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        if !relaying {
+            return Ok(0);
+        }
+        let seqs = sqlx::query_scalar!(
             r#"
-            SELECT seq, event_type, payload FROM messaging.outbox
+            SELECT seq FROM messaging.outbox
             WHERE dispatched_at IS NULL
             ORDER BY seq
             LIMIT $1
-            FOR UPDATE SKIP LOCKED
             "#,
             RELAY_BATCH,
         )
         .fetch_all(&mut *tx)
         .await
         .map_err(AppError::internal)?;
-        if events.is_empty() {
+        if seqs.is_empty() {
             return Ok(0);
         }
 
         let now = self.clock.now();
-        for event in &events {
-            for queue in self.handlers.subscribers(&event.event_type) {
-                sqlx::query!(
-                    r#"
-                    INSERT INTO messaging.job (queue, payload, run_at, max_attempts, created_at)
-                    VALUES ($1, $2, $3, $4, $3)
-                    "#,
-                    queue,
-                    event.payload,
-                    now,
-                    MAX_ATTEMPTS,
-                )
-                .execute(&mut *tx)
-                .await
-                .map_err(AppError::internal)?;
-            }
-        }
-        let seqs: Vec<i64> = events.iter().map(|e| e.seq).collect();
         sqlx::query!(
             "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
             now,
@@ -134,29 +195,74 @@ impl Worker {
         .execute(&mut *tx)
         .await
         .map_err(AppError::internal)?;
+        sqlx::query!(
+            r#"
+            INSERT INTO messaging.job
+                (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
+            SELECT s.queue, o.event_type, o.key, o.version, o.payload, $2, $3, $2
+            FROM messaging.outbox o
+            JOIN messaging.subscription s
+              ON s.topic = o.topic AND s.event_type = o.event_type
+             AND s.retired_at IS NULL
+            WHERE o.seq = ANY($1)
+            ORDER BY o.seq, s.queue
+            "#,
+            &seqs,
+            now,
+            MAX_ATTEMPTS,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
         tx.commit().await.map_err(AppError::internal)?;
-        Ok(events.len())
+        Ok(seqs.len())
     }
 
-    /// Claims and runs the job due first, if any. The claim counts as an
+    /// Claims and runs the job due first, if any, of the subscriptions this
+    /// worker serves, and of those only one whose key has no earlier version
+    /// still to run in its queue: running, backing off, or waiting for a worker
+    /// that can decode it. A job's row lasts until the transaction handling it
+    /// commits, so a key's next version waits for that. The claim counts as an
     /// attempt, so a job that kills its worker is dead-lettered too, eventually.
+    /// It looks up each subscription's first due job by index, so jobs no
+    /// running worker serves cost nothing; it briefly locks one per
+    /// subscription, which other workers skip.
     pub async fn run_next(&self) -> AppResult<bool> {
         let now = self.clock.now();
+        let (queues, event_types): (Vec<_>, Vec<_>) = self
+            .handlers
+            .subscriptions()
+            .map(|s| (s.queue, s.event_type))
+            .unzip();
         let claimed = sqlx::query_as!(
             Claimed,
             r#"
             UPDATE messaging.job SET attempts = attempts + 1, run_at = $2
             WHERE id = (
-                SELECT id FROM messaging.job
-                WHERE dead_at IS NULL AND run_at <= $1
-                ORDER BY run_at, id
+                SELECT due.id
+                FROM unnest($3::text[], $4::text[]) AS served (queue, event_type)
+                CROSS JOIN LATERAL (
+                    SELECT id, run_at FROM messaging.job j
+                    WHERE queue = served.queue AND event_type = served.event_type
+                      AND dead_at IS NULL AND run_at <= $1
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.job earlier
+                          WHERE earlier.queue = j.queue AND earlier.key = j.key
+                            AND earlier.version < j.version AND earlier.dead_at IS NULL
+                      )
+                    ORDER BY run_at, id
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                ) AS due
+                ORDER BY due.run_at, due.id
                 LIMIT 1
-                FOR UPDATE SKIP LOCKED
             )
             RETURNING id, queue, payload, attempts, max_attempts
             "#,
             now,
             now + LEASE,
+            &queues as &[&str],
+            &event_types as &[&str],
         )
         .fetch_optional(&self.pool)
         .await
@@ -223,7 +329,12 @@ impl Worker {
     /// Every `E` published so far, oldest first: for tests and diagnostics.
     pub async fn published<E: Event>(&self) -> AppResult<Vec<EnvelopeOf<E>>> {
         let payloads = sqlx::query_scalar!(
-            "SELECT payload FROM messaging.outbox WHERE event_type = $1 ORDER BY seq",
+            r#"
+            SELECT payload FROM messaging.outbox
+            WHERE topic = $1 AND event_type = $2
+            ORDER BY seq
+            "#,
+            <E::Topic as Topic>::NAME,
             E::TYPE,
         )
         .fetch_all(&self.pool)
@@ -248,6 +359,21 @@ impl Worker {
         .await
         .map_err(AppError::internal)
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("`{queue}` isn't subscribed to `{event_type}`: run `migrate` with this build first")]
+struct Unregistered {
+    queue: &'static str,
+    event_type: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("`{queue}` is registered to the topic `{registered}`, but this build serves `{served}`")]
+struct OtherTopic {
+    queue: &'static str,
+    registered: String,
+    served: &'static str,
 }
 
 /// 10s, doubling per attempt, at most an hour.

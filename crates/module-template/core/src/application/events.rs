@@ -1,15 +1,14 @@
-use super::PendingEvent;
+use super::{PendingEvent, Version};
 use crate::domain::{Widget, WidgetEvent};
-use app_events::EventPayload;
-use widgets_api::events::v1::{self, WidgetCreated, WidgetRenamed};
+use widgets_api::events::v1::{self, WidgetTopic};
 
 /// Where the domain's events meet the published contract.
-pub(super) fn pending(widget: &Widget, event: WidgetEvent) -> PendingEvent {
-    let payload = EventPayload::new(state(widget));
-    match event {
-        WidgetEvent::Created => PendingEvent::of::<WidgetCreated>(payload),
-        WidgetEvent::Renamed => PendingEvent::of::<WidgetRenamed>(payload),
-    }
+pub(super) fn pending(widget: &Widget, version: Version, event: WidgetEvent) -> PendingEvent {
+    let event = match event {
+        WidgetEvent::Created => v1::WidgetEvent::Created,
+        WidgetEvent::Renamed => v1::WidgetEvent::Renamed,
+    };
+    PendingEvent::on::<WidgetTopic>(version, &state(widget), event)
 }
 
 fn state(widget: &Widget) -> v1::Widget {

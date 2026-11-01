@@ -4,7 +4,7 @@ use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
-use app_persistence::Handlers;
+use app_persistence::{Handlers, Version};
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use serde_json::json;
@@ -91,14 +91,15 @@ impl Widgets {
         Self { api, worker }
     }
 
-    /// Every `E` widgets has announced to other modules, oldest first.
-    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+    /// Every `E` widgets has announced to other modules, oldest first, with the
+    /// version of the widget each announces.
+    pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker
             .published::<E>()
             .await
             .expect("read the outbox")
             .into_iter()
-            .map(|event| event.data)
+            .map(|event| (Version::from_i64(event.entity_version), event.data))
             .collect()
     }
 

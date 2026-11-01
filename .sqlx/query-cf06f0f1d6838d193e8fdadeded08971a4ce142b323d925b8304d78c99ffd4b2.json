@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT seq FROM messaging.outbox\n            WHERE dispatched_at IS NULL\n            ORDER BY seq\n            LIMIT $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "messaging.outbox",
+            "name": "seq"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cf06f0f1d6838d193e8fdadeded08971a4ce142b323d925b8304d78c99ffd4b2"
+}

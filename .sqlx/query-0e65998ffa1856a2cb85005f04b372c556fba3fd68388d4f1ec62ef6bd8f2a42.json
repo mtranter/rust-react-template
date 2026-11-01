@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT payload FROM messaging.outbox WHERE event_type = $1 ORDER BY seq",
+  "query": "\n            SELECT payload FROM messaging.outbox\n            WHERE topic = $1 AND event_type = $2\n            ORDER BY seq\n            ",
   "describe": {
     "columns": [
       {
@@ -17,6 +17,7 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text"
       ]
     },
@@ -24,5 +25,5 @@
       false
     ]
   },
-  "hash": "e4428abb3a7ae38328a6de85541058714d050f332a7b8521f340ed24119ce082"
+  "hash": "0e65998ffa1856a2cb85005f04b372c556fba3fd68388d4f1ec62ef6bd8f2a42"
 }

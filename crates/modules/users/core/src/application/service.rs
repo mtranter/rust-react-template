@@ -41,7 +41,7 @@ impl UserService {
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &user, Expected::New).await?;
         self.publisher
-            .publish(&mut tx, events::pending(&user, event))
+            .publish(&mut tx, events::pending(&user, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -65,7 +65,7 @@ impl UserService {
             .save(&mut tx, &user, Expected::Version(expected))
             .await?;
         self.publisher
-            .publish(&mut tx, events::pending(&user, event))
+            .publish(&mut tx, events::pending(&user, version, event))
             .await?;
         tx.commit().await?;
         Ok(Versioned {
@@ -79,7 +79,8 @@ impl UserService {
     pub async fn delete(&self, id: UserId, expected: Version) -> AppResult<()> {
         let current = self.get(id).await?;
         // Checked here as well as by the delete, so the state announced is the
-        // version deleted, not one read before a concurrent change.
+        // version deleted, not one read before a concurrent change. The event
+        // announces the version after it, so it's the newest of its key.
         if current.version != expected {
             return Err(AppError::precondition_failed(
                 "the account was modified elsewhere",
@@ -89,7 +90,10 @@ impl UserService {
         let mut tx = self.transactions.begin().await?;
         self.repo.delete(&mut tx, id, expected).await?;
         self.publisher
-            .publish(&mut tx, events::pending(&current.entity, event))
+            .publish(
+                &mut tx,
+                events::pending(&current.entity, expected.next(), event),
+            )
             .await?;
         tx.commit().await
     }

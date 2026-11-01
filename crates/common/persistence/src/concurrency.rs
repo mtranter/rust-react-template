@@ -15,6 +15,11 @@ impl Version {
     pub fn as_i64(self) -> i64 {
         self.0
     }
+
+    /// What deleting this version announces: strictly the newest of its root.
+    pub fn next(self) -> Self {
+        Version(self.0 + 1)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

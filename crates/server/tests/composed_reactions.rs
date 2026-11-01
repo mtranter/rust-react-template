@@ -28,6 +28,9 @@ async fn deleting_a_user_archives_their_notes_once_the_worker_runs(pool: PgPool)
         module.seed(pool.clone()).await.expect("seed every module");
     }
     let ctx = Context::new(pool, Arc::new(SystemClock));
+    server::register_subscriptions(&ctx)
+        .await
+        .expect("register every module's subscriptions");
     let worker = server::worker(&ctx);
     let verifier = JwtVerifier::new("test-secret");
     let alice = format!("Bearer {}", verifier.issue(ALICE.to_string(), 60).unwrap());

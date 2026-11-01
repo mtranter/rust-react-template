@@ -12,7 +12,7 @@ pub use app::build_app;
 pub use modules::{Endpoints, modules};
 pub use shutdown::shutdown_signal;
 
-use app_db::{ModuleMigrations, Worker};
+use app_db::{ModuleMigrations, SubscriptionError, Worker};
 use app_module::Context;
 use app_persistence::Handlers;
 use poem_openapi::OpenApiService;
@@ -30,11 +30,19 @@ pub fn module_migrations() -> Vec<ModuleMigrations> {
     modules().iter().filter_map(|m| m.migrations()).collect()
 }
 
-/// Runs every module's subscriptions and jobs. Panics if two modules claim one
-/// queue name.
-pub fn worker(ctx: &Context) -> Worker {
-    let handlers = modules().iter().fold(Handlers::new(), |all, module| {
+/// Every module's subscriptions. Panics if two modules claim one queue name.
+pub fn handlers(ctx: &Context) -> Handlers {
+    modules().iter().fold(Handlers::new(), |all, module| {
         all.merge(module.handlers(ctx))
-    });
-    ctx.worker(handlers)
+    })
+}
+
+/// Runs every module's subscriptions.
+pub fn worker(ctx: &Context) -> Worker {
+    ctx.worker(handlers(ctx))
+}
+
+/// Registers every module's subscriptions, as `migrate` does after migrating.
+pub async fn register_subscriptions(ctx: &Context) -> Result<(), SubscriptionError> {
+    app_db::register_subscriptions(&ctx.pool(), &handlers(ctx)).await
 }

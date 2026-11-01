@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let interval = Duration::from_millis(config.worker_poll_ms);
     tracing::info!(?interval, "starting worker");
-    worker.run(interval, server::shutdown_signal()).await;
+    worker.run(interval, server::shutdown_signal()).await?;
     tracing::info!("worker stopped");
     Ok(())
 }

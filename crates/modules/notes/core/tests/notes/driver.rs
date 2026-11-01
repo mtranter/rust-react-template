@@ -3,7 +3,7 @@ use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
-use app_persistence::PendingEvent;
+use app_persistence::{PendingEvent, Version};
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
@@ -15,7 +15,7 @@ use sqlx::{AssertSqlSafe, PgPool};
 use std::fmt::Display;
 use std::sync::Arc;
 use users_api::UserDirectory;
-use users_api::events::v1::{self as users_events, UserDeleted};
+use users_api::events::v1::{self as users_events, UserTopic};
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -121,7 +121,11 @@ impl Notes {
 
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
-        let worker = ctx.worker(notes::handlers(&ctx, Arc::new(KnownUsers)));
+        let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
+        app_db::register_subscriptions(&ctx.pool(), &handlers)
+            .await
+            .expect("register notes' subscriptions");
+        let worker = ctx.worker(handlers);
         let api = TestApi::new(NotesEndpoints, |app| {
             app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
         });
@@ -142,7 +146,8 @@ impl Notes {
     }
 
     /// The users module announcing a seeded user's deletion, as it would after
-    /// `DELETE /users/me`: the event is the contract, so it stands in for running users.
+    /// `DELETE /users/me` at their seeded version: the event is the contract, so
+    /// it stands in for running users.
     pub async fn user_deleted(&self, user: Uuid) {
         let user = [users_api::seed::alice(), users_api::seed::bob()]
             .into_iter()
@@ -153,26 +158,38 @@ impl Notes {
             .publisher()
             .publish(
                 &mut tx,
-                PendingEvent::of::<UserDeleted>(EventPayload::new(users_events::User {
-                    id: user.id,
-                    email: user.email,
-                    display_name: user.display_name,
-                })),
+                PendingEvent::on::<UserTopic>(
+                    Version::FIRST.next(),
+                    &users_events::User {
+                        id: user.id,
+                        email: user.email,
+                        display_name: user.display_name,
+                    },
+                    users_events::UserEvent::Deleted,
+                ),
             )
             .await
             .expect("publish");
         tx.commit().await.expect("commit");
     }
 
-    /// Every `E` notes has announced to other modules, oldest first.
-    pub async fn announced<E: Event>(&self) -> Vec<PayloadOf<E>> {
+    /// Every `E` notes has announced to other modules, oldest first, with the
+    /// version of the note each announces.
+    pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker
             .published::<E>()
             .await
             .expect("read the outbox")
             .into_iter()
-            .map(|event| event.data)
+            .map(|event| (Version::from_i64(event.entity_version), event.data))
             .collect()
+    }
+
+    /// Fault injection: every event announced so far is delivered again, as
+    /// at-least-once delivery allows.
+    pub async fn everything_is_delivered_again(&self) {
+        self.sql("UPDATE messaging.outbox SET dispatched_at = NULL".into())
+            .await;
     }
 
     /// Delivers the events announced so far, as the worker would.

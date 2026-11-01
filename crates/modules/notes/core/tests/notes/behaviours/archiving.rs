@@ -1,6 +1,8 @@
 use crate::driver::{NoteJson, Notes, Refusal, announced};
 use app_events::EventPayload;
+use app_persistence::Version;
 use chrono::TimeDelta;
+use notes::NoteId;
 use notes::seed::{self, ALICES_NOTE, BOBS_NOTE};
 use notes_api::events::v1::{self, NoteArchived};
 use sqlx::PgPool;
@@ -33,10 +35,38 @@ async fn archiving_a_note_announces_it(pool: PgPool) {
 
     assert_eq!(
         notes.announced::<NoteArchived>().await,
-        [EventPayload::new(v1::Note {
-            archived_at: Some(notes.now()),
-            ..announced(&seed::alices_note()).entity
-        })]
+        [(
+            Version::from_i64(2),
+            EventPayload::new(v1::Note {
+                archived_at: Some(notes.now()),
+                ..announced(&seed::alices_note()).entity
+            })
+        )]
+    );
+}
+
+#[sqlx::test(migrations = false)]
+async fn archiving_announces_each_note_at_its_new_version(pool: PgPool) {
+    let notes = Notes::seeded(pool).await;
+    let newer = notes.create(ALICE, "Newer", "").await.unwrap();
+    let newer_id: NoteId = newer.id().parse().unwrap();
+    notes.edit(newer_id, 1, "Newer", "edited").await.unwrap();
+
+    notes.user_deleted(ALICE).await;
+    notes.run_pending_events().await;
+
+    let archived: Vec<_> = notes
+        .announced::<NoteArchived>()
+        .await
+        .into_iter()
+        .map(|(version, payload)| (version, payload.entity.id))
+        .collect();
+    assert_eq!(
+        archived,
+        [
+            (Version::from_i64(2), ALICES_NOTE.as_uuid()),
+            (Version::from_i64(3), newer_id.as_uuid()),
+        ]
     );
 }
 
@@ -57,7 +87,7 @@ async fn a_deletion_delivered_twice_archives_once(pool: PgPool) {
     notes.user_deleted(ALICE).await;
     notes.run_pending_events().await;
     notes.later(TimeDelta::hours(1));
-    notes.user_deleted(ALICE).await;
+    notes.everything_is_delivered_again().await;
     notes.run_pending_events().await;
 
     assert_eq!(

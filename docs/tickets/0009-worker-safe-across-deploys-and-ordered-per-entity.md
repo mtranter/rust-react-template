@@ -1,7 +1,7 @@
 ---
 id: 0009
 name: Deliver events by topic, in order per key, and safely across rolling deploys
-status: todo
+status: done
 priority: P1
 size: L
 blocked_by: []
@@ -321,44 +321,44 @@ ship on their own if this has to be split.
 ### Deploy safety
 These tests go in `crates/common/db/tests/`, using two workers on one database
 built from different `Handlers`, plus small test topics.
-- [ ] An old worker never claims a job of a `(queue, event_type)` it doesn't
+- [x] An old worker never claims a job of a `(queue, event_type)` it doesn't
       serve; the new worker runs it. Assert no attempt and no `last_error` on
       that job. Fails on `main`.
-- [ ] After registration, a relay run by the old worker still fans out to the
+- [x] After registration, a relay run by the old worker still fans out to the
       new subscription. Fails on `main`.
-- [ ] An event relayed before a subscription is registered gets no job for it.
-- [ ] Registering a queue under a second topic fails.
-- [ ] Re-registering a retired queue fails, and retiring dead-letters the
+- [x] An event relayed before a subscription is registered gets no job for it.
+- [x] Registering a queue under a second topic fails.
+- [x] Re-registering a retired queue fails, and retiring dead-letters the
       queue's pending jobs.
-- [ ] A worker whose subscriptions aren't registered refuses to start.
+- [x] A worker whose subscriptions aren't registered refuses to start.
 
 ### Order
-- [ ] One key with v1, v2, v3, where v2 fails once: v3 doesn't run until v2
+- [x] One key with v1, v2, v3, where v2 fails once: v3 doesn't run until v2
       succeeds.
-- [ ] When v2 is dead-lettered, v3 runs.
-- [ ] A second key proceeds while the first is held up.
-- [ ] A whole-topic queue receives two event types for one key in version order.
-- [ ] Two relays running at once never invert a key's versions, and never fan
+- [x] When v2 is dead-lettered, v3 runs.
+- [x] A second key proceeds while the first is held up.
+- [x] A whole-topic queue receives two event types for one key in version order.
+- [x] Two relays running at once never invert a key's versions, and never fan
       one event out twice.
-- [ ] A job whose type this worker can't decode holds up later jobs of its key
+- [x] A job whose type this worker can't decode holds up later jobs of its key
       in that queue, and no others.
 
 ### Contract
-- [ ] Every published event carries its root's version, stored on the outbox
+- [x] Every published event carries its root's version, stored on the outbox
       row and in the envelope.
-- [ ] The `users`/`notes`/template drivers' `announced::<E>()` returns
+- [x] The `users`/`notes`/template drivers' `announced::<E>()` returns
       `(Version, PayloadOf<E>)`, and every behaviour asserts the version,
       including `UserDeleted` carrying the deleted version plus one.
-- [ ] `notes`' `archive_notes_by` publishes each note's new version.
-- [ ] A second event for one root in one save is refused by the outbox's
+- [x] `notes`' `archive_notes_by` publishes each note's new version.
+- [x] A second event for one root in one save is refused by the outbox's
       unique index.
-- [ ] Each topic's enum is exhaustive, and its type strings are unique (the
+- [x] Each topic's enum is exhaustive, and its type strings are unique (the
       generated test).
-- [ ] Every topic round-trips through `encode` and `decode`.
+- [x] Every topic round-trips through `encode` and `decode`.
 
 ### Docs and checks
-- [ ] `EventEnvelope::time` is documented accurately.
-- [ ] Spec §4 and D9 describe:
+- [x] `EventEnvelope::time` is documented accurately.
+- [x] Spec §4 and D9 describe:
   - topics, keys and versions;
   - claim filtering;
   - subscriptions registered at migrate time, and their start-from-registration
@@ -366,9 +366,9 @@ built from different `Handlers`, plus small test topics.
   - retiring a subscription;
   - order per key and its limits;
   - the consumer rule.
-- [ ] CLAUDE.md "Side effects and reactions" follows the new contract.
-- [ ] `crates/server/tests/composed_reactions.rs` passes.
-- [ ] `make check` passes, and `make prepare` has been run for the changed
+- [x] CLAUDE.md "Side effects and reactions" follows the new contract.
+- [x] `crates/server/tests/composed_reactions.rs` passes.
+- [x] `make check` passes, and `make prepare` has been run for the changed
       `query!`s.
 
 ## Out of scope

@@ -1,5 +1,6 @@
 use crate::driver::{Refusal, Widgets};
 use app_events::EventPayload;
+use app_persistence::Version;
 use app_test_support::{assert_json_exists, assert_json_matches};
 use sqlx::PgPool;
 use widgets_api::events::v1::{self, WidgetCreated};
@@ -25,10 +26,13 @@ async fn creating_a_widget_announces_it(pool: PgPool) {
 
     assert_eq!(
         widgets.announced::<WidgetCreated>().await,
-        [EventPayload::new(v1::Widget {
-            id: created.id().parse().unwrap(),
-            name: "Third".into(),
-        })]
+        [(
+            Version::FIRST,
+            EventPayload::new(v1::Widget {
+                id: created.id().parse().unwrap(),
+                name: "Third".into(),
+            })
+        )]
     );
 }
 

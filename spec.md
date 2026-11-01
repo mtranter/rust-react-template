@@ -223,7 +223,10 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin
   module's **`Repository`** trait — it speaks in aggregates, never rows:
   `get → Option<Versioned<X>>`, `save(&mut Tx, &X, Expected) → Version`, and
   `list(&ListQuery<XSortKey>) → Listed<Versioned<X>>` where the module lists.
-  Reads run on the pool; every write takes the caller's `&mut Tx`.
+  Reads run on the pool; every write takes the caller's `&mut Tx`. Every write
+  to an aggregate, a change to a child included, saves the root with its
+  version guard: the order of a root's events depends on it (below), so a
+  module that writes a child row without bumping its root loses it.
   `error.rs`: an exhaustive
   mapping from the domain error onto `AppError`. Depends only on the domain and
   pure crates.
@@ -362,21 +365,49 @@ and only if the write commits:
   may change nothing: `notes`' `archive` of an archived note), and a deletion `XEvent` from the aggregate as it was last.
   A variant carries only what the state can't say (the event's context), never
   the state. `application/events.rs` maps each variant, exhaustively, to its
-  `-api` event: `pending(&aggregate, event) -> PendingEvent`, building the
-  payload from the aggregate as it now is. That match is the one place domain
-  names meet the published contract, so the domain can rename or split its
-  events without touching `events::v1`.
+  topic's event enum in the `-api`: `pending(&aggregate, event) -> PendingEvent`,
+  `PendingEvent::on::<UserTopic>(&state, event)` with the state built from the
+  aggregate as it now is. That match is the one place domain names meet the
+  published contract, so the domain can rename or split its events without
+  touching `events::v1`; the path from domain to wire has two exhaustive
+  matches, one on each side.
 - **An event** (`publisher.publish`) tells other modules something happened to an
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
   unit of work that saves it, one per aggregate changed (`users`: registered,
-  display name changed, deleted; `notes`: created, edited, archived). Its type
-  is a marker implementing `app_events::Event` in the module's `-api`,
-  versioned (`users_api::events::v1::UserDeleted`,
-  `TYPE = "users.user_deleted.v1"`, `SOURCE = "/users"`), naming what it
-  carries (`Entity`, `Context`) and how to find its subject (the root's id).
-  A breaking change is a new `TYPE` beside the old one. The publisher doesn't
-  know who listens.
+  display name changed, deleted; `notes`: created, edited, archived). The
+  publisher doesn't know who listens.
+- **Each aggregate root has a topic** (as Kafka has topics): one stream of its
+  events, keyed by the root's id. A module's `-api` declares it with
+  `app_events::topic!` (`users_api::events::v1`):
+
+  ```rust
+  app_events::topic! {
+      pub topic UserTopic("users.user.v1") {
+          source: "/users",
+          entity: User,
+          key: |user| user.id.to_string(),
+          events: UserEvent, UserEventKind;
+          UserRegistered => Registered: "users.user_registered",
+          UserDisplayNameChanged => DisplayNameChanged: "users.user_display_name_changed",
+          UserDeleted => Deleted: "users.user_deleted",
+      }
+  }
+  ```
+
+  It generates the `app_events::Topic` (`NAME`, `SOURCE`, `Entity`, `Event`,
+  `key`), the topic's event enum with one variant per event holding its
+  context (`ItemRemovedFromList => ItemRemoved(ItemRemoved): "lists.item_removed"`),
+  its `decode` and `encode`, a fieldless `UserEventKind` holding each type
+  string, and a marker type per event (`UserDeleted`) implementing
+  `app_events::Event` (`TYPE`, `Topic`, `Context`). It fails to compile if two
+  events of a topic share a type. The enum is deliberately **not**
+  `#[non_exhaustive]`: a new event breaks every whole-topic consumer's build,
+  in the same change. **Versioning is the topic's**: event types are
+  `<module>.<event>`, unique within the topic; contexts and the entity only gain
+  fields, each `#[serde(default)]`, and adding an event is additive on the
+  wire; removing one or changing the entity incompatibly is a new topic
+  (`users.user.v2`), published beside v1 until its consumers have moved.
 - **What an event carries is an `app_events::EventPayload { entity, context }`**
   (event-carried state transfer, so a subscriber never calls back).
   `entity` is the aggregate root's whole state as it now is, every property but
@@ -390,26 +421,48 @@ and only if the write commits:
   the publisher, deciding what they need. `context` says what happened where
   the state alone can't: an event about a child of the root (`ToDoItemRemoved`)
   carries the root (the list) as its entity and the child's id as its context
-  (`ItemRemoved { item_id }`). Each event type fixes its context; `NoContext`,
-  left out of the JSON, where the entity says it all (every event in this repo
-  today: none of its aggregates has children). Both are stored as JSON, so a
-  version only gains fields, each `#[serde(default)]`.
+  (`ItemRemoved { item_id }`), held by its variant. Each event type fixes its
+  context; `NoContext`, left out of the JSON, where the entity says it all
+  (every event in this repo today: none of its aggregates has children).
 - **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
-  1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`,
-  `subject`, `time`, `datacontenttype`, `data`: the payload);
+  1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`: the
+  event type, `subject`: the key, `time`, `datacontenttype`, `data`: the
+  payload `{ entity, context? }`), with extension attributes `topic`,
+  `partitionkey` (the key, from CloudEvents' partitioning extension) and
+  `entityversion`;
   `EnvelopeOf<E>` names it for an event. A service hands the publisher a
-  `PendingEvent::of::<E>(payload)`, an event with its type erased so a
-  module's events share one type, and the publisher stamps the id and
-  time and stores the whole envelope as the outbox `payload`; subscribers
-  receive it, so they have the event's id to deduplicate on and the time it
-  happened.
-- **A subscriber** is how a module reacts: an
-  `app_persistence::Handle<E>` impl in its `application/`, receiving an
-  `EnvelopeOf<E>` (`notes`'
-  `application/reactions.rs`, deleting a user archives their notes), registered
-  under a stable queue name in its `handlers(..)`
-  (`Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`).
-  It must tolerate being run twice and in any order. A module may subscribe to
+  `PendingEvent`, its topic erased so every module's events share one type,
+  and the publisher stamps the id and time and stores the whole envelope as
+  the outbox `payload`; subscribers receive it, so they have the event's id to
+  deduplicate on. `time` is when the publishing transaction recorded it, by
+  that instance's clock, before it committed: it doesn't order events.
+  Decoding takes two steps, since `type` and `context` sit at
+  different depths, beyond a serde-tagged enum: the envelope with its context
+  as raw JSON, then `UserEvent::decode(type, context)`.
+- **Every event carries its root's version**, required by
+  `PendingEvent::on::<T>(version, &state, event)`: on the outbox row
+  (`topic`, `key`, `version`, unique together, so a second event for one save
+  fails it) and in the envelope as `entityversion`. A save publishes the
+  `Version` its `save` returned; a deletion publishes the version it removed
+  plus one (`Version::next()`, `users`' `delete` announces `expected.next()`),
+  so it is strictly the newest event of its key rather than tying with the
+  last update. `entityversion` is a custom extension attribute holding an
+  integer, not CloudEvents' `sequence`, which is a string that must sort
+  lexicographically and has no stated scope; this one is an integer scoped to
+  one `topic` and `partitionkey`.
+- **A subscriber** is how a module reacts: an `app_persistence::Handle<S>`
+  impl in its `application/`, registered under a stable queue name in its
+  `handlers(..)`. It subscribes either to one event,
+  `Handle<UserDeleted>` receiving an `EnvelopeOf<UserDeleted>` (`notes`'
+  `application/reactions.rs`, deleting a user archives their notes;
+  `Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service)`),
+  or to a whole topic, `Handle<UserTopic>` receiving a
+  `TopicEnvelope<UserTopic> { id, key, time, entity, event }` and matching
+  `event` with no wildcard arm (`.on::<UserTopic>(queue, handler)`; one
+  subscription row per event type). A queue is of one topic; it may list
+  several of its types. A delivery of a topic or type its queue didn't
+  register is refused.
+  It must tolerate being run twice (and, rarely, out of order: below). A module may subscribe to
   its own events: `users` welcomes a registered user by reacting to its
   `UserRegistered` (`application/welcome.rs`), rather than the registration
   ordering the email. A side effect on an external system sits behind a port
@@ -430,7 +483,94 @@ failing handler rolls back, backs off (10s, doubling, at most an hour) and is
 retried; after `MAX_ATTEMPTS` (5) it is **dead-lettered**: `dead_at` is set and
 it stays in `messaging.job` with its `last_error` until someone reruns it. A
 claim is a lease, so a delivery whose worker died runs again. Everything is
-at-least-once; nothing is ordered.
+at-least-once, and **in order per key, per subscription**.
+
+The model is Kafka's: a topic per root, the root's id as the message key,
+order per key by the root's `Version` (finer than Kafka's per partition, so a
+failing event holds up only its own key), a subscription as a consumer group,
+and a `messaging.job` row per message still to deliver in place of an offset
+(the relay creates jobs, so nobody needs the outbox in commit order, which
+`seq` isn't). It works because **commit order is version order per key**:
+every write to an aggregate is a version-guarded `UPDATE` or `DELETE` of its
+root's row, so v4's transaction waits on the row lock until v3's commits, and
+the outbox row is written in the same transaction; a statement that sees v4's
+outbox row sees v3's. Two mechanisms keep that order to the subscriber:
+
+- **One relay at a time.** The relay takes `pg_try_advisory_xact_lock` (another
+  worker holding it relays nothing that poll), reads a batch `ORDER BY seq`
+  without `SKIP LOCKED`, and in one transaction marks it dispatched and fans
+  it out (`INSERT INTO messaging.job … SELECT … JOIN messaging.subscription`),
+  each job carrying its event's `key` and `version`. So a key's v3 job exists,
+  ran, or was filtered out before its v4 job does. Workers still claim jobs in
+  parallel.
+- **A claim waits for earlier versions of the same key in the same queue**:
+  `NOT EXISTS (SELECT 1 FROM messaging.job e WHERE e.queue = j.queue AND e.key = j.key AND e.version < j.version AND e.dead_at IS NULL)`
+  (index `(queue, key, version) WHERE dead_at IS NULL`). A job's row lasts
+  until the transaction handling it commits its deletion, so while v3 runs,
+  backs off or waits for a worker that can decode it, v4 can't be claimed.
+
+What that gives, and doesn't:
+- **No order across keys, topics or subscriptions.** `UserDeleted` and a racing
+  `NoteCreated` by that user stay unordered.
+- **Gaps are normal**: a filtered subscription, or one registered after some of
+  a key's events, sees only some versions.
+- **A failing job holds up only its own key, in its own queue**, until it
+  succeeds or is dead-lettered (about 2.5 minutes over 5 attempts); then the
+  key moves on past it. For a copy of state, skipping it is harmless: the next
+  event carries the whole state.
+- **Rerunning a dead letter after later versions ran delivers it out of
+  order**, and a lease that expires mid-run can run a job beside its successor.
+
+So **a subscriber that keeps a copy of another module's state stores the
+version with it** and applies each event in one conditional statement,
+`INSERT … ON CONFLICT (id) DO UPDATE … WHERE copy.version < EXCLUDED.version`,
+keeping a tombstone row for a deletion. This is a backstop for those two
+cases; ordered delivery is the main mechanism. Reactions to facts (mail,
+`notes`' archiving) don't compare versions.
+
+A worker claims only what it can decode: each job records its `event_type`,
+and the claim takes only the `(queue, event_type)` pairs its own `Handlers`
+list (`Handlers::subscriptions`). During a rolling deploy, old and new builds
+run side by side; a job for a subscription only the new build has waits for a
+new worker, rather than an old one failing it and spending one of its attempts.
+A job no running worker can decode simply waits; `NoHandler` stays only as a
+guard. The claim looks up each served pair's first due job by index
+(`job_due_idx` on `(queue, event_type, run_at, id)`), so jobs nobody running
+serves don't slow it. (The release that brought this filter wasn't protected
+by it: the build it replaced claimed any queue.)
+
+**Subscriptions live in the database**, in `messaging.subscription`
+(`queue`, `event_type`, `topic`, `registered_at`, `retired_at`), and the relay
+fans out by joining it, so every build relays the same way whatever handlers
+it was built with. They are registered when migrating, never when a worker
+starts: the `migrate` bin, after the migrations, calls
+`app_db::register_subscriptions(&pool, &handlers)` with every module's
+`Handlers` (test drivers call it as they build their worker). Migrations run
+before a rollout (§6), so a new build's subscriptions exist before any of its
+processes publishes or relays, and there's no window in which events go out
+without their new subscribers. A worker never writes the table; on starting
+(`Worker::run`, via `check_subscriptions`) it refuses to run if one of its own
+`(queue, event_type)` pairs is missing or registered under another topic,
+warns of each live subscription it doesn't serve, and still runs the pending
+jobs of a retired one it serves.
+
+- **A subscription receives every event relayed after its registration
+  commits**, and no history: one added to a running system starts empty.
+- **A queue is bound to one topic forever.** Registering an existing queue
+  under another topic fails the migrate step; moving to a new topic means a new
+  queue name.
+- **A retired queue's name is never reused**: registering one fails the
+  migrate step, so a rollback or an old `migrate` can't revive it.
+
+**Retiring a subscription** is a migration, never a side effect of deploying
+code without its handler: it stops relaying to it, and dead-letters what it
+hadn't run yet, where it stays visible:
+
+```sql
+UPDATE messaging.subscription SET retired_at = now() WHERE queue = 'notes.archive_deleted_authors_notes';
+UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired'
+WHERE queue = 'notes.archive_deleted_authors_notes' AND dead_at IS NULL;
+```
 
 Rules:
 - A module never writes another module's data, through its `-api` or otherwise;
@@ -525,7 +665,7 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 |---|---|---|---|
 | `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
-| `app-events` | pure | `Event` (what a module announces), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
+| `app-events` | pure | `Topic` and `topic!` (a root's events, keyed by its id), `Event` (one of them), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` / `TopicEnvelope<T>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
 | `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `EventPublisher` / `PendingEvent`, `Handle` / `Handlers` (subscribers, §4) | application and db layers |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
 | `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `PgEventPublisher` (the outbox), `Worker` (relay, delivery, dead letters) | db layers, server |
@@ -566,7 +706,8 @@ application layer maps onto `app-error`.)
   its own long-lived deployment beside `server`, with the same config
   (`DATABASE_URL`, `APP_*`; `APP_WORKER_POLL_MS` sets its idle poll, default
   1000). Scale it by running more replicas: they share the queue. It needs the
-  migrations applied, like the server, and stops on SIGTERM after the job in hand.
+  migrations applied, like the server, and its subscriptions registered (which
+  `migrate` does; it refuses to start otherwise), and stops on SIGTERM after the job in hand.
   `make dev` runs it beside the server.
 - **The `messaging` schema** (outbox and delivery queue) belongs to no module: `app-db`
   owns its migrations, and `run_migrations` applies them before any module's.
@@ -804,14 +945,17 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   path selects).
 - **Time and background work.** A driver builds its module's `Context` with a
   `FixedClock` (after the seeds' times) and the module's worker
-  (`ctx.worker(module::handlers(&ctx, ..))`), so tests stay synchronous and
+  (`ctx.worker(module::handlers(&ctx, ..))`, its subscriptions registered first
+  with `app_db::register_subscriptions`, as `migrate` does), so tests stay synchronous and
   deterministic: work happens only when a verb runs it (`run_pending_events()`,
   i.e. `Worker::run_until_idle`) and time moves only when one
   advances it (`later(by)`). A subscriber's driver stands in for the publisher
   by publishing the `-api` event itself (`notes.user_deleted(ALICE)`), as it
   stubs a `-api` trait; the publisher's driver exposes what it published as
-  `announced::<E>()` (over `Worker::published::<E>()`), every state-changing
-  behaviour asserts its event and every refused one that nothing was announced,
+  `announced::<E>()` (over `Worker::published::<E>()`), each paired with the
+  version it announces (`[(Version::from_i64(2), announced(&note))]`; not the
+  whole envelope, whose `id` is random), every state-changing
+  behaviour asserts its event and version and every refused one that nothing was announced,
   and dead letters are `Worker::dead_letters()`.
   A port to an external system gets a Fake in the driver (`users`' `FakeMailer`,
   which can be taken down to exercise retries). `crates/server/tests/composed_reactions.rs`
@@ -1132,7 +1276,7 @@ complete or fail), tested here. **One shared
 `messaging` schema** rather than an outbox per module: one relay query, one place
 for dead letters, and no module writing another's schema when an event fans out
 into the subscriber's queue; it belongs to no module, so it is `app-db`'s, and
-events are namespaced by `TYPE`. Lifting a module out (D1) means relaying its
+events are namespaced by topic. Lifting a module out (D1) means relaying its
 events to a broker instead, which is what an outbox is for. **Publishing is a port beside the
 repository, not a method on the `Tx`**, so the service publishes deliberately
 and the `Tx` stays a plain transaction that knows nothing of events or the
@@ -1147,8 +1291,18 @@ transactions, and can't survive lifting one out); opaque JSON events with a
 schema registry (no compiler between publisher and subscriber); passing
 `PgPool` into services (defeats the clippy tripwire); a closure-scoped
 `transaction(|tx| ..)` (async closures over `dyn` services don't compose; a
-dropped `Tx` already rolls back). **Trade-offs.** Delivery is at-least-once and
-unordered, so every handler is idempotent; cross-module consistency is eventual
+dropped `Tx` already rolls back). **Ordered per key, by topic, Kafka's
+model.** A topic per root with an exhaustive event enum lets a consumer see
+one entity's events together; the root's version orders them, because
+version-guarded writes already make commit order version order per key, so
+one relay at a time and a claim that waits for a key's earlier versions are
+all it takes. No partitions (a failing event holds up only its key) and no
+offsets (they'd need the outbox in commit order; per-key order doesn't).
+**Subscriptions are rows, registered by `migrate`**, so old and new builds
+relay alike during a rolling deploy, and a worker claims only what it can
+decode. **Trade-offs.** Delivery is at-least-once, ordered only per key and
+subscription (rerun dead letters and expired leases can still reorder, so a
+subscriber keeping a copy of state compares versions), so every handler is idempotent; cross-module consistency is eventual
 (a note created by a user deleted at that moment can escape archiving); a
 handler holds a transaction open while it runs, so a slow external call holds a
 connection; the outbox keeps dispatched rows until someone prunes them.
@@ -1172,6 +1326,11 @@ connection; the outbox keeps dispatched rows until someone prunes them.
 - `LISTEN`/`NOTIFY` to wake the worker on commit instead of polling.
 - Pruning dispatched outbox rows, and an admin surface for dead letters
   (today: SQL on `messaging.job`).
+- Starting a new subscription from history: Kafka's `earliest` (copy a
+  topic's retained outbox rows into the new queue on registering) or
+  `compacted` (only each key's newest version, the cheap way to bootstrap a
+  copy of state; overlaps with published views, D8, so it needs its own
+  decision). Today a subscription starts empty (§4).
 - Scheduled and recurring work ("do X at T", cron-like), once a module needs
   it: rows in `messaging.job` with a future `run_at` already wait their turn, so
   it's a `Tx` method and a `Handlers` registration on the existing queue.

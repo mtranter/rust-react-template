@@ -1,4 +1,5 @@
 use crate::driver::{Refusal, Users, announced};
+use app_persistence::Version;
 use sqlx::PgPool;
 use users::UserId;
 use users::seed::{self, ALICE, BOB};
@@ -14,6 +15,7 @@ async fn a_user_can_delete_their_account(pool: PgPool) {
     assert_eq!(users.get(BOB).await, Ok(seed::bob().into()));
 }
 
+/// At the version after the one deleted, so it's the newest of the user's events.
 #[sqlx::test(migrations = false)]
 async fn deleting_an_account_announces_the_user_as_they_were(pool: PgPool) {
     let users = Users::seeded(pool).await;
@@ -22,7 +24,7 @@ async fn deleting_an_account_announces_the_user_as_they_were(pool: PgPool) {
 
     assert_eq!(
         users.announced::<UserDeleted>().await,
-        [announced(&seed::alice())]
+        [(Version::from_i64(2), announced(&seed::alice()))]
     );
 }
 
@@ -75,6 +77,6 @@ async fn an_account_that_is_gone_cannot_be_deleted(pool: PgPool) {
     );
     assert_eq!(
         users.announced::<UserDeleted>().await,
-        [announced(&seed::alice())]
+        [(Version::from_i64(2), announced(&seed::alice()))]
     );
 }
