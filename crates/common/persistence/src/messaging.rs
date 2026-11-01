@@ -93,6 +93,15 @@ impl Handlers {
 #[error("no handler for the queue `{0}`")]
 struct NoHandler(String);
 
+/// A delivery of another event than its queue's, e.g. one whose queue name was
+/// reused for a different subscription while deliveries were pending.
+#[derive(Debug, thiserror::Error)]
+#[error("the queue of `{expected}` was delivered a `{delivered}`")]
+struct WrongEvent {
+    expected: &'static str,
+    delivered: String,
+}
+
 /// A [`Handle`] with its event type erased, so handlers of different events
 /// share one map and take the raw JSON the worker reads from the queue.
 #[async_trait]
@@ -117,7 +126,13 @@ impl<E, H> TypedHandler<E, H> {
 #[async_trait]
 impl<E: Event, H: Handle<E>> ErasedHandler for TypedHandler<E, H> {
     async fn handle(&self, tx: &mut Tx, payload: Value) -> AppResult<()> {
-        let event = serde_json::from_value(payload).map_err(AppError::internal)?;
+        let event: EnvelopeOf<E> = serde_json::from_value(payload).map_err(AppError::internal)?;
+        if event.event_type != E::TYPE {
+            return Err(AppError::internal(WrongEvent {
+                expected: E::TYPE,
+                delivered: event.event_type,
+            }));
+        }
         self.handler.handle(tx, event).await
     }
 }
@@ -145,6 +160,20 @@ mod tests {
 
     impl Event for Pinged {
         const TYPE: &'static str = "tests.pinged.v1";
+        const SOURCE: &'static str = "/tests";
+        type Entity = Ping;
+        type Context = NoContext;
+
+        fn subject(ping: &Ping) -> String {
+            ping.name.clone()
+        }
+    }
+
+    /// Carries what `Pinged` does, so only its type tells them apart.
+    struct Poked;
+
+    impl Event for Poked {
+        const TYPE: &'static str = "tests.poked.v1";
         const SOURCE: &'static str = "/tests";
         type Entity = Ping;
         type Context = NoContext;
@@ -296,6 +325,20 @@ mod tests {
         let mut tx = Tx::new(FakeTx::default());
 
         let result = handlers.handle("a.on_ping", &mut tx, pong(3)).await;
+
+        assert!(matches!(result, Err(AppError::Internal(_))));
+        assert!(written(&mut tx).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_delivery_of_another_event_of_the_same_shape_fails_without_running_the_handler() {
+        let handlers = Handlers::new().on::<Pinged>("a.on_ping", Recorder("a"));
+        let mut tx = Tx::new(FakeTx::default());
+        let poke = delivery::<Poked>(EventPayload::new(Ping {
+            name: "alice".into(),
+        }));
+
+        let result = handlers.handle("a.on_ping", &mut tx, poke).await;
 
         assert!(matches!(result, Err(AppError::Internal(_))));
         assert!(written(&mut tx).is_empty());
