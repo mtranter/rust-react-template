@@ -1,6 +1,7 @@
 use super::events;
 use super::{
-    Expected, ListQuery, Listed, Transactions, UserRepository, UserSortKey, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, Transactions, UserRepository, UserSortKey,
+    Version, Versioned,
 };
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
 use app_domain::Clock;
@@ -14,6 +15,7 @@ use users_api::events::v1::{UserDeleted, UserDisplayNameChanged, UserRegistered}
 #[derive(Clone)]
 pub struct UserService {
     repo: Arc<dyn UserRepository>,
+    publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
@@ -21,11 +23,13 @@ pub struct UserService {
 impl UserService {
     pub fn new(
         repo: Arc<dyn UserRepository>,
+        publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             repo,
+            publisher,
             transactions,
             clock,
         }
@@ -38,7 +42,9 @@ impl UserService {
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &user, Expected::New).await?;
-        tx.publish::<UserRegistered>(EventPayload::new(events::user(&user)))?;
+        self.publisher
+            .publish::<UserRegistered>(&mut tx, EventPayload::new(events::user(&user)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: user,
@@ -60,7 +66,9 @@ impl UserService {
             .repo
             .save(&mut tx, &user, Expected::Version(expected))
             .await?;
-        tx.publish::<UserDisplayNameChanged>(EventPayload::new(events::user(&user)))?;
+        self.publisher
+            .publish::<UserDisplayNameChanged>(&mut tx, EventPayload::new(events::user(&user)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: user,
@@ -81,7 +89,9 @@ impl UserService {
         }
         let mut tx = self.transactions.begin().await?;
         self.repo.delete(&mut tx, id, expected).await?;
-        tx.publish::<UserDeleted>(EventPayload::new(events::user(&current.entity)))?;
+        self.publisher
+            .publish::<UserDeleted>(&mut tx, EventPayload::new(events::user(&current.entity)))
+            .await?;
         tx.commit().await
     }
 

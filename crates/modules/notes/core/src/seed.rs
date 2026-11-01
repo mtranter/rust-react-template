@@ -6,11 +6,9 @@ use crate::application::{Expected, NoteRepository, Transactions};
 use crate::db::PgNoteRepository;
 use crate::domain::{AuthorId, CreateNote, Note, NoteId};
 use app_db::PgTransactions;
-use app_domain::SystemClock;
 use app_error::AppResult;
 use notes_api::{seed, v1};
 use sqlx::PgPool;
-use std::sync::Arc;
 
 pub const ALICES_NOTE: NoteId = NoteId::from_uuid(seed::ALICES_NOTE);
 pub const BOBS_NOTE: NoteId = NoteId::from_uuid(seed::BOBS_NOTE);
@@ -49,9 +47,7 @@ pub fn notes() -> Vec<Note> {
 /// release without failing or undoing edits to seeded entities.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgNoteRepository::new(pool.clone());
-    let mut tx = PgTransactions::new(pool.clone(), Arc::new(SystemClock))
-        .begin()
-        .await?;
+    let mut tx = PgTransactions::new(pool.clone()).begin().await?;
     for note in notes() {
         if repo.get(note.id()).await?.is_none() {
             repo.save(&mut tx, &note, Expected::New).await?;

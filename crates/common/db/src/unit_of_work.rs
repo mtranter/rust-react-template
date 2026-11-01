@@ -1,76 +1,44 @@
-use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use app_events::EventEnvelope;
-use app_persistence::{PendingEvent, Transactions, Tx, TxBackend};
+use app_persistence::{Transactions, Tx, TxBackend};
 use async_trait::async_trait;
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
-use std::sync::Arc;
-use uuid::Uuid;
 
-/// Begins each [`Tx`] on the pool. The clock stamps the events it writes.
+/// Begins each [`Tx`] on the pool.
 pub struct PgTransactions {
     pool: PgPool,
-    clock: Arc<dyn Clock>,
 }
 
 impl PgTransactions {
-    pub fn new(pool: PgPool, clock: Arc<dyn Clock>) -> Self {
-        Self { pool, clock }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 }
 
 #[async_trait]
 impl Transactions for PgTransactions {
     async fn begin(&self) -> AppResult<Tx> {
-        begin(&self.pool, self.clock.clone()).await
+        begin(&self.pool).await
     }
 }
 
-pub(crate) async fn begin(pool: &PgPool, clock: Arc<dyn Clock>) -> AppResult<Tx> {
+pub(crate) async fn begin(pool: &PgPool) -> AppResult<Tx> {
     let tx = pool.begin().await.map_err(AppError::internal)?;
-    Ok(Tx::new(PgTx { tx, clock }))
+    Ok(Tx::new(PgTx(tx)))
 }
 
-struct PgTx {
-    tx: Transaction<'static, Postgres>,
-    clock: Arc<dyn Clock>,
-}
+struct PgTx(Transaction<'static, Postgres>);
 
 /// The connection a repository runs a write on: `.execute(app_db::conn(tx))`.
 pub fn conn(tx: &mut Tx) -> &mut PgConnection {
     &mut tx
         .backend::<PgTx>()
         .expect("every unit of work is begun by `app_db`")
-        .tx
+        .0
 }
 
 #[async_trait]
 impl TxBackend for PgTx {
-    async fn commit(self: Box<Self>, events: Vec<PendingEvent>) -> AppResult<()> {
-        let PgTx { mut tx, clock } = *self;
-        let now = clock.now();
-        for event in events {
-            let envelope = EventEnvelope::new(
-                Uuid::new_v4(),
-                now,
-                event.source,
-                event.event_type,
-                event.subject,
-                event.data,
-            );
-            sqlx::query!(
-                r#"
-                INSERT INTO messaging.outbox (event_type, payload, occurred_at)
-                VALUES ($1, $2, $3)
-                "#,
-                event.event_type,
-                serde_json::to_value(&envelope).map_err(AppError::internal)?,
-                now,
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(AppError::internal)?;
-        }
-        tx.commit().await.map_err(AppError::internal)
+    async fn commit(self: Box<Self>) -> AppResult<()> {
+        self.0.commit().await.map_err(AppError::internal)
     }
 }

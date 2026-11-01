@@ -104,7 +104,8 @@ that keeps the database out of the application and domain layers.
 
 ### Unit of Work
 One database transaction a Service opens for a use case: every Aggregate it
-saves, and every Event it publishes, commits together or not at all.
+saves, and every Event it publishes into it through its Event Publisher, commits
+together or not at all.
 
 ### Event
 Something that happened to an Aggregate, announced for Modules to react to
@@ -113,6 +114,11 @@ never a request for something to be done. Its type is published in the Module
 API, versioned, and it carries an Event Payload. Every change to an Aggregate
 publishes one. It travels in an Event Envelope and is recorded in the same Unit of Work as the change it announces, in the
 Outbox. The publisher does not know who listens.
+
+### Event Publisher
+The interface, defined in common code, through which a Service publishes an
+Event into its Unit of Work, beside the Repository it saves through. The DB
+layer's implementation writes the Event to the Outbox.
 
 ### Event Payload
 What an Event carries: the entity, the Aggregate root's whole state as it now

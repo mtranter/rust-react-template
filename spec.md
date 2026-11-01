@@ -212,7 +212,8 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin
   `models.rs`: request/response `Object`s and their conversions from aggregates.
 - **`application/`** — `service.rs`: one service per aggregate
   (`UserService`, holding an `Arc<dyn UserRepository>` rather than being generic
-  over it, plus an `Arc<dyn Transactions>` and an `Arc<dyn Clock>`), one method
+  over it, plus an `Arc<dyn EventPublisher>`, an `Arc<dyn Transactions>` and an
+  `Arc<dyn Clock>`), one method
   per use case. A service loads an
   aggregate from the repository, runs a domain action on it, and saves it in a
   unit of work (below). It
@@ -335,21 +336,23 @@ begun from the service's `Arc<dyn Transactions>` and committed at the end.
 Everything written through it commits together or not at all; dropping it
 uncommitted (as `?` does) rolls it back. It is opaque above `db/`: repositories
 reach the connection with `app_db::conn(tx)`, so `application/` still never
-names the driver.
+names the driver. The `Tx` is only a transaction; publishing is the service's
+own port, `Arc<dyn EventPublisher>`, which takes the `Tx` like a repository
+write does.
 
 ```
 let mut tx = self.transactions.begin().await?;
 self.repo.save(&mut tx, &a, Expected::Version(v)).await?;
 self.repo.save(&mut tx, &b, Expected::New).await?;
-tx.publish(&AWasChanged { .. })?;
-tx.publish(&BWasCreated { .. })?;
+self.publisher.publish::<AWasChanged>(&mut tx, EventPayload::new(..)).await?;
+self.publisher.publish::<BWasCreated>(&mut tx, EventPayload::new(..)).await?;
 tx.commit().await?;
 ```
 
 Anything that must follow a write goes through the same `Tx`, so it happens if
 and only if the write commits:
 
-- **An event** (`tx.publish`) tells other modules something happened to an
+- **An event** (`publisher.publish`) tells other modules something happened to an
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
   unit of work that saves it, one per aggregate changed (`users`: registered,
@@ -380,7 +383,7 @@ and only if the write commits:
 - **Every event travels in an `app_events::EventEnvelope`**, a CloudEvents
   1.0 envelope in its JSON format (`specversion`, `id`, `source`, `type`,
   `subject`, `time`, `datacontenttype`, `data`: the payload);
-  `EnvelopeOf<E>` names it for an event. The commit stamps the id and
+  `EnvelopeOf<E>` names it for an event. The publisher stamps the id and
   time and stores the whole envelope as the outbox `payload`; subscribers
   receive it, so they have the event's id to deduplicate on and the time it
   happened.
@@ -401,8 +404,8 @@ in reaction to an event, its own or another module's. Scheduling ("do X at T")
 waits for a module that needs it (§16).
 
 Events are delivered by the **worker** (`app_db::Worker`, run by `server`'s
-`worker` bin). The `Tx` writes events to the shared `messaging.outbox` in the
-same transaction as the aggregates. The worker's relay copies each outbox event
+`worker` bin). `app_db::PgEventPublisher` writes each event to the shared
+`messaging.outbox` as it is published, on the `Tx` the aggregates are saved in. The worker's relay copies each outbox event
 into one delivery per subscriber, a row of `messaging.job`; then each due
 delivery is claimed with `FOR UPDATE SKIP LOCKED` (so any number of workers
 share the queue) and runs its handler in a fresh `Tx`, which also deletes the
@@ -507,9 +510,9 @@ domain without dragging in poem/sqlx, which is what lets the bans in §4 hold.
 | `app-domain` | pure | domain building blocks: `uuid_newtype!` for typed ids (add `new()` only to ids the module mints), the `Clock` trait (`SystemClock`, and `FixedClock` for tests; at `timestamptz` precision; read only by services and the worker), `well_known_id` and `seed_time` for seeds | domain and application layers |
 | `app-error` | pure | `thiserror` canonical error kinds (`AppError`, `AppResult`) | anyone (incl. domain, application) |
 | `app-events` | pure | `Event` (what a module announces), `EventPayload` / `NoContext` (what it carries: the root's state and a context), `EventEnvelope` / `EnvelopeOf<E>` (the CloudEvents 1.0 envelope it is stored and delivered in) (§4) | `-api` crates, application layers, `app-persistence`, `app-db` |
-| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `Handle` / `Handlers` (subscribers, §4) | application and db layers |
+| `app-persistence` | pure | `Version` / `Versioned` / `Expected` (optimistic concurrency), `ListQuery` / `PageRequest` / `Sort` / `Listed`, the unit of work (`Tx`, `Transactions`), `EventPublisher` / `Announcement`, `Handle` / `Handlers` (subscribers, §4) | application and db layers |
 | `app-web` | poem | `app-error` → HTTP mapping (`ApiError` / `ApiResult`, the shared `ErrorBody`, `render_error` for framework errors), `WithETag` / `if_match_version`, list wire types (`ListResult`, `SortParam`, `paged` / `sorts`), `Provide` / `Accept`, request-id middleware, `/health`, **JWT `SecurityScheme`**; behind the `test` feature, `testing` (the transport half of test drivers, §13) | web layers, `di.rs`, server; test drivers |
-| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `Worker` (relay, delivery, dead letters) | db layers, server |
+| `app-db` | sqlx | `connect`, `ping`, the per-schema migration runner (`run_migrations`, `ModuleMigrations`; always applies its own `messaging` schema first), `push_list_clauses`, `map_db_error` (constraint name → `AppError`), `PgTransactions` / `conn` (the unit of work over `sqlx::Transaction`), `PgEventPublisher` (the outbox), `Worker` (relay, delivery, dead letters) | db layers, server |
 | `app-module` | poem + `app-db` | `Context` (the pool and the clock every module is built from), `Module`: a module's provider, handlers, migrations and seed, registered once with the server (§4) | `di.rs`, server, test drivers |
 | `app-test-support` | dev-only, pure | JSON path assertions (`assert_json_matches!`, `assert_json_exists!`, `assert_json_not_exists!`) | module dev-deps only |
 
@@ -1089,9 +1092,10 @@ database, so lifting a provider out (D1) means replacing its views with a
 replicated copy first. The SQL check is a grep, not a parser.
 
 ### D9 — Units of work, a transactional outbox and a Postgres delivery queue, hand-rolled
-**Decision.** Writes run in a pure, opaque unit of work (`app_persistence::Tx`)
-that also carries the events the use case publishes; `app-db` writes them to one
-shared outbox (`messaging`) in the same transaction, and a `worker` bin fans
+**Decision.** Writes run in a pure, opaque unit of work (`app_persistence::Tx`);
+the use case publishes its events through its own port,
+`app_persistence::EventPublisher`, into that unit of work, and `app-db` writes
+them to one shared outbox (`messaging`) in the same transaction, and a `worker` bin fans
 each out to its subscribers' queues and delivers it (§4). Events crossing modules are typed, versioned
 structs in the publisher's `-api`, stored as JSON. **Why.** Atomicity of "save,
 then do something" is the database's to give, and only a shared transaction can
@@ -1109,9 +1113,11 @@ complete or fail), tested here. **One shared
 for dead letters, and no module writing another's schema when an event fans out
 into the subscriber's queue; it belongs to no module, so it is `app-db`'s, and
 events are namespaced by `TYPE`. Lifting a module out (D1) means relaying its
-events to a broker instead, which is what an outbox is for. **The `Tx` buffers
-events until `commit`** so it stays pure, while repositories write
-through it immediately. **Each subscription is its own queue**, so one failing
+events to a broker instead, which is what an outbox is for. **Publishing is a port beside the
+repository, not a method on the `Tx`**, so the service publishes deliberately
+and the `Tx` stays a plain transaction that knows nothing of events or the
+outbox; the publisher writes the outbox row immediately, as a repository writes
+its row, and a rollback discards both. **Each subscription is its own queue**, so one failing
 subscriber neither blocks nor retries another. **No jobs.** A job queue for a
 module's own deferred or scheduled work was built and removed: its only use, a
 welcome email, was a command dressed as an event (`UserRegistered` replaced it),

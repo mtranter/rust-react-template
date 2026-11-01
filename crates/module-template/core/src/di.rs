@@ -12,6 +12,7 @@ pub struct WidgetsProvider(WidgetService);
 pub fn provider(ctx: &Context) -> WidgetsProvider {
     WidgetsProvider(WidgetService::new(
         Arc::new(PgWidgetRepository::new(ctx.pool())),
+        ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
     ))

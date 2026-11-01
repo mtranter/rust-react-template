@@ -28,6 +28,7 @@ impl Provide for UsersProvider {
 fn service(ctx: &Context) -> UserService {
     UserService::new(
         Arc::new(PgUserRepository::new(ctx.pool())),
+        ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
     )

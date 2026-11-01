@@ -174,7 +174,7 @@ impl Worker {
     /// The handler's writes and the job's removal commit together, so a
     /// handler that only writes to the database takes effect exactly once.
     async fn complete(&self, job: &Claimed) -> AppResult<()> {
-        let mut tx = begin(&self.pool, self.clock.clone()).await?;
+        let mut tx = begin(&self.pool).await?;
         self.handlers
             .handle(&job.queue, &mut tx, job.payload.clone())
             .await?;

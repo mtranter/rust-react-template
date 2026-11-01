@@ -148,12 +148,18 @@ impl Notes {
             .find(|seeded| seeded.id == user)
             .expect("a seeded user");
         let mut tx = self.ctx.transactions().begin().await.expect("begin");
-        tx.publish::<UserDeleted>(EventPayload::new(users_events::User {
-            id: user.id,
-            email: user.email,
-            display_name: user.display_name,
-        }))
-        .expect("publish");
+        self.ctx
+            .publisher()
+            .publish::<UserDeleted>(
+                &mut tx,
+                EventPayload::new(users_events::User {
+                    id: user.id,
+                    email: user.email,
+                    display_name: user.display_name,
+                }),
+            )
+            .await
+            .expect("publish");
         tx.commit().await.expect("commit");
     }
 

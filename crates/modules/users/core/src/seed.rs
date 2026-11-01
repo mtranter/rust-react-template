@@ -8,10 +8,9 @@ use crate::application::{Expected, Transactions, UserRepository};
 use crate::db::PgUserRepository;
 use crate::domain::{RegisterUser, User, UserId};
 use app_db::PgTransactions;
-use app_domain::{SystemClock, seed_time};
+use app_domain::seed_time;
 use app_error::AppResult;
 use sqlx::PgPool;
-use std::sync::Arc;
 use users_api::{seed, v1};
 
 pub const ALICE: UserId = UserId::from_uuid(seed::ALICE);
@@ -46,9 +45,7 @@ pub fn users() -> Vec<User> {
 /// repository, not the service, so seeding publishes no events.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgUserRepository::new(pool.clone());
-    let mut tx = PgTransactions::new(pool.clone(), Arc::new(SystemClock))
-        .begin()
-        .await?;
+    let mut tx = PgTransactions::new(pool.clone()).begin().await?;
     for user in users() {
         if repo.get(user.id()).await?.is_none() {
             repo.save(&mut tx, &user, Expected::New).await?;

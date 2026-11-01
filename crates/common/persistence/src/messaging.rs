@@ -1,5 +1,6 @@
-//! Subscribers and their registration (spec §4). A [`Tx`] records events; the
-//! worker in `app-db` delivers them. Every handler runs at least once per
+//! Subscribers and their registration (spec §4). An
+//! [`EventPublisher`](crate::EventPublisher) records events; the worker in `app-db`
+//! delivers them. Every handler runs at least once per
 //! event, so it must be safe to run twice.
 
 use crate::Tx;

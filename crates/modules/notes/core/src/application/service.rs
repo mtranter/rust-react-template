@@ -1,6 +1,7 @@
 use super::events;
 use super::{
-    Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx, Version, Versioned,
+    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
+    Version, Versioned,
 };
 use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
 use app_domain::Clock;
@@ -16,6 +17,7 @@ use users_api::UserDirectory;
 pub struct NoteService {
     repo: Arc<dyn NoteRepository>,
     users: Arc<dyn UserDirectory>,
+    publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
@@ -24,12 +26,14 @@ impl NoteService {
     pub fn new(
         repo: Arc<dyn NoteRepository>,
         users: Arc<dyn UserDirectory>,
+        publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             repo,
             users,
+            publisher,
             transactions,
             clock,
         }
@@ -46,7 +50,9 @@ impl NoteService {
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
-        tx.publish::<NoteCreated>(EventPayload::new(events::note(&note)))?;
+        self.publisher
+            .publish::<NoteCreated>(&mut tx, EventPayload::new(events::note(&note)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -65,7 +71,9 @@ impl NoteService {
             .repo
             .save(&mut tx, &note, Expected::Version(expected))
             .await?;
-        tx.publish::<NoteEdited>(EventPayload::new(events::note(&note)))?;
+        self.publisher
+            .publish::<NoteEdited>(&mut tx, EventPayload::new(events::note(&note)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -86,7 +94,9 @@ impl NoteService {
             self.repo
                 .save(tx, &note, Expected::Version(version))
                 .await?;
-            tx.publish::<NoteArchived>(EventPayload::new(events::note(&note)))?;
+            self.publisher
+                .publish::<NoteArchived>(tx, EventPayload::new(events::note(&note)))
+                .await?;
         }
         Ok(())
     }

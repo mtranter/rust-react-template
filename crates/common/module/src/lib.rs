@@ -3,10 +3,10 @@
 //! derives the request data, migrations, seeds and worker handlers from that
 //! list, so none of them can be registered without the others.
 
-use app_db::{ModuleMigrations, PgTransactions, Pool};
+use app_db::{ModuleMigrations, PgEventPublisher, PgTransactions, Pool};
 use app_domain::Clock;
 use app_error::AppResult;
-use app_persistence::{Handlers, Transactions};
+use app_persistence::{EventPublisher, Handlers, Transactions};
 use app_web::{Accept, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
@@ -35,9 +35,14 @@ impl Context {
         self.clock.clone()
     }
 
-    /// Begins units of work on the pool, stamped by the clock.
     pub fn transactions(&self) -> Arc<dyn Transactions> {
-        Arc::new(PgTransactions::new(self.pool(), self.clock()))
+        Arc::new(PgTransactions::new(self.pool()))
+    }
+
+    /// Publishes into a unit of work begun by [`transactions`](Self::transactions),
+    /// stamped by the clock.
+    pub fn publisher(&self) -> Arc<dyn EventPublisher> {
+        Arc::new(PgEventPublisher::new(self.clock()))
     }
 
     /// Runs `handlers`: the server's `worker` bin runs every module's, a test

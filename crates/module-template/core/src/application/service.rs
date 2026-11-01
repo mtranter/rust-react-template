@@ -1,6 +1,7 @@
 use super::events;
 use super::{
-    Expected, ListQuery, Listed, Transactions, Version, Versioned, WidgetRepository, WidgetSortKey,
+    EventPublisher, Expected, ListQuery, Listed, Transactions, Version, Versioned,
+    WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_domain::Clock;
@@ -12,6 +13,7 @@ use widgets_api::events::v1::{WidgetCreated, WidgetRenamed};
 #[derive(Clone)]
 pub struct WidgetService {
     repo: Arc<dyn WidgetRepository>,
+    publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
@@ -19,11 +21,13 @@ pub struct WidgetService {
 impl WidgetService {
     pub fn new(
         repo: Arc<dyn WidgetRepository>,
+        publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             repo,
+            publisher,
             transactions,
             clock,
         }
@@ -33,7 +37,9 @@ impl WidgetService {
         let widget = Widget::create(WidgetId::new(), cmd, self.clock.now())?;
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
-        tx.publish::<WidgetCreated>(EventPayload::new(events::widget(&widget)))?;
+        self.publisher
+            .publish::<WidgetCreated>(&mut tx, EventPayload::new(events::widget(&widget)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: widget,
@@ -56,7 +62,9 @@ impl WidgetService {
             .repo
             .save(&mut tx, &widget, Expected::Version(expected))
             .await?;
-        tx.publish::<WidgetRenamed>(EventPayload::new(events::widget(&widget)))?;
+        self.publisher
+            .publish::<WidgetRenamed>(&mut tx, EventPayload::new(events::widget(&widget)))
+            .await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: widget,

@@ -28,6 +28,7 @@ fn service(ctx: &Context, users: Arc<dyn UserDirectory>) -> NoteService {
     NoteService::new(
         Arc::new(PgNoteRepository::new(ctx.pool())),
         users,
+        ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
     )
