@@ -1,11 +1,13 @@
 use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
-use app_error::AppResult;
-use app_events::EnvelopeOf;
+use app_error::{AppError, AppResult};
+use app_events::{EnvelopeOf, TopicEnvelope};
 use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version};
 use async_trait::async_trait;
+use chrono::TimeDelta;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -20,6 +22,7 @@ app_events::topic! {
         key: |ping| ping.name.clone(),
         events: PingEvent, PingEventKind;
         Pinged => Pinged: "tests.pinged",
+        Ponged => Ponged: "tests.ponged",
     }
 }
 
@@ -34,15 +37,25 @@ app_events::topic! {
     }
 }
 
+/// `name` pinged, at `version`.
 pub fn ping(name: &str, version: i64) -> PendingEvent {
+    happened(name, version, PingEvent::Pinged)
+}
+
+/// `name` ponged, at `version`.
+pub fn pong(name: &str, version: i64) -> PendingEvent {
+    happened(name, version, PingEvent::Ponged)
+}
+
+fn happened(name: &str, version: i64, event: PingEvent) -> PendingEvent {
     PendingEvent::on::<PingTopic>(
         Version::from_i64(version),
         &Ping { name: name.into() },
-        PingEvent::Pinged,
+        event,
     )
 }
 
-/// What every recorder has handled, `<queue>: <subject>`, in order.
+/// What every recorder has handled, `<queue>: <event> <key> v<version>`, in order.
 #[derive(Clone, Default)]
 pub struct Log(Arc<Mutex<Vec<String>>>);
 
@@ -52,14 +65,30 @@ impl Log {
     }
 }
 
+/// How many more times handling each `(key, version)` fails.
+#[derive(Clone, Default)]
+struct Faults(Arc<Mutex<HashMap<(String, i64), u32>>>);
+
 pub struct Recorder {
     queue: &'static str,
     log: Log,
+    faults: Faults,
 }
 
 impl Recorder {
-    fn record(&self, ping: Ping) -> AppResult<()> {
-        let line = format!("{}: {}", self.queue, ping.name);
+    fn record(&self, event: &str, key: &str, version: i64) -> AppResult<()> {
+        if let Some(left) = self
+            .faults
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&(key.into(), version))
+            && *left > 0
+        {
+            *left -= 1;
+            return Err(AppError::conflict("not now"));
+        }
+        let line = format!("{}: {event} {key} v{version}", self.queue);
         self.log.0.lock().unwrap().push(line);
         Ok(())
     }
@@ -68,14 +97,25 @@ impl Recorder {
 #[async_trait]
 impl Handle<Pinged> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Pinged>) -> AppResult<()> {
-        self.record(event.data.entity)
+        self.record("pinged", &event.partition_key, event.entity_version)
     }
 }
 
 #[async_trait]
 impl Handle<Poked> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Poked>) -> AppResult<()> {
-        self.record(event.data.entity)
+        self.record("poked", &event.partition_key, event.entity_version)
+    }
+}
+
+#[async_trait]
+impl Handle<PingTopic> for Recorder {
+    async fn handle(&self, _: &mut Tx, event: TopicEnvelope<PingTopic>) -> AppResult<()> {
+        let what = match event.event {
+            PingEvent::Pinged => "pinged",
+            PingEvent::Ponged => "ponged",
+        };
+        self.record(what, &event.key, event.version)
     }
 }
 
@@ -84,6 +124,7 @@ pub struct Messaging {
     pub pool: PgPool,
     clock: Arc<FixedClock>,
     pub log: Log,
+    faults: Faults,
 }
 
 impl Messaging {
@@ -95,6 +136,7 @@ impl Messaging {
             pool,
             clock: Arc::new(FixedClock::new(seed_time(0))),
             log: Log::default(),
+            faults: Faults::default(),
         }
     }
 
@@ -102,7 +144,21 @@ impl Messaging {
         Recorder {
             queue,
             log: self.log.clone(),
+            faults: self.faults.clone(),
         }
+    }
+
+    /// Handling `key` at `version` fails the next `times` times, in any queue.
+    pub fn fails(&self, key: &str, version: i64, times: u32) {
+        self.faults
+            .0
+            .lock()
+            .unwrap()
+            .insert((key.into(), version), times);
+    }
+
+    pub fn later(&self, by: TimeDelta) {
+        self.clock.advance(by);
     }
 
     /// A build's handlers: one for each of `queues`, subscribed to `Pinged`.
@@ -118,7 +174,16 @@ impl Messaging {
     }
 
     pub fn worker_of(&self, handlers: Handlers) -> Worker {
-        Worker::new(self.pool.clone(), self.clock.clone(), handlers)
+        self.worker_with(self.pool.clone(), handlers)
+    }
+
+    /// A worker with no handlers, on its own `pool`: a relay.
+    pub fn worker_on(&self, pool: PgPool) -> Worker {
+        self.worker_with(pool, Handlers::new())
+    }
+
+    fn worker_with(&self, pool: PgPool, handlers: Handlers) -> Worker {
+        Worker::new(pool, self.clock.clone(), handlers)
     }
 
     /// As `migrate` does for the build with handlers for `queues`.

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE messaging.job SET attempts = attempts + 1, run_at = $2\n            WHERE id = (\n                SELECT due.id\n                FROM unnest($3::text[], $4::text[]) AS served (queue, event_type)\n                CROSS JOIN LATERAL (\n                    SELECT id, run_at FROM messaging.job\n                    WHERE queue = served.queue AND event_type = served.event_type\n                      AND dead_at IS NULL AND run_at <= $1\n                    ORDER BY run_at, id\n                    LIMIT 1\n                    FOR UPDATE SKIP LOCKED\n                ) AS due\n                ORDER BY due.run_at, due.id\n                LIMIT 1\n            )\n            RETURNING id, queue, payload, attempts, max_attempts\n            ",
+  "query": "\n            UPDATE messaging.job SET attempts = attempts + 1, run_at = $2\n            WHERE id = (\n                SELECT due.id\n                FROM unnest($3::text[], $4::text[]) AS served (queue, event_type)\n                CROSS JOIN LATERAL (\n                    SELECT id, run_at FROM messaging.job j\n                    WHERE queue = served.queue AND event_type = served.event_type\n                      AND dead_at IS NULL AND run_at <= $1\n                      AND NOT EXISTS (\n                          SELECT 1 FROM messaging.job earlier\n                          WHERE earlier.queue = j.queue AND earlier.key = j.key\n                            AND earlier.version < j.version AND earlier.dead_at IS NULL\n                      )\n                    ORDER BY run_at, id\n                    LIMIT 1\n                    FOR UPDATE SKIP LOCKED\n                ) AS due\n                ORDER BY due.run_at, due.id\n                LIMIT 1\n            )\n            RETURNING id, queue, payload, attempts, max_attempts\n            ",
   "describe": {
     "columns": [
       {
@@ -75,5 +75,5 @@
       false
     ]
   },
-  "hash": "0bea7bac51977a765cbca55063ce2b70d39119428363fac7977139138d22bd9f"
+  "hash": "db66e7a01ec5b6a614850dea6394a29a7b1cfab7f55abbc0a38cbdcb72ebc2da"
 }

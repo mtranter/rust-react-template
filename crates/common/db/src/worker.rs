@@ -1,9 +1,10 @@
 //! Delivers what units of work leave in `messaging` (spec §4): the relay copies
 //! each outbox event into one delivery per subscriber, a row of `messaging.job`,
-//! then each runs in its own transaction, with retries and dead-lettering. Any
-//! number of workers can run against one database: every claim skips rows
-//! another worker holds, and a worker claims only the subscriptions its own
-//! handlers can decode, so builds can differ during a rolling deploy.
+//! then each runs in its own transaction, with retries and dead-lettering, in
+//! order per key within each queue. Any number of workers can run against one
+//! database: one relays at a time, every claim skips rows another worker holds,
+//! and a worker claims only the subscriptions its own handlers can decode, so
+//! builds can differ during a rolling deploy.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
@@ -21,6 +22,8 @@ use std::time::Duration;
 /// longer may run twice at once; one whose worker dies runs again after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
+/// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
+const RELAY_LOCK: i64 = 0x72_656c_6179;
 
 pub struct Worker {
     pool: PgPool,
@@ -28,8 +31,10 @@ pub struct Worker {
     handlers: Arc<Handlers>,
 }
 
-/// A delivery that ran out of attempts. Rerun one by clearing its `dead_at` and
-/// `attempts` in `messaging.job`.
+/// A delivery that ran out of attempts; the later versions of its key run past
+/// it. Rerun one by clearing its `dead_at` and `attempts` in `messaging.job`:
+/// it then runs after any later versions already handled, out of order, which
+/// is why a subscriber keeping a copy of state compares versions (spec §4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeadLetter {
     pub queue: String,
@@ -146,16 +151,31 @@ impl Worker {
     /// Copies a batch of undispatched events into the queues registered for
     /// them in `messaging.subscription`, whatever this worker's own handlers.
     /// Returns how many events it dispatched; one nobody subscribes to is just
-    /// marked dispatched.
+    /// marked dispatched. Only one relay runs at a time; another returns 0.
+    ///
+    /// A key's versions commit in order (each save waits on the row lock of the
+    /// one before), so a statement that sees one sees every earlier one: with one
+    /// relay at a time, reading in `seq` order, a key's earlier job always exists,
+    /// ran, or was filtered out before its later one does.
     pub async fn relay(&self) -> AppResult<usize> {
         let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
+        // Its own statement, so the batch's snapshot is taken once the lock is held.
+        let relaying = sqlx::query_scalar!(
+            r#"SELECT pg_try_advisory_xact_lock($1) AS "locked!""#,
+            RELAY_LOCK,
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        if !relaying {
+            return Ok(0);
+        }
         let seqs = sqlx::query_scalar!(
             r#"
             SELECT seq FROM messaging.outbox
             WHERE dispatched_at IS NULL
             ORDER BY seq
             LIMIT $1
-            FOR UPDATE SKIP LOCKED
             "#,
             RELAY_BATCH,
         )
@@ -168,10 +188,18 @@ impl Worker {
 
         let now = self.clock.now();
         sqlx::query!(
+            "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
+            now,
+            &seqs,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        sqlx::query!(
             r#"
             INSERT INTO messaging.job
-                (queue, event_type, payload, run_at, max_attempts, created_at)
-            SELECT s.queue, o.event_type, o.payload, $2, $3, $2
+                (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
+            SELECT s.queue, o.event_type, o.key, o.version, o.payload, $2, $3, $2
             FROM messaging.outbox o
             JOIN messaging.subscription s
               ON s.topic = o.topic AND s.event_type = o.event_type
@@ -186,23 +214,19 @@ impl Worker {
         .execute(&mut *tx)
         .await
         .map_err(AppError::internal)?;
-        sqlx::query!(
-            "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
-            now,
-            &seqs,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(AppError::internal)?;
         tx.commit().await.map_err(AppError::internal)?;
         Ok(seqs.len())
     }
 
     /// Claims and runs the job due first, if any, of the subscriptions this
-    /// worker serves. The claim counts as an attempt, so a job that kills its
-    /// worker is dead-lettered too, eventually. It looks up each subscription's
-    /// first due job by index, so jobs no running worker serves cost nothing; it
-    /// briefly locks one per subscription, which other workers skip.
+    /// worker serves, and of those only one whose key has no earlier version
+    /// still to run in its queue: running, backing off, or waiting for a worker
+    /// that can decode it. A job's row lasts until the transaction handling it
+    /// commits, so a key's next version waits for that. The claim counts as an
+    /// attempt, so a job that kills its worker is dead-lettered too, eventually.
+    /// It looks up each subscription's first due job by index, so jobs no
+    /// running worker serves cost nothing; it briefly locks one per
+    /// subscription, which other workers skip.
     pub async fn run_next(&self) -> AppResult<bool> {
         let now = self.clock.now();
         let (queues, event_types): (Vec<_>, Vec<_>) = self
@@ -218,9 +242,14 @@ impl Worker {
                 SELECT due.id
                 FROM unnest($3::text[], $4::text[]) AS served (queue, event_type)
                 CROSS JOIN LATERAL (
-                    SELECT id, run_at FROM messaging.job
+                    SELECT id, run_at FROM messaging.job j
                     WHERE queue = served.queue AND event_type = served.event_type
                       AND dead_at IS NULL AND run_at <= $1
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.job earlier
+                          WHERE earlier.queue = j.queue AND earlier.key = j.key
+                            AND earlier.version < j.version AND earlier.dead_at IS NULL
+                      )
                     ORDER BY run_at, id
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED

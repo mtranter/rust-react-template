@@ -223,7 +223,10 @@ service:  repo.get(id) ──► aggregate.action(command)? ──► tx = begin
   module's **`Repository`** trait — it speaks in aggregates, never rows:
   `get → Option<Versioned<X>>`, `save(&mut Tx, &X, Expected) → Version`, and
   `list(&ListQuery<XSortKey>) → Listed<Versioned<X>>` where the module lists.
-  Reads run on the pool; every write takes the caller's `&mut Tx`.
+  Reads run on the pool; every write takes the caller's `&mut Tx`. Every write
+  to an aggregate, a change to a child included, saves the root with its
+  version guard: the order of a root's events depends on it (below), so a
+  module that writes a child row without bumping its root loses it.
   `error.rs`: an exhaustive
   mapping from the domain error onto `AppError`. Depends only on the domain and
   pure crates.
@@ -459,7 +462,7 @@ and only if the write commits:
   subscription row per event type). A queue is of one topic; it may list
   several of its types. A delivery of a topic or type its queue didn't
   register is refused.
-  It must tolerate being run twice and in any order. A module may subscribe to
+  It must tolerate being run twice (and, rarely, out of order: below). A module may subscribe to
   its own events: `users` welcomes a registered user by reacting to its
   `UserRegistered` (`application/welcome.rs`), rather than the registration
   ordering the email. A side effect on an external system sits behind a port
@@ -480,7 +483,50 @@ failing handler rolls back, backs off (10s, doubling, at most an hour) and is
 retried; after `MAX_ATTEMPTS` (5) it is **dead-lettered**: `dead_at` is set and
 it stays in `messaging.job` with its `last_error` until someone reruns it. A
 claim is a lease, so a delivery whose worker died runs again. Everything is
-at-least-once; nothing is ordered.
+at-least-once, and **in order per key, per subscription**.
+
+The model is Kafka's: a topic per root, the root's id as the message key,
+order per key by the root's `Version` (finer than Kafka's per partition, so a
+failing event holds up only its own key), a subscription as a consumer group,
+and a `messaging.job` row per message still to deliver in place of an offset
+(the relay creates jobs, so nobody needs the outbox in commit order, which
+`seq` isn't). It works because **commit order is version order per key**:
+every write to an aggregate is a version-guarded `UPDATE` or `DELETE` of its
+root's row, so v4's transaction waits on the row lock until v3's commits, and
+the outbox row is written in the same transaction; a statement that sees v4's
+outbox row sees v3's. Two mechanisms keep that order to the subscriber:
+
+- **One relay at a time.** The relay takes `pg_try_advisory_xact_lock` (another
+  worker holding it relays nothing that poll), reads a batch `ORDER BY seq`
+  without `SKIP LOCKED`, and in one transaction marks it dispatched and fans
+  it out (`INSERT INTO messaging.job … SELECT … JOIN messaging.subscription`),
+  each job carrying its event's `key` and `version`. So a key's v3 job exists,
+  ran, or was filtered out before its v4 job does. Workers still claim jobs in
+  parallel.
+- **A claim waits for earlier versions of the same key in the same queue**:
+  `NOT EXISTS (SELECT 1 FROM messaging.job e WHERE e.queue = j.queue AND e.key = j.key AND e.version < j.version AND e.dead_at IS NULL)`
+  (index `(queue, key, version) WHERE dead_at IS NULL`). A job's row lasts
+  until the transaction handling it commits its deletion, so while v3 runs,
+  backs off or waits for a worker that can decode it, v4 can't be claimed.
+
+What that gives, and doesn't:
+- **No order across keys, topics or subscriptions.** `UserDeleted` and a racing
+  `NoteCreated` by that user stay unordered.
+- **Gaps are normal**: a filtered subscription, or one registered after some of
+  a key's events, sees only some versions.
+- **A failing job holds up only its own key, in its own queue**, until it
+  succeeds or is dead-lettered (about 2.5 minutes over 5 attempts); then the
+  key moves on past it. For a copy of state, skipping it is harmless: the next
+  event carries the whole state.
+- **Rerunning a dead letter after later versions ran delivers it out of
+  order**, and a lease that expires mid-run can run a job beside its successor.
+
+So **a subscriber that keeps a copy of another module's state stores the
+version with it** and applies each event in one conditional statement,
+`INSERT … ON CONFLICT (id) DO UPDATE … WHERE copy.version < EXCLUDED.version`,
+keeping a tombstone row for a deletion. This is a backstop for those two
+cases; ordered delivery is the main mechanism. Reactions to facts (mail,
+`notes`' archiving) don't compare versions.
 
 A worker claims only what it can decode: each job records its `event_type`,
 and the claim takes only the `(queue, event_type)` pairs its own `Handlers`
@@ -906,8 +952,10 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   advances it (`later(by)`). A subscriber's driver stands in for the publisher
   by publishing the `-api` event itself (`notes.user_deleted(ALICE)`), as it
   stubs a `-api` trait; the publisher's driver exposes what it published as
-  `announced::<E>()` (over `Worker::published::<E>()`), every state-changing
-  behaviour asserts its event and every refused one that nothing was announced,
+  `announced::<E>()` (over `Worker::published::<E>()`), each paired with the
+  version it announces (`[(Version::from_i64(2), announced(&note))]`; not the
+  whole envelope, whose `id` is random), every state-changing
+  behaviour asserts its event and version and every refused one that nothing was announced,
   and dead letters are `Worker::dead_letters()`.
   A port to an external system gets a Fake in the driver (`users`' `FakeMailer`,
   which can be taken down to exercise retries). `crates/server/tests/composed_reactions.rs`
@@ -1228,7 +1276,7 @@ complete or fail), tested here. **One shared
 `messaging` schema** rather than an outbox per module: one relay query, one place
 for dead letters, and no module writing another's schema when an event fans out
 into the subscriber's queue; it belongs to no module, so it is `app-db`'s, and
-events are namespaced by `TYPE`. Lifting a module out (D1) means relaying its
+events are namespaced by topic. Lifting a module out (D1) means relaying its
 events to a broker instead, which is what an outbox is for. **Publishing is a port beside the
 repository, not a method on the `Tx`**, so the service publishes deliberately
 and the `Tx` stays a plain transaction that knows nothing of events or the
@@ -1243,8 +1291,18 @@ transactions, and can't survive lifting one out); opaque JSON events with a
 schema registry (no compiler between publisher and subscriber); passing
 `PgPool` into services (defeats the clippy tripwire); a closure-scoped
 `transaction(|tx| ..)` (async closures over `dyn` services don't compose; a
-dropped `Tx` already rolls back). **Trade-offs.** Delivery is at-least-once and
-unordered, so every handler is idempotent; cross-module consistency is eventual
+dropped `Tx` already rolls back). **Ordered per key, by topic, Kafka's
+model.** A topic per root with an exhaustive event enum lets a consumer see
+one entity's events together; the root's version orders them, because
+version-guarded writes already make commit order version order per key, so
+one relay at a time and a claim that waits for a key's earlier versions are
+all it takes. No partitions (a failing event holds up only its key) and no
+offsets (they'd need the outbox in commit order; per-key order doesn't).
+**Subscriptions are rows, registered by `migrate`**, so old and new builds
+relay alike during a rolling deploy, and a worker claims only what it can
+decode. **Trade-offs.** Delivery is at-least-once, ordered only per key and
+subscription (rerun dead letters and expired leases can still reorder, so a
+subscriber keeping a copy of state compares versions), so every handler is idempotent; cross-module consistency is eventual
 (a note created by a user deleted at that moment can escape archiving); a
 handler holds a transaction open while it runs, so a slow external call holds a
 connection; the outbox keeps dispatched rows until someone prunes them.
@@ -1268,6 +1326,11 @@ connection; the outbox keeps dispatched rows until someone prunes them.
 - `LISTEN`/`NOTIFY` to wake the worker on commit instead of polling.
 - Pruning dispatched outbox rows, and an admin surface for dead letters
   (today: SQL on `messaging.job`).
+- Starting a new subscription from history: Kafka's `earliest` (copy a
+  topic's retained outbox rows into the new queue on registering) or
+  `compacted` (only each key's newest version, the cheap way to bootstrap a
+  copy of state; overlaps with published views, D8, so it needs its own
+  decision). Today a subscription starts empty (§4).
 - Scheduled and recurring work ("do X at T", cron-like), once a module needs
   it: rows in `messaging.job` with a future `run_at` already wait their turn, so
   it's a `Tx` method and a `Handlers` registration on the existing queue.
