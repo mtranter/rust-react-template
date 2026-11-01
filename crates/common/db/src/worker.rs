@@ -2,7 +2,8 @@
 //! each outbox event into one delivery per subscriber, a row of `messaging.job`,
 //! then each runs in its own transaction, with retries and dead-lettering. Any
 //! number of workers can run against one database: every claim skips rows
-//! another worker holds.
+//! another worker holds, and a worker claims only the subscriptions its own
+//! handlers can decode, so builds can differ during a rolling deploy.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
@@ -112,10 +113,12 @@ impl Worker {
             for queue in self.handlers.subscribers(&event.event_type) {
                 sqlx::query!(
                     r#"
-                    INSERT INTO messaging.job (queue, payload, run_at, max_attempts, created_at)
-                    VALUES ($1, $2, $3, $4, $3)
+                    INSERT INTO messaging.job
+                        (queue, event_type, payload, run_at, max_attempts, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $4)
                     "#,
                     queue,
+                    event.event_type,
                     event.payload,
                     now,
                     MAX_ATTEMPTS,
@@ -138,25 +141,42 @@ impl Worker {
         Ok(events.len())
     }
 
-    /// Claims and runs the job due first, if any. The claim counts as an
-    /// attempt, so a job that kills its worker is dead-lettered too, eventually.
+    /// Claims and runs the job due first, if any, of the subscriptions this
+    /// worker serves. The claim counts as an attempt, so a job that kills its
+    /// worker is dead-lettered too, eventually. It looks up each subscription's
+    /// first due job by index, so jobs no running worker serves cost nothing; it
+    /// briefly locks one per subscription, which other workers skip.
     pub async fn run_next(&self) -> AppResult<bool> {
         let now = self.clock.now();
+        let (queues, event_types): (Vec<_>, Vec<_>) = self
+            .handlers
+            .subscriptions()
+            .map(|s| (s.queue, s.event_type))
+            .unzip();
         let claimed = sqlx::query_as!(
             Claimed,
             r#"
             UPDATE messaging.job SET attempts = attempts + 1, run_at = $2
             WHERE id = (
-                SELECT id FROM messaging.job
-                WHERE dead_at IS NULL AND run_at <= $1
-                ORDER BY run_at, id
+                SELECT due.id
+                FROM unnest($3::text[], $4::text[]) AS served (queue, event_type)
+                CROSS JOIN LATERAL (
+                    SELECT id, run_at FROM messaging.job
+                    WHERE queue = served.queue AND event_type = served.event_type
+                      AND dead_at IS NULL AND run_at <= $1
+                    ORDER BY run_at, id
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                ) AS due
+                ORDER BY due.run_at, due.id
                 LIMIT 1
-                FOR UPDATE SKIP LOCKED
             )
             RETURNING id, queue, payload, attempts, max_attempts
             "#,
             now,
             now + LEASE,
+            &queues as &[&str],
+            &event_types as &[&str],
         )
         .fetch_optional(&self.pool)
         .await

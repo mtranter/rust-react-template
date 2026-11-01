@@ -432,6 +432,17 @@ it stays in `messaging.job` with its `last_error` until someone reruns it. A
 claim is a lease, so a delivery whose worker died runs again. Everything is
 at-least-once; nothing is ordered.
 
+A worker claims only what it can decode: each job records its `event_type`,
+and the claim takes only the `(queue, event_type)` pairs its own `Handlers`
+list (`Handlers::subscriptions`). During a rolling deploy, old and new builds
+run side by side; a job for a subscription only the new build has waits for a
+new worker, rather than an old one failing it and spending one of its attempts.
+A job no running worker can decode simply waits; `NoHandler` stays only as a
+guard. The claim looks up each served pair's first due job by index
+(`job_due_idx` on `(queue, event_type, run_at, id)`), so jobs nobody running
+serves don't slow it. (The release that brought this filter wasn't protected
+by it: the build it replaced claimed any queue.)
+
 Rules:
 - A module never writes another module's data, through its `-api` or otherwise;
   it publishes an event, and the owner reacts. Cross-module work is therefore

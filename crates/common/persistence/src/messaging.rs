@@ -34,6 +34,13 @@ struct Queue {
     handler: Arc<dyn ErasedHandler>,
 }
 
+/// A queue and an event type delivered to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Subscription {
+    pub queue: &'static str,
+    pub event_type: &'static str,
+}
+
 impl Handlers {
     pub fn new() -> Self {
         Self::default()
@@ -70,6 +77,15 @@ impl Handlers {
             .map(|(queue, _)| *queue)
     }
 
+    /// Every `(queue, event type)` these handlers can decode, by queue: what a
+    /// worker running them may claim.
+    pub fn subscriptions(&self) -> impl Iterator<Item = Subscription> + '_ {
+        self.queues.iter().map(|(queue, q)| Subscription {
+            queue,
+            event_type: q.event_type,
+        })
+    }
+
     pub async fn handle(&self, queue: &str, tx: &mut Tx, payload: Value) -> AppResult<()> {
         let q = self
             .queues
@@ -87,8 +103,10 @@ impl Handlers {
     }
 }
 
-/// A delivery whose queue no handler serves, e.g. a subscription removed since:
-/// it fails like any other, and is dead-lettered once its attempts run out.
+/// A delivery whose queue no handler serves. A worker claims only the
+/// subscriptions its handlers list, so a job no running worker can decode (one
+/// for a subscription added in a newer build, mid-deploy) waits for one that
+/// can; this guards the claim, and fails the delivery like any other error.
 #[derive(Debug, thiserror::Error)]
 #[error("no handler for the queue `{0}`")]
 struct NoHandler(String);
@@ -273,6 +291,27 @@ mod tests {
         assert_eq!(
             handlers.subscribers(Ponged::TYPE).collect::<Vec<_>>(),
             ["a.on_pong"]
+        );
+    }
+
+    #[test]
+    fn handlers_list_what_each_queue_is_delivered() {
+        let handlers = Handlers::new()
+            .on::<Pinged>("b.on_ping", Recorder("b"))
+            .on::<Ponged>("a.on_pong", Recorder("a"));
+
+        assert_eq!(
+            handlers.subscriptions().collect::<Vec<_>>(),
+            [
+                Subscription {
+                    queue: "a.on_pong",
+                    event_type: Ponged::TYPE
+                },
+                Subscription {
+                    queue: "b.on_ping",
+                    event_type: Pinged::TYPE
+                },
+            ]
         );
     }
 
