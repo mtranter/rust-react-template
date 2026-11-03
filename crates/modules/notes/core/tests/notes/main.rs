@@ -8,10 +8,7 @@ mod behaviours {
     mod creating;
     mod deleting;
     mod editing;
+    mod lifecycle;
     mod listing;
     mod reading;
-}
-
-mod journeys {
-    mod note_lifecycle;
 }

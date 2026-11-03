@@ -1,7 +1,7 @@
 ---
 id: 0008
 name: Add cross-module journey tests on the composed app
-status: todo
+status: done
 priority: P2
 size: S
 blocked_by: []
@@ -42,8 +42,8 @@ the domain" rules. This ticket gives composed tests the same driver discipline
 the module tests have.
 
 ## Proposed approach
-1. **Layout.** One target, `crates/server/tests/journeys/`, with `main.rs`,
-   `driver.rs`, and one file per journey area. Its database names come from the
+1. **Layout.** One target, `journeys`: `crates/server/tests/journeys.rs`, its
+   driver in `tests/driver.rs`, and one file per journey area in `tests/journeys/`. Its database names come from the
    test path, so they can't collide with the module targets.
 2. **Composed driver.** `App::seeded(pool)` runs migrations, seeds and
    `register_subscriptions` for `server::modules()`, then builds `server::build_app`
@@ -77,12 +77,12 @@ the module tests have.
    extend a journey.
 
 ## Acceptance criteria
-- [ ] `crates/server/tests/journeys/` holds a driver and the two reference journeys,
+- [x] `crates/server/tests/journeys/` holds a driver and the two reference journeys,
       and they pass.
-- [ ] `composed_reactions.rs` is gone, its journey rewritten in driver verbs.
-- [ ] No journey file mentions a route, method, status code or header.
-- [ ] `cargo test -p server journeys::` runs only journeys.
-- [ ] `CLAUDE.md` and spec §13 describe journeys, where they live, and the
+- [x] `composed_reactions.rs` is gone, its journey rewritten in driver verbs.
+- [x] No journey file mentions a route, method, status code or header.
+- [x] `cargo test -p server journeys::` runs only journeys.
+- [x] `CLAUDE.md` and spec §13 describe journeys, where they live, and the
       carve-out from "one behaviour per test".
 
 ## Non-goals

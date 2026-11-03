@@ -36,6 +36,17 @@ impl TestApi {
         }
     }
 
+    /// Over a whole app that already renders errors and stamps request ids, as
+    /// the composed server's `build_app` does.
+    pub fn over<E>(app: E) -> Self
+    where
+        E: Endpoint + 'static,
+    {
+        Self {
+            client: TestClient::new(app.map_to_response().boxed()),
+        }
+    }
+
     pub fn get(&self, uri: impl Into<String>) -> Call<'_> {
         Call(self.client.get(uri))
     }

@@ -2566,6 +2566,7 @@ dependencies = [
  "app-module",
  "app-persistence",
  "app-web",
+ "chrono",
  "figment",
  "note-search",
  "notes",
