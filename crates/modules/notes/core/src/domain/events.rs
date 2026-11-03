@@ -6,4 +6,5 @@ pub enum NoteEvent {
     Created,
     Edited,
     Archived,
+    Deleted,
 }

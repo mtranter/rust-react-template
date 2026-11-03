@@ -35,7 +35,7 @@ pub struct NoteResponse {
     pub body: String,
     pub created_at: String,
     /// When the note was archived, because its author was deleted. An archived
-    /// note can't be edited.
+    /// note can't be edited or deleted.
     #[oai(skip_serializing_if_is_none)]
     pub archived_at: Option<String>,
     /// Optimistic-concurrency version. Echo it back in `If-Match` to edit this

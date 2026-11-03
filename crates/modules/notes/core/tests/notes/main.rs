@@ -6,7 +6,9 @@ mod driver;
 mod behaviours {
     mod archiving;
     mod creating;
+    mod deleting;
     mod editing;
+    mod lifecycle;
     mod listing;
     mod reading;
 }

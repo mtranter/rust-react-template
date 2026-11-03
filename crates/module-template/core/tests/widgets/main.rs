@@ -5,6 +5,7 @@ mod driver;
 
 mod behaviours {
     mod creating;
+    mod lifecycle;
     mod listing;
     mod reading;
     mod renaming;

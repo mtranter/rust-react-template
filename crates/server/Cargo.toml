@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+# Listed below, so `tests/driver.rs` is the journeys' driver rather than a target.
+autotests = false
 
 [lib]
 name = "server"
@@ -30,6 +32,14 @@ path = "src/bin/worker.rs"
 name = "seed"
 path = "src/bin/seed.rs"
 required-features = ["seed"]
+
+[[test]]
+name = "composed_app"
+path = "tests/composed_app.rs"
+
+[[test]]
+name = "journeys"
+path = "tests/journeys.rs"
 
 [dependencies]
 app-db.workspace = true
@@ -60,10 +70,11 @@ embed-frontend = ["dep:rust-embed", "poem/embed"]
 seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
-# Enables `seed` for the composed-app tests.
+# Enables `seed` for the composed-app tests and journeys.
 server = { path = ".", features = ["seed"] }
-app-web.workspace = true
-# The seeded ids the reaction test names.
+app-web = { workspace = true, features = ["test"] }
+chrono.workspace = true
+# The seeded ids the journeys name.
 users-api = { workspace = true, features = ["seed"] }
 notes-api = { workspace = true, features = ["seed"] }
 poem = { workspace = true, features = ["test"] }

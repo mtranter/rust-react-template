@@ -189,3 +189,10 @@ external dependencies (run locally, e.g. the development database server, with
 a fresh database per test), starting from the module's Seed, or against Fakes
 where a real dependency cannot be run. Contrast with an inline unit test, which
 is reserved for pure, side-effect-free logic with many possible states.
+
+### Journey
+One test that walks a path across Modules on the composed Server (every
+registered Module, the real Worker, real auth, nothing stubbed), asserting at
+each step, to check that the Modules fit together. Rules are tested by a
+Module's own Integration Tests; a path within one Module is one of those, not a
+Journey.

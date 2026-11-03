@@ -4,6 +4,6 @@ pub enum NoteError {
     EmptyTitle,
     #[error("title must be at most {max} characters")]
     TitleTooLong { max: usize },
-    #[error("an archived note can't be edited")]
+    #[error("an archived note is read-only")]
     Archived,
 }

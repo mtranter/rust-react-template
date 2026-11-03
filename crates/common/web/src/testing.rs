@@ -36,6 +36,17 @@ impl TestApi {
         }
     }
 
+    /// Over a whole app that already renders errors and stamps request ids, as
+    /// the composed server's `build_app` does.
+    pub fn over<E>(app: E) -> Self
+    where
+        E: Endpoint + 'static,
+    {
+        Self {
+            client: TestClient::new(app.map_to_response().boxed()),
+        }
+    }
+
     pub fn get(&self, uri: impl Into<String>) -> Call<'_> {
         Call(self.client.get(uri))
     }
@@ -215,6 +226,14 @@ macro_rules! json_newtype {
         impl $name {
             pub fn id(&self) -> &str {
                 self.0["id"].as_str().expect(concat!(stringify!($name), " has an id"))
+            }
+
+            /// The version to send back in `If-Match`, for a versioned resource.
+            pub fn version(&self) -> i64 {
+                self.0["version"]
+                    .as_str()
+                    .and_then(|version| version.parse().ok())
+                    .expect(concat!(stringify!($name), " has a version"))
             }
         }
 

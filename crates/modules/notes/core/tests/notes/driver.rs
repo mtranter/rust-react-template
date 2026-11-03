@@ -8,7 +8,7 @@ use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
-use notes::{Note, NoteId, NotesEndpoints, seed};
+use notes::{Note, NotesEndpoints, seed};
 use notes_api::events::v1 as notes_events;
 use serde_json::json;
 use sqlx::{AssertSqlSafe, PgPool};
@@ -267,7 +267,7 @@ impl Notes {
 
     pub async fn edit(
         &self,
-        id: NoteId,
+        id: impl Display,
         version: i64,
         title: &str,
         body: &str,
@@ -283,7 +283,7 @@ impl Notes {
 
     pub async fn edit_without_precondition(
         &self,
-        id: NoteId,
+        id: impl Display,
         title: &str,
         body: &str,
     ) -> Outcome<NoteJson> {
@@ -292,6 +292,21 @@ impl Notes {
             .patch(format!("/api/notes/{id}"))
             .json(&request)
             .send()
+            .await
+    }
+
+    pub async fn delete(&self, id: impl Display, version: i64) -> Outcome<()> {
+        self.api
+            .delete(format!("/api/notes/{id}"))
+            .if_match(version)
+            .send_empty()
+            .await
+    }
+
+    pub async fn delete_without_precondition(&self, id: impl Display) -> Outcome<()> {
+        self.api
+            .delete(format!("/api/notes/{id}"))
+            .send_empty()
             .await
     }
 }

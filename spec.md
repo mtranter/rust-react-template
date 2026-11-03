@@ -159,8 +159,10 @@ repo/
 │               ├── worker.rs     # deliver events to every module's subscribers (§4)
 │               └── seed.rs       # `seed` feature only: every registered module's seed
 │       └── tests/
-│           ├── composed_app.rs       # boots build_app() over every module (§4)
-│           └── composed_reactions.rs # a real cross-module reaction through the real worker
+│           ├── composed_app.rs # boots build_app() over every module (§4)
+│           ├── journeys.rs     # the journeys target: mod driver; mod journeys { … } (§13)
+│           ├── driver.rs       # its driver: the composed app's cross-module verbs
+│           └── journeys/       # one file per journey area
 │
 └── frontend/
     ├── package.json
@@ -375,7 +377,7 @@ and only if the write commits:
   aggregate: a fact in the past tense (`UserRegistered`), never a command in
   disguise (`SendWelcomeEmail`). **Every state change publishes one**, in the
   unit of work that saves it, one per aggregate changed (`users`: registered,
-  display name changed, deleted; `notes`: created, edited, archived). The
+  display name changed, deleted; `notes`: created, edited, archived, deleted). The
   publisher doesn't know who listens.
 - **Each aggregate root has a topic** (as Kafka has topics): one stream of its
   events, keyed by the root's id. A module's `-api` declares it with
@@ -958,13 +960,59 @@ bootstrap. `make setup` installs it and the tools; the Makefile runs them as
   behaviour asserts its event and version and every refused one that nothing was announced,
   and dead letters are `Worker::dead_letters()`.
   A port to an external system gets a Fake in the driver (`users`' `FakeMailer`,
-  which can be taken down to exercise retries). `crates/server/tests/composed_reactions.rs`
-  runs one reaction for real across modules.
+  which can be taken down to exercise retries). The journeys (below)
+  run reactions for real across modules.
 - **Tests speak the domain, not HTTP.** Names state a behaviour
   (`an_edit_without_a_title_is_rejected_and_changes_nothing`); bodies call driver
   verbs and compare against seed aggregates (`Ok(seed::alices_note().into())`).
   One behaviour per test; a refused action is followed by a check that nothing
   changed.
+- **Journeys: the modules compose.** Each module's tests stand in for whatever
+  is across its boundary — a subscriber's driver publishes a hand-built provider
+  event, a consumer stubs the provider's `-api` trait, a read module joins views
+  over seeded rows — so none of them fails when a publisher's payload drifts from
+  what its subscriber expects, a provider's real `-api` implementation differs
+  from the stub, a write doesn't reach the views a read module joins, or the
+  server's own wiring (`modules.rs`, the providers passed in, the composed
+  worker's subscriptions, real JWT auth) is wrong. A **journey** is one test that
+  walks a path across modules on the composed app, asserting at each step. It is
+  the one carve-out from "one behaviour per test": a behaviour test checks one
+  rule within a module; a journey checks that modules compose along a path, each
+  step's result feeding the next and every step asserted. Journeys don't re-test
+  rules, so they are few, only for paths that cross a boundary, and named for the
+  path walked:
+  - `a_note_is_found_by_its_authors_current_name`: Alice writes a note, search
+    finds it under her name, she renames herself, and search finds it under the
+    new name and not the old (notes' and users' write paths, both published views,
+    note-search's join);
+  - `deleting_an_account_archives_only_that_users_notes`: Alice deletes her
+    account, her note is unchanged until the worker runs, then it is archived,
+    Bob's isn't, and nothing is dead-lettered (users' real `UserDeleted` payload
+    into notes' real subscription).
+
+  They live only in one target, `journeys` (`crates/server/tests/journeys.rs`,
+  its driver beside it in `tests/driver.rs`, and one file per journey area in
+  `tests/journeys/`). The root declares them in an inline `mod journeys { … }`,
+  so each test path starts `journeys::` and `cargo test -p server journeys::`
+  runs only them; the target's name keeps its database names apart from the
+  modules'. `server`'s `Cargo.toml` sets `autotests = false` and lists its test
+  targets, or `tests/driver.rs` would build as a target of its own. The driver follows the
+  module drivers' discipline: `App::seeded(pool)` migrates, seeds and registers
+  the subscriptions of `server::modules()`, then builds `server::build_app` and
+  `server::worker` over a `Context` with a `FixedClock`, mounted over
+  `app_web::testing` (`TestApi::over`), so every refusal is checked for the error
+  shape and request id. Its verbs cross modules and act as a signed-in user with
+  a real token (`app.as_user(ALICE).write_note(..)`, `.rename_myself(..)`,
+  `.delete_account()`, `app.search_notes(q)`, `app.note(id)`,
+  `app.run_pending_events()`), carrying each version from response to `If-Match`
+  themselves, and return `XJson`/`Refusal` shapes as the module drivers do. No
+  route, method, status or header appears outside `driver.rs`. A path within one
+  module is a behaviour test in that module (`notes`' `behaviours/lifecycle.rs`
+  writes, revises and removes a note), and neither a module nor the template has
+  journeys: a journey depends on which modules the app has. A module that reacts
+  to, provides for, or is read by another adds or extends a journey.
+  `composed_app.rs` stays beside them as a wiring probe over the spec, not a
+  journey.
 - No separate service tests: every use case is reachable through the `Endpoints`
   or the worker verbs, and
   a fresh database costs the same either way. Add one only when a use case has
