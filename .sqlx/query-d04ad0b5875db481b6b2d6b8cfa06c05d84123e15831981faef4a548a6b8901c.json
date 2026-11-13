@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM notes.note_item WHERE note_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d04ad0b5875db481b6b2d6b8cfa06c05d84123e15831981faef4a548a6b8901c"
+}

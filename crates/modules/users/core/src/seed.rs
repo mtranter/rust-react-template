@@ -13,8 +13,8 @@ use app_error::AppResult;
 use sqlx::PgPool;
 use users_api::{seed, v1};
 
-pub const ALICE: UserId = UserId::from_uuid(seed::ALICE);
-pub const BOB: UserId = UserId::from_uuid(seed::BOB);
+pub const USER_ID_ALICE: UserId = UserId::from_uuid(seed::USER_ID_ALICE);
+pub const USER_ID_BOB: UserId = UserId::from_uuid(seed::USER_ID_BOB);
 
 fn user(published: v1::User, minutes: i64) -> User {
     User::register(

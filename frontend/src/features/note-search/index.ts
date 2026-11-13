@@ -1,1 +1,1 @@
-export { NoteSearch } from "./note-search";
+export { NoteSearch, noteSummarySortKeys } from "./note-search";

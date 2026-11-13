@@ -1,11 +1,12 @@
-import type { ErrorBody, ListResultNoteResponse, NoteResponse } from "@/api";
+import type { ErrorBody, ListResultNoteResponse, NoteResponse, NoteSort } from "@/api";
+import type { ListPosition } from "@/components/data-table";
 import { Toaster } from "@/components/ui/toast";
 import { createQueryClient } from "@/lib/query-client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { expect, test } from "vitest";
 import { NewNoteForm, NotesTable } from ".";
 import { server } from "../../../vitest.setup";
@@ -20,6 +21,12 @@ function renderWithQuery(children: ReactNode) {
   );
 }
 
+/** The table with its position held here, as a page holds it in the URL. */
+function Notes() {
+  const [position, setPosition] = useState<ListPosition<NoteSort>>({ page: 1 });
+  return <NotesTable {...position} onChange={setPosition} />;
+}
+
 function page(items: NoteResponse[]): ListResultNoteResponse {
   return { items, total: items.length, limit: 20, offset: 0 };
 }
@@ -31,6 +38,7 @@ test("lists notes and shows a newly created note", async () => {
       authorId: "a1",
       title: "First note",
       body: "",
+      items: [],
       createdAt: "2026-01-01T00:00:00Z",
       version: "1",
     },
@@ -61,6 +69,7 @@ test("lists notes and shows a newly created note", async () => {
         authorId: body.authorId,
         title: body.title,
         body: "",
+        items: [],
         createdAt: "2026-01-02T00:00:00Z",
         version: "1",
       };
@@ -73,7 +82,7 @@ test("lists notes and shows a newly created note", async () => {
   renderWithQuery(
     <>
       <NewNoteForm />
-      <NotesTable />
+      <Notes />
     </>,
   );
 
@@ -163,6 +172,7 @@ function note(n: number): NoteResponse {
     authorId: "a1",
     title: `Note ${n}`,
     body: "",
+    items: [],
     createdAt: "2026-01-01T00:00:00Z",
     version: "1",
   };
@@ -185,7 +195,7 @@ test("pages through notes on the server", async () => {
   );
 
   const user = userEvent.setup();
-  renderWithQuery(<NotesTable />);
+  renderWithQuery(<Notes />);
 
   expect(await screen.findByText("Note 20")).toBeInTheDocument();
   expect(screen.queryByText("Note 21")).not.toBeInTheDocument();
@@ -203,7 +213,7 @@ test("pages through notes on the server", async () => {
 test("says so when there are no notes", async () => {
   server.use(http.get("*/api/notes", () => HttpResponse.json(page([]))));
 
-  renderWithQuery(<NotesTable />);
+  renderWithQuery(<Notes />);
 
   expect(await screen.findByText("No notes yet.")).toBeInTheDocument();
   expect(screen.getByText("0–0 of 0")).toBeInTheDocument();
@@ -214,15 +224,15 @@ test("hides a column the user switches off", async () => {
   const headers = () => screen.queryAllByRole("columnheader").map((th) => th.textContent);
 
   const user = userEvent.setup();
-  renderWithQuery(<NotesTable />);
+  renderWithQuery(<Notes />);
 
   await screen.findByText("Note 1");
-  expect(headers()).toEqual(["Title", "Author", "Created"]);
+  expect(headers()).toEqual(["Title", "Author", "Created", "Actions"]);
 
   await user.click(screen.getByRole("button", { name: "Columns" }));
   await user.click(await screen.findByRole("menuitemcheckbox", { name: "Author" }));
 
-  await waitFor(() => expect(headers()).toEqual(["Title", "Created"]));
+  await waitFor(() => expect(headers()).toEqual(["Title", "Created", "Actions"]));
 });
 
 test("sorts notes on the server when a column header is clicked", async () => {
@@ -245,7 +255,7 @@ test("sorts notes on the server when a column header is clicked", async () => {
       .map((row) => (row as HTMLTableRowElement).cells[0].textContent);
 
   const user = userEvent.setup();
-  renderWithQuery(<NotesTable />);
+  renderWithQuery(<Notes />);
 
   await screen.findByText("B");
   expect(titles()).toEqual(["B", "C", "A"]);
@@ -267,7 +277,7 @@ test("sorts notes on the server when a column header is clicked", async () => {
 test("shows a list that isn't paged without a pager", async () => {
   server.use(http.get("*/api/notes", () => HttpResponse.json({ items: [note(1), note(2)] })));
 
-  renderWithQuery(<NotesTable />);
+  renderWithQuery(<Notes />);
 
   expect(await screen.findByText("Note 2")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();

@@ -1,11 +1,11 @@
 use crate::driver::{App, NoteSummaryJson};
 use sqlx::PgPool;
-use users_api::seed::ALICE;
+use users_api::seed::USER_ID_ALICE;
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_note_is_found_by_its_authors_current_name(pool: PgPool) {
     let app = App::seeded(pool).await;
-    let alice = app.as_user(ALICE);
+    let alice = app.as_user(USER_ID_ALICE);
 
     let written = alice.write_note("Garden plan", "tomatoes").await.unwrap();
     let found = app.search_notes("alice").await;

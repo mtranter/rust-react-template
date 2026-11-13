@@ -3,13 +3,16 @@ use app_persistence::Version;
 use app_test_support::assert_json_matches;
 use notes_api::events::v1::{NoteCreated, NoteDeleted, NoteEdited};
 use sqlx::PgPool;
-use users_api::seed::ALICE;
+use users_api::seed::USER_ID_ALICE;
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_note_can_be_written_revised_and_removed(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
 
-    let written = notes.create(ALICE, "Groceries", "milk").await.unwrap();
+    let written = notes
+        .create(USER_ID_ALICE, "Groceries", "milk")
+        .await
+        .unwrap();
     assert_eq!(notes.get(written.id()).await.as_ref(), Ok(&written));
 
     let revised = notes

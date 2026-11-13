@@ -27,6 +27,19 @@
           "Users"
         ],
         "summary": "Register a new user.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json; charset=utf-8": {
@@ -109,6 +122,16 @@
           },
           "412": {
             "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -280,7 +303,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "The currently-authenticated user (JWT Bearer guarded — spec §11). The\nresponse carries the version in the `ETag` header (and body) — the token\na subsequent change must send back in `If-Match`.",
+        "summary": "The currently-authenticated user (JWT Bearer guarded — ADR 0025). The\nresponse carries the version in the `ETag` header (and body) — the token\na subsequent change must send back in `If-Match`.",
         "description": "Declared before `/:id` so the static segment wins in routing.",
         "responses": {
           "200": {
@@ -404,6 +427,17 @@
             "required": false,
             "deprecated": false,
             "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
           }
         ],
         "requestBody": {
@@ -496,6 +530,16 @@
               }
             }
           },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "428": {
             "description": "A write arrived without `If-Match`.",
             "content": {
@@ -535,6 +579,17 @@
               "type": "string"
             },
             "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
             "required": false,
             "deprecated": false,
             "explode": true
@@ -596,6 +651,16 @@
           },
           "412": {
             "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -759,6 +824,19 @@
           "Notes"
         ],
         "summary": "Create a note.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json; charset=utf-8": {
@@ -841,6 +919,16 @@
           },
           "412": {
             "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1152,6 +1240,17 @@
             "required": false,
             "deprecated": false,
             "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
           }
         ],
         "requestBody": {
@@ -1244,6 +1343,16 @@
               }
             }
           },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "428": {
             "description": "A write arrived without `If-Match`.",
             "content": {
@@ -1288,6 +1397,17 @@
               "type": "string"
             },
             "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
             "required": false,
             "deprecated": false,
             "explode": true
@@ -1349,6 +1469,340 @@
           },
           "412": {
             "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notes/{id}/items": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Add an item to a note's checklist. Requires `If-Match` with the note's\nversion, like an edit, and answers with the note at its new version.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/AddItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notes/{id}/items/{item_id}": {
+      "delete": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Remove an item from a note's checklist. Requires `If-Match` with the\nnote's version, and answers with the note at its new version.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "item_id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1530,6 +1984,19 @@
   },
   "components": {
     "schemas": {
+      "AddItemRequest": {
+        "type": "object",
+        "title": "AddItemRequest",
+        "description": "Adds a line to a note's checklist. Like an edit, it carries no version.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "ChangeDisplayNameRequest": {
         "type": "object",
         "title": "ChangeDisplayNameRequest",
@@ -1645,6 +2112,8 @@
           "unsupported_media_type",
           "precondition_required",
           "precondition_failed",
+          "idempotency_key_reused",
+          "idempotency_key_in_flight",
           "internal_error"
         ]
       },
@@ -1661,6 +2130,22 @@
             "type": "string"
           },
           "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ItemResponse": {
+        "type": "object",
+        "title": "ItemResponse",
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
             "type": "string"
           }
         }
@@ -1764,6 +2249,7 @@
           "title",
           "body",
           "createdAt",
+          "items",
           "version"
         ],
         "properties": {
@@ -1785,6 +2271,13 @@
           "archivedAt": {
             "type": "string",
             "description": "When the note was archived, because its author was deleted. An archived\nnote can't be edited or deleted."
+          },
+          "items": {
+            "type": "array",
+            "description": "Its checklist, in the order the items were added. An item is part of\nthe note: changing one changes the note's version.",
+            "items": {
+              "$ref": "#/components/schemas/ItemResponse"
+            }
           },
           "version": {
             "type": "string",

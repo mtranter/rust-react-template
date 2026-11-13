@@ -1,4 +1,4 @@
-//! A read module (spec D8): searches notes together with their authors' names by
+//! A read module (ADR 0010): searches notes together with their authors' names by
 //! joining the `notes_api` and `users_api` published views. It owns no tables and
 //! has no domain layer — there are no invariants to protect, only a query to run.
 

@@ -1,4 +1,4 @@
-// The composition root is where the pool meets the repository (spec §4).
+// The composition root is where the pool meets the repository (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
 use crate::application::{Mailer, UserService, Welcome};

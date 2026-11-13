@@ -5,7 +5,7 @@ use sqlx::PgPool;
 use users::seed;
 use users_api::events::v1::{self, UserRegistered};
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_registered_user_is_kept_with_normalized_details(pool: PgPool) {
     let users = Users::seeded(pool).await;
 
@@ -23,7 +23,7 @@ async fn a_registered_user_is_kept_with_normalized_details(pool: PgPool) {
     assert_eq!(users.list().await.total, 3);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn registering_announces_the_new_user(pool: PgPool) {
     let users = Users::seeded(pool).await;
 
@@ -49,7 +49,7 @@ async fn registering_announces_the_new_user(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn an_email_can_only_be_registered_once(pool: PgPool) {
     let users = Users::seeded(pool).await;
     let taken = seed::alice().email().to_string();
@@ -67,7 +67,7 @@ async fn an_email_can_only_be_registered_once(pool: PgPool) {
     assert!(users.announced::<UserRegistered>().await.is_empty());
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_user_needs_a_valid_email(pool: PgPool) {
     let users = Users::seeded(pool).await;
     assert_eq!(
@@ -76,7 +76,7 @@ async fn a_user_needs_a_valid_email(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_user_needs_a_display_name(pool: PgPool) {
     let users = Users::seeded(pool).await;
     assert_eq!(

@@ -3,6 +3,7 @@ use app_domain::{FixedClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, TopicEnvelope};
 use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version};
+use app_test_db::Template;
 use async_trait::async_trait;
 use chrono::TimeDelta;
 use serde::{Deserialize, Serialize};
@@ -129,9 +130,6 @@ pub struct Messaging {
 
 impl Messaging {
     pub async fn new(pool: PgPool) -> Self {
-        app_db::run_migrations(&pool, &[])
-            .await
-            .expect("migrate messaging");
         Self {
             pool,
             clock: Arc::new(FixedClock::new(seed_time(0))),
@@ -197,7 +195,7 @@ impl Messaging {
         app_db::register_subscriptions(&self.pool, handlers).await
     }
 
-    /// The migration spec §4 documents.
+    /// The migration ADR 0014 documents.
     pub async fn retire(&self, queue: &str) {
         sqlx::query("UPDATE messaging.subscription SET retired_at = now() WHERE queue = $1")
             .bind(queue)
@@ -266,3 +264,12 @@ impl Job {
 pub async fn run(worker: &Worker) {
     worker.run_until_idle().await.expect("the worker runs");
 }
+
+/// Every test's database starts as a copy of this: messaging migrated.
+pub const TEMPLATE: Template = Template::new("delivery", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &[])
+            .await
+            .expect("migrate messaging");
+    })
+});

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Applies one module's migrations to $DATABASE_URL as `make migrate` would: its
-# own schema on the search path, so its `_sqlx_migrations` lands there (spec §6).
+# own schema on the search path, so its `_sqlx_migrations` lands there (ADR 0021).
 # For crates `make migrate` doesn't run: the module template, and a just-scaffolded
 # module whose queries `.sqlx` doesn't know yet, so `migrate` can't build.
 #

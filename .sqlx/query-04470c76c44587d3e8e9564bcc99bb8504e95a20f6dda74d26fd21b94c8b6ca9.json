@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT note_id, id, text FROM notes.note_item\n        WHERE note_id = ANY($1)\n        ORDER BY note_id, position\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "note_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notes.note_item",
+            "name": "note_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "notes.note_item",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "notes.note_item",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "04470c76c44587d3e8e9564bcc99bb8504e95a20f6dda74d26fd21b94c8b6ca9"
+}

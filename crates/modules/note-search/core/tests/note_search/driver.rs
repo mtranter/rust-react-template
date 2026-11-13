@@ -1,10 +1,11 @@
-//! The only place in these tests that knows the transport (spec §13). Unlike a
+//! The only place in these tests that knows the transport (ADR 0004). Unlike a
 //! write module's driver it stubs nothing: the users and notes modules' real
 //! migrations publish the views this module reads, and their seeds fill them
-//! (spec D8).
+//! (ADR 0010).
 
 use app_domain::SystemClock;
 use app_module::Context;
+use app_test_db::Template;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use note_search::NoteSearchEndpoints;
@@ -55,17 +56,9 @@ pub struct NoteSearch {
 
 impl NoteSearch {
     pub async fn seeded(pool: PgPool) -> Self {
-        app_db::run_migrations(&pool, &[users::migrations(), notes::migrations()])
-            .await
-            .expect("migrate the modules whose views are read");
-        users::seed::standard(&pool).await.expect("seed users");
-        notes::seed::standard(&pool).await.expect("seed notes");
-
-        let api = TestApi::new(NoteSearchEndpoints, |app| {
-            app.accept(note_search::provider(&Context::new(
-                pool,
-                Arc::new(SystemClock),
-            )))
+        let ctx = Context::new(pool, Arc::new(SystemClock));
+        let api = TestApi::new(NoteSearchEndpoints, ctx.idempotency(), |app| {
+            app.accept(note_search::provider(&ctx))
         });
         Self { api }
     }
@@ -100,3 +93,15 @@ impl NoteSearch {
         self.api.get("/api/note-search").queries(query).send().await
     }
 }
+
+/// Every test's database starts as a copy of this: the providers migrated, so
+/// their views exist, and seeded.
+pub const TEMPLATE: Template = Template::new("note_search", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &[users::migrations(), notes::migrations()])
+            .await
+            .expect("migrate the modules whose views are read");
+        users::seed::standard(&pool).await.expect("seed users");
+        notes::seed::standard(&pool).await.expect("seed notes");
+    })
+});

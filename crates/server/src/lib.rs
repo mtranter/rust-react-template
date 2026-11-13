@@ -15,6 +15,7 @@ pub use shutdown::shutdown_signal;
 use app_db::{ModuleMigrations, SubscriptionError, Worker};
 use app_module::Context;
 use app_persistence::Handlers;
+use app_web::Idempotent;
 use poem_openapi::OpenApiService;
 
 pub const API_TITLE: &str = "rust-vite-template API";
@@ -22,8 +23,8 @@ pub const API_VERSION: &str = "0.1.0";
 /// Also the generated client's `baseUrl`.
 pub const API_BASE: &str = "/api";
 
-pub fn build_service() -> OpenApiService<Endpoints, ()> {
-    OpenApiService::new(Endpoints::default(), API_TITLE, API_VERSION).server(API_BASE)
+pub fn build_service() -> OpenApiService<Idempotent<Endpoints>, ()> {
+    OpenApiService::new(Idempotent::<Endpoints>::default(), API_TITLE, API_VERSION).server(API_BASE)
 }
 
 pub fn module_migrations() -> Vec<ModuleMigrations> {

@@ -1,4 +1,4 @@
-//! JWT Bearer authentication (spec §11): HS256 (dev/tests; can also issue) or
+//! JWT Bearer authentication (ADR 0025): HS256 (dev/tests; can also issue) or
 //! verify-only JWKS discovered from an OIDC issuer (prod).
 
 use app_error::{AppError, AppResult};
@@ -108,7 +108,7 @@ impl JwtVerifier {
         }
     }
 
-    /// Dev/test only: no issuance backend ships (spec §11). Fails in JWKS mode.
+    /// Dev/test only: no issuance backend ships (ADR 0025). Fails in JWKS mode.
     pub fn issue(&self, subject: impl Into<String>, ttl_secs: u64) -> AppResult<String> {
         let Mode::Symmetric(s) = &*self.0 else {
             return Err(AppError::internal(AuthError::NotIssuable));

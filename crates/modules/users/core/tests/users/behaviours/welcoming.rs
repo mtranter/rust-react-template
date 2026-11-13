@@ -12,7 +12,7 @@ fn welcome(to: &str, name: &str) -> Mail {
     }
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_new_user_is_welcomed_by_email(pool: PgPool) {
     let users = Users::seeded(pool).await;
     users.register("carol@example.com", "Carol").await.unwrap();
@@ -22,7 +22,7 @@ async fn a_new_user_is_welcomed_by_email(pool: PgPool) {
     assert_eq!(users.mail_sent(), [welcome("carol@example.com", "Carol")]);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_refused_registration_welcomes_nobody(pool: PgPool) {
     let users = Users::seeded(pool).await;
     let taken = seed::alice().email().to_string();
@@ -36,7 +36,7 @@ async fn a_refused_registration_welcomes_nobody(pool: PgPool) {
     assert!(users.mail_sent().is_empty());
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_welcome_the_mail_server_refuses_is_sent_once_it_is_back(pool: PgPool) {
     let users = Users::seeded(pool).await;
     users.mail_server_goes_down();
@@ -53,7 +53,7 @@ async fn a_welcome_the_mail_server_refuses_is_sent_once_it_is_back(pool: PgPool)
     assert_eq!(users.mail_sent(), [welcome("carol@example.com", "Carol")]);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_welcome_that_keeps_failing_is_given_up_on(pool: PgPool) {
     let users = Users::seeded(pool).await;
     users.mail_server_goes_down();
@@ -79,7 +79,7 @@ async fn a_welcome_that_keeps_failing_is_given_up_on(pool: PgPool) {
     assert!(users.mail_sent().is_empty());
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_user_who_leaves_before_their_welcome_is_not_mailed(pool: PgPool) {
     let users = Users::seeded(pool).await;
     let carol = users.register("carol@example.com", "Carol").await.unwrap();

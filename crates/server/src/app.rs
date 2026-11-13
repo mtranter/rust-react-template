@@ -21,10 +21,12 @@ pub fn build_app(ctx: &Context, verifier: JwtVerifier, cors_origin: &str) -> imp
         .nest("/docs", ui)
         .nest("/health", health_routes(get(readiness)));
 
-    // Errors become `ErrorBody` responses innermost, so CORS and the access log
-    // see them; the request id is outermost, so the access log carries it.
+    // Errors become `ErrorBody` responses innermost, so CORS, the access log and
+    // the idempotency records see them; the request id is outermost, so the
+    // access log and every refusal carry it.
     let app = mount_frontend(app)
         .catch_all_error(render_error)
+        .with(ctx.idempotency())
         .with(Cors::new().allow_origin(cors_origin))
         .with(Tracing)
         .with(RequestIdMiddleware)
@@ -74,7 +76,7 @@ fn mount_frontend(app: Route) -> Route {
 }
 
 /// Falls back to `index.html` for client-side routing; rust-embed's endpoint
-/// has no fallback (spec §9).
+/// has no fallback (ADR 0005).
 #[cfg(feature = "embed-frontend")]
 mod frontend {
     use poem::{Endpoint, IntoResponse, Request, Response, Result, http::StatusCode};

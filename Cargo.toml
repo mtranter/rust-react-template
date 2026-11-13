@@ -25,6 +25,8 @@ app-persistence = { path = "crates/common/persistence" }
 app-web = { path = "crates/common/web" }
 app-db = { path = "crates/common/db" }
 app-test-support = { path = "crates/common/test-support" }
+app-test-db = { path = "crates/common/test-db" }
+app-test-db-macros = { path = "crates/common/test-db-macros" }
 app-module = { path = "crates/common/module" }
 users-api = { path = "crates/modules/users/api" }
 users = { path = "crates/modules/users/core" }
@@ -60,10 +62,10 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
-# `rust_crypto`: no global crypto provider to install, no aws-lc-rs/cmake (spec §14).
+# `rust_crypto`: no global crypto provider to install, no aws-lc-rs/cmake (ADR 0005).
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 # No default-tls: reuses the `ring` provider sqlx already brings, so no system
-# OpenSSL and no aws-lc-rs/cmake (spec §14).
+# OpenSSL and no aws-lc-rs/cmake (ADR 0005).
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls-webpki-roots",

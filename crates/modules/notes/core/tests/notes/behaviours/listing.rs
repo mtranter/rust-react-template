@@ -1,8 +1,8 @@
 use crate::driver::{Notes, Refusal};
-use notes::seed::{ALICES_NOTE, BOBS_NOTE, ORPHANED_NOTE};
+use notes::seed::{ALICE_NOTE_ID_SHOPPING_LIST, BOB_NOTE_ID_BIKE_REPAIRS, NOTE_ID_ORPHANED};
 use sqlx::PgPool;
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn notes_are_listed_most_recent_first(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     let page = notes.list().await;
@@ -10,14 +10,14 @@ async fn notes_are_listed_most_recent_first(pool: PgPool) {
     assert_eq!(
         page.ids(),
         [
-            ORPHANED_NOTE.to_string(),
-            BOBS_NOTE.to_string(),
-            ALICES_NOTE.to_string(),
+            NOTE_ID_ORPHANED.to_string(),
+            BOB_NOTE_ID_BIKE_REPAIRS.to_string(),
+            ALICE_NOTE_ID_SHOPPING_LIST.to_string(),
         ]
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn notes_can_be_sorted_by_title(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     let page = notes
@@ -27,14 +27,14 @@ async fn notes_can_be_sorted_by_title(pool: PgPool) {
     assert_eq!(
         page.ids(),
         [
-            BOBS_NOTE.to_string(),
-            ORPHANED_NOTE.to_string(),
-            ALICES_NOTE.to_string(),
+            BOB_NOTE_ID_BIKE_REPAIRS.to_string(),
+            NOTE_ID_ORPHANED.to_string(),
+            ALICE_NOTE_ID_SHOPPING_LIST.to_string(),
         ]
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn notes_can_be_sorted_descending(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     let page = notes
@@ -44,14 +44,14 @@ async fn notes_can_be_sorted_descending(pool: PgPool) {
     assert_eq!(
         page.ids(),
         [
-            ALICES_NOTE.to_string(),
-            ORPHANED_NOTE.to_string(),
-            BOBS_NOTE.to_string(),
+            ALICE_NOTE_ID_SHOPPING_LIST.to_string(),
+            NOTE_ID_ORPHANED.to_string(),
+            BOB_NOTE_ID_BIKE_REPAIRS.to_string(),
         ]
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn notes_can_be_sorted_oldest_first(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     let page = notes
@@ -61,14 +61,14 @@ async fn notes_can_be_sorted_oldest_first(pool: PgPool) {
     assert_eq!(
         page.ids(),
         [
-            ALICES_NOTE.to_string(),
-            BOBS_NOTE.to_string(),
-            ORPHANED_NOTE.to_string(),
+            ALICE_NOTE_ID_SHOPPING_LIST.to_string(),
+            BOB_NOTE_ID_BIKE_REPAIRS.to_string(),
+            NOTE_ID_ORPHANED.to_string(),
         ]
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn sorting_by_an_unknown_key_is_malformed(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     assert_eq!(
@@ -77,15 +77,15 @@ async fn sorting_by_an_unknown_key_is_malformed(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_page_holds_its_slice_and_counts_every_note(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     let page = notes.list_page(1, 1).await;
-    assert_eq!(page.ids(), [BOBS_NOTE.to_string()]);
+    assert_eq!(page.ids(), [BOB_NOTE_ID_BIKE_REPAIRS.to_string()]);
     assert_eq!((page.total, page.limit, page.offset), (3, 1, 1));
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn an_oversized_page_is_clamped(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     assert_eq!(notes.list_page(10_000, 0).await.limit, 100);

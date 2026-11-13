@@ -1,5 +1,5 @@
 //! Run explicitly, never on server startup, so production controls migration
-//! timing (spec §6). Then registers every module's subscriptions (spec §4), so
+//! timing (ADR 0021). Then registers every module's subscriptions (ADR 0014), so
 //! they exist before any process of this build publishes or relays.
 
 use app_domain::SystemClock;

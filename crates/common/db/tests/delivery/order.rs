@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 const QUEUE: &[&str] = &["tests.first"];
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_keys_next_version_waits_until_a_failing_one_succeeds(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(QUEUE).await;
@@ -31,7 +31,7 @@ async fn a_keys_next_version_waits_until_a_failing_one_succeeds(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_dead_lettered_version_no_longer_holds_up_its_key(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(QUEUE).await;
@@ -58,7 +58,7 @@ async fn a_dead_lettered_version_no_longer_holds_up_its_key(pool: PgPool) {
     assert_eq!(worker.dead_letters().await.unwrap().len(), 1);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn another_key_proceeds_while_one_is_held_up(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(QUEUE).await;
@@ -73,7 +73,7 @@ async fn another_key_proceeds_while_one_is_held_up(pool: PgPool) {
     assert_eq!(messaging.log.handled(), ["tests.first: pinged bob v1"]);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_whole_topic_queue_gets_a_keys_events_of_every_type_in_version_order(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     let handlers = Handlers::new().on::<PingTopic>("tests.all", messaging.recorder("tests.all"));
@@ -97,7 +97,7 @@ async fn a_whole_topic_queue_gets_a_keys_events_of_every_type_in_version_order(p
 }
 
 /// The old build filtered `tests.all` to pings; the new one takes its whole topic.
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_job_no_running_worker_can_decode_holds_up_only_its_key_in_its_queue(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     let new = Handlers::new()
@@ -134,7 +134,7 @@ async fn a_job_no_running_worker_can_decode_holds_up_only_its_key_in_its_queue(p
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn relays_running_at_once_keep_each_keys_versions_in_order_and_fan_out_once(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(&["tests.first", "tests.second"]).await;

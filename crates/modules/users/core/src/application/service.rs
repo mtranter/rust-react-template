@@ -75,7 +75,7 @@ impl UserService {
     }
 
     /// Removes the account and announces it, as it was last, in the same
-    /// transaction; modules holding the id react in their own time (spec §4).
+    /// transaction; modules holding the id react in their own time (ADR 0011).
     pub async fn delete(&self, id: UserId, expected: Version) -> AppResult<()> {
         let current = self.get(id).await?;
         // Checked here as well as by the delete, so the state announced is the

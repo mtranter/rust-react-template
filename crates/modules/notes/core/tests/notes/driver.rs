@@ -4,7 +4,8 @@ use app_error::AppResult;
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::{PendingEvent, Version};
-use app_web::testing::{Page, Refused, TestApi};
+use app_test_db::Template;
+use app_web::testing::{Answered, Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -28,6 +29,8 @@ pub enum Refusal {
     Conflict,
     PreconditionRequired,
     Stale,
+    /// The `Idempotency-Key` was sent before with a different request.
+    KeyReused,
 }
 
 impl Refusal {
@@ -45,6 +48,7 @@ impl From<Refused> for Refusal {
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
+            "idempotency_key_reused" => Refusal::KeyReused,
             other => panic!("unexpected error code {other}"),
         }
     }
@@ -64,6 +68,10 @@ impl From<Note> for NoteJson {
             "title": n.title(),
             "body": n.body(),
             "createdAt": n.created_at().to_rfc3339(),
+            "items": n.items().iter().map(|item| json!({
+                "id": item.id().to_string(),
+                "text": item.text(),
+            })).collect::<Vec<_>>(),
             "version": "1",
         }))
     }
@@ -88,6 +96,14 @@ pub fn announced(note: &Note) -> EventPayload<notes_events::Note, NoContext> {
         title: note.title().to_string(),
         body: note.body().to_string(),
         archived_at: note.archived_at(),
+        items: note
+            .items()
+            .iter()
+            .map(|item| notes_events::Item {
+                id: item.id().as_uuid(),
+                text: item.text().to_string(),
+            })
+            .collect(),
     })
 }
 
@@ -101,7 +117,7 @@ struct KnownUsers;
 #[async_trait]
 impl UserDirectory for KnownUsers {
     async fn exists(&self, id: Uuid) -> AppResult<bool> {
-        Ok([users_api::seed::ALICE, users_api::seed::BOB].contains(&id))
+        Ok([users_api::seed::USER_ID_ALICE, users_api::seed::USER_ID_BOB].contains(&id))
     }
 }
 
@@ -114,11 +130,6 @@ pub struct Notes {
 
 impl Notes {
     pub async fn seeded(pool: PgPool) -> Self {
-        app_db::run_migrations(&pool, &[notes::migrations()])
-            .await
-            .expect("migrate notes");
-        seed::standard(&pool).await.expect("seed notes");
-
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
         let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
@@ -126,7 +137,7 @@ impl Notes {
             .await
             .expect("register notes' subscriptions");
         let worker = ctx.worker(handlers);
-        let api = TestApi::new(NotesEndpoints, |app| {
+        let api = TestApi::new(NotesEndpoints, ctx.idempotency(), |app| {
             app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
         });
         Self {
@@ -303,6 +314,39 @@ impl Notes {
             .await
     }
 
+    /// The same verbs, each sent with `key` as its `Idempotency-Key`, answered
+    /// whole so a retry's answer compares with the original's.
+    pub fn with_idempotency_key(&self, key: &'static str) -> Keyed<'_> {
+        Keyed { notes: self, key }
+    }
+
+    pub async fn add_item(
+        &self,
+        note: impl Display,
+        version: i64,
+        text: &str,
+    ) -> Outcome<NoteJson> {
+        self.api
+            .post(format!("/api/notes/{note}/items"))
+            .if_match(version)
+            .json(&json!({ "text": text }))
+            .send()
+            .await
+    }
+
+    pub async fn remove_item(
+        &self,
+        note: impl Display,
+        version: i64,
+        item: impl Display,
+    ) -> Outcome<NoteJson> {
+        self.api
+            .delete(format!("/api/notes/{note}/items/{item}"))
+            .if_match(version)
+            .send()
+            .await
+    }
+
     pub async fn delete_without_precondition(&self, id: impl Display) -> Outcome<()> {
         self.api
             .delete(format!("/api/notes/{id}"))
@@ -310,3 +354,53 @@ impl Notes {
             .await
     }
 }
+
+pub struct Keyed<'a> {
+    notes: &'a Notes,
+    key: &'static str,
+}
+
+impl Keyed<'_> {
+    pub async fn create(&self, author: impl Display, title: &str, body: &str) -> Answered {
+        let request = json!({ "authorId": author.to_string(), "title": title, "body": body });
+        self.notes
+            .api
+            .post("/api/notes")
+            .idempotency_key(self.key)
+            .json(&request)
+            .answered()
+            .await
+    }
+
+    pub async fn edit(&self, id: impl Display, version: i64, title: &str, body: &str) -> Answered {
+        let request = json!({ "title": title, "body": body });
+        self.notes
+            .api
+            .patch(format!("/api/notes/{id}"))
+            .idempotency_key(self.key)
+            .if_match(version)
+            .json(&request)
+            .answered()
+            .await
+    }
+
+    pub async fn delete(&self, id: impl Display, version: i64) -> Answered {
+        self.notes
+            .api
+            .delete(format!("/api/notes/{id}"))
+            .idempotency_key(self.key)
+            .if_match(version)
+            .answered()
+            .await
+    }
+}
+
+/// Every test's database starts as a copy of this: migrated and seeded.
+pub const TEMPLATE: Template = Template::new("notes", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &[notes::migrations()])
+            .await
+            .expect("migrate notes");
+        seed::standard(&pool).await.expect("seed notes");
+    })
+});

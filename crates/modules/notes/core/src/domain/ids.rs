@@ -9,8 +9,17 @@ impl NoteId {
     }
 }
 
+app_domain::uuid_newtype!(ItemId);
+
+impl ItemId {
+    #[allow(clippy::new_without_default)] // a random `default()` would be misleading
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
 app_domain::uuid_newtype!(
-    /// Notes' own type so the domain names no other module (spec D7). No `new()`:
+    /// Notes' own type so the domain names no other module (ADR 0008). No `new()`:
     /// notes never creates users.
     AuthorId
 );

@@ -28,6 +28,7 @@ sqlx.workspace = true
 seed = []
 
 [dev-dependencies]
+app-test-db.workspace = true
 # Enables `seed` for this crate's integration tests.
 widgets = { path = ".", features = ["seed"] }
 app-test-support.workspace = true

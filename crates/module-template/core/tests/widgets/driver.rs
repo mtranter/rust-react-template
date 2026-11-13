@@ -1,10 +1,11 @@
-//! The only place in these tests that knows the transport (spec §13).
+//! The only place in these tests that knows the transport (ADR 0004).
 
 use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::{Handlers, Version};
+use app_test_db::Template;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
 use serde_json::json;
@@ -77,15 +78,12 @@ pub struct Widgets {
 
 impl Widgets {
     pub async fn seeded(pool: PgPool) -> Self {
-        app_db::run_migrations(&pool, &[widgets::migrations()])
-            .await
-            .expect("migrate widgets");
-        seed::standard(&pool).await.expect("seed widgets");
-
         // Fixed after the seeds, so what a test creates is the newest.
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock);
-        let api = TestApi::new(WidgetsEndpoints, |app| app.accept(widgets::provider(&ctx)));
+        let api = TestApi::new(WidgetsEndpoints, ctx.idempotency(), |app| {
+            app.accept(widgets::provider(&ctx))
+        });
         // Widgets handles no events or jobs; the worker reads what it published.
         let worker = ctx.worker(Handlers::new());
         Self { api, worker }
@@ -152,3 +150,13 @@ impl Widgets {
             .await
     }
 }
+
+/// Every test's database starts as a copy of this: migrated and seeded.
+pub const TEMPLATE: Template = Template::new("widgets", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &[widgets::migrations()])
+            .await
+            .expect("migrate widgets");
+        seed::standard(&pool).await.expect("seed widgets");
+    })
+});

@@ -1,4 +1,4 @@
-// Naming the pool to wire the repository is this module's DI seam (spec §4).
+// Naming the pool to wire the repository is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
 use crate::application::NoteService;
@@ -39,7 +39,7 @@ pub fn handlers(ctx: &Context, users: Arc<dyn UserDirectory>) -> Handlers {
     Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service(ctx, users))
 }
 
-/// `users` is the users module's `directory`, passed in by the server (spec D7).
+/// `users` is the users module's `directory`, passed in by the server (ADR 0008).
 pub fn module(users: fn(&Context) -> Arc<dyn UserDirectory>) -> Module {
     let module = Module::new(move |ctx: &Context| provider(ctx, users(ctx)))
         .with_handlers(move |ctx| handlers(ctx, users(ctx)))

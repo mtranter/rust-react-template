@@ -31,3 +31,8 @@ export function shownByForm(error: unknown, formFields: readonly string[] | unde
   if (!formFields || !isErrorBody(error) || !error.fields?.length) return false;
   return error.fields.every((f) => formFields.includes(f.path));
 }
+
+/** The change carried a version the server had moved past: someone else changed it meanwhile. */
+export function isPreconditionFailed(error: unknown): boolean {
+  return isErrorBody(error) && error.code === "precondition_failed";
+}

@@ -1,20 +1,20 @@
 use crate::driver::seeded_directory;
 use sqlx::PgPool;
-use users::seed::ALICE;
+use users::seed::USER_ID_ALICE;
 use uuid::Uuid;
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_registered_user_exists(pool: PgPool) {
     let directory = seeded_directory(pool).await;
     assert!(
         directory
-            .exists(ALICE.as_uuid())
+            .exists(USER_ID_ALICE.as_uuid())
             .await
             .expect("lookup succeeds")
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn an_unknown_user_does_not_exist(pool: PgPool) {
     let directory = seeded_directory(pool).await;
     assert!(

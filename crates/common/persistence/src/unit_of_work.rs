@@ -1,4 +1,4 @@
-//! A unit of work (spec §4): everything a use case writes, its aggregates and the
+//! A unit of work (ADR 0011): everything a use case writes, its aggregates and the
 //! events it publishes, commits together or not at all. Pure: `app-db` supplies
 //! the transaction behind [`Tx`], so `application/` never names the driver.
 

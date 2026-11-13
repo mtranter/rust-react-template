@@ -62,7 +62,7 @@ impl UsersEndpoints {
         Ok(tagged(user))
     }
 
-    /// The currently-authenticated user (JWT Bearer guarded — spec §11). The
+    /// The currently-authenticated user (JWT Bearer guarded — ADR 0025). The
     /// response carries the version in the `ETag` header (and body) — the token
     /// a subsequent change must send back in `If-Match`.
     ///

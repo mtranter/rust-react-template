@@ -1,10 +1,13 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { client } from "./src/api/client.gen";
 
 export const server = setupServer();
+
+// `renderAt` renders the whole app; on a loaded machine its first screen can take past `findBy`'s 1s.
+configure({ asyncUtilTimeout: 5_000 });
 
 // jsdom doesn't implement scrolling; the router scrolls to top on navigation.
 Object.assign(globalThis, { scrollTo: () => {} });

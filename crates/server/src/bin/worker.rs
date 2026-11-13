@@ -1,4 +1,4 @@
-//! Delivers every module's events and runs their jobs (spec §4), beside the
+//! Delivers every module's events to their subscribers (ADR 0013), beside the
 //! server and from the same image. Run as many as the load needs: they share
 //! the queue without running a job twice.
 

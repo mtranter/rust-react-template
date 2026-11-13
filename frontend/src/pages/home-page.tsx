@@ -1,7 +1,13 @@
+import { listSearch } from "@/components/data-table";
 import { NewNoteForm, NotesTable } from "@/features/notes";
-import { Link } from "@tanstack/react-router";
+import { Link, getRouteApi } from "@tanstack/react-router";
+
+const route = getRouteApi("/");
 
 export function HomePage() {
+  const { page = 1, sort } = route.useSearch();
+  const navigate = route.useNavigate();
+
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <div className="flex items-baseline justify-between">
@@ -11,7 +17,13 @@ export function HomePage() {
         </Link>
       </div>
       <NewNoteForm />
-      <NotesTable />
+      <NotesTable
+        page={page}
+        sort={sort}
+        onChange={(position) =>
+          navigate({ search: (prev) => ({ ...prev, ...listSearch(position) }) })
+        }
+      />
     </main>
   );
 }

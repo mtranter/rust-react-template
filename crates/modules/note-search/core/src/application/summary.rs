@@ -8,7 +8,7 @@ pub struct NoteSummary {
     pub title: String,
     pub author_id: Uuid,
     /// `None` when no user has the note's author id: notes holds no foreign key
-    /// to users (spec D1).
+    /// to users (ADR 0002).
     pub author_name: Option<String>,
     pub created_at: DateTime<Utc>,
 }

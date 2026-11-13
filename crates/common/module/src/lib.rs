@@ -1,13 +1,13 @@
-//! A module's single registration point (spec §4). Each module core builds one
+//! A module's single registration point (ADR 0019). Each module core builds one
 //! [`Module`] in its `di.rs`; `server` lists them once, in dependency order, and
 //! derives the request data, migrations, seeds and worker handlers from that
 //! list, so none of them can be registered without the others.
 
-use app_db::{ModuleMigrations, PgEventPublisher, PgTransactions, Pool};
+use app_db::{ModuleMigrations, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool};
 use app_domain::Clock;
 use app_error::AppResult;
 use app_persistence::{EventPublisher, Handlers, Transactions};
-use app_web::{Accept, Provide};
+use app_web::{Accept, Idempotency, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
 use std::future::Future;
@@ -43,6 +43,15 @@ impl Context {
     /// stamped by the clock.
     pub fn publisher(&self) -> Arc<dyn EventPublisher> {
         Arc::new(PgEventPublisher::new(self.clock()))
+    }
+
+    /// The `Idempotency-Key` middleware, keeping its records in the pool and
+    /// timing them by the clock.
+    pub fn idempotency(&self) -> Idempotency {
+        Idempotency::new(
+            Arc::new(PgIdempotencyRecords::new(self.pool())),
+            self.clock(),
+        )
     }
 
     /// Runs `handlers`: the server's `worker` bin runs every module's, a test

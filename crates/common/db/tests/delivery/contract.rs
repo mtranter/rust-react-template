@@ -2,7 +2,7 @@ use crate::support::{Messaging, ping};
 use serde_json::Value;
 use sqlx::PgPool;
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn an_event_carries_its_roots_version_on_its_row_and_in_its_envelope(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
 
@@ -22,7 +22,7 @@ async fn an_event_carries_its_roots_version_on_its_row_and_in_its_envelope(pool:
     assert_eq!(envelope["entityversion"], 3);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_second_event_for_one_root_in_one_save_is_refused(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
 

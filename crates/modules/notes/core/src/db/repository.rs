@@ -1,7 +1,8 @@
+use super::items;
 use crate::application::{
     Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Tx, Version, Versioned,
 };
-use crate::domain::{AuthorId, Note, NoteId};
+use crate::domain::{AuthorId, Item, Note, NoteId};
 use app_db::{conn, push_list_clauses};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
@@ -38,7 +39,21 @@ struct NoteRow {
 }
 
 impl NoteRow {
-    fn restore(r: Self) -> Versioned<Note> {
+    /// With the rows' items, read in one more query.
+    async fn restore_all(pool: &PgPool, rows: Vec<Self>) -> AppResult<Vec<Versioned<Note>>> {
+        let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+        let mut items = items::of(pool, &ids).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let items = items.remove(&row.id).unwrap_or_default();
+                row.restore(items)
+            })
+            .collect())
+    }
+
+    fn restore(self, items: Vec<Item>) -> Versioned<Note> {
+        let r = self;
         Versioned {
             entity: Note::restore(
                 r.id.into(),
@@ -47,6 +62,7 @@ impl NoteRow {
                 r.body,
                 r.created_at,
                 r.archived_at,
+                items,
             ),
             version: Version::from_i64(r.version),
         }
@@ -68,7 +84,9 @@ impl NoteRepository for PgNoteRepository {
         .await
         .map_err(AppError::internal)?;
 
-        Ok(row.map(NoteRow::restore))
+        Ok(NoteRow::restore_all(&self.pool, row.into_iter().collect())
+            .await?
+            .pop())
     }
 
     async fn list(&self, query: &ListQuery<NoteSortKey>) -> AppResult<Listed<Versioned<Note>>> {
@@ -91,7 +109,7 @@ impl NoteRepository for PgNoteRepository {
         };
 
         Ok(Listed {
-            items: rows.into_iter().map(NoteRow::restore).collect(),
+            items: NoteRow::restore_all(&self.pool, rows).await?,
             total,
         })
     }
@@ -111,7 +129,7 @@ impl NoteRepository for PgNoteRepository {
         .await
         .map_err(AppError::internal)?;
 
-        Ok(rows.into_iter().map(NoteRow::restore).collect())
+        NoteRow::restore_all(&self.pool, rows).await
     }
 
     async fn save(&self, tx: &mut Tx, note: &Note, expected: Expected) -> AppResult<Version> {
@@ -134,6 +152,7 @@ impl NoteRepository for PgNoteRepository {
                 .fetch_one(conn(tx))
                 .await
                 .map_err(AppError::internal)?;
+                items::replace(tx, note).await?;
                 Ok(Version::from_i64(version))
             }
             // No row updated ⇒ the note changed since the caller read it.
@@ -155,9 +174,11 @@ impl NoteRepository for PgNoteRepository {
                 .await
                 .map_err(AppError::internal)?;
 
-                updated.map(Version::from_i64).ok_or_else(|| {
+                let version = updated.map(Version::from_i64).ok_or_else(|| {
                     AppError::precondition_failed("the note was modified by someone else")
-                })
+                })?;
+                items::replace(tx, note).await?;
+                Ok(version)
             }
         }
     }

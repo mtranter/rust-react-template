@@ -1,5 +1,6 @@
-// Spec §8: features never import each other, and code outside a feature imports
+// ADR 0024: features never import each other, and code outside a feature imports
 // it only through its `index.ts` (`@/features/notes`, never a file inside it).
+// Nothing in `src/` imports `screens/`, so none of the screenshot entry reaches the bundle.
 // A script because Biome 1.9's `noRestrictedImports` matches exact names only.
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, posix, relative, sep } from "node:path";
@@ -24,7 +25,12 @@ for (const entry of readdirSync(src, { recursive: true })) {
   if (!/\.tsx?$/.test(file) || file.startsWith("api/")) continue;
   const own = featureOf(file)?.[1];
   for (const [, spec] of readFileSync(join(src, file), "utf8").matchAll(specifier)) {
-    const target = featureOf(resolve(file, spec) ?? "");
+    const resolved = resolve(file, spec) ?? "";
+    if (/^\.\.\/screens(\/|$)/.test(resolved)) {
+      failures.push(`src/${file}: imports "${spec}"; src/ never imports screens/`);
+      continue;
+    }
+    const target = featureOf(resolved);
     if (!target || target[1] === own) continue;
     const [, feature, inner] = target;
     if (own) {
@@ -37,7 +43,7 @@ for (const entry of readdirSync(src, { recursive: true })) {
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
-  console.error("feature import check failed (spec §8)");
+  console.error("feature import check failed (ADR 0024)");
   process.exit(1);
 }
 console.log("feature imports ok");

@@ -6,7 +6,7 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
 /// Reads only the published views declared in `Cargo.toml`'s
-/// `[package.metadata.module] reads` (spec D8).
+/// `[package.metadata.module] reads` (ADR 0010).
 pub struct PgNoteFinder {
     pool: PgPool,
 }

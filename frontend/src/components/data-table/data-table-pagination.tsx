@@ -2,7 +2,7 @@ import type { RowData } from "@tanstack/react-table";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { type DataTableInstance, PAGE_SIZES } from "./use-data-table";
+import { type DataTableInstance, PAGE_SIZES, isPastLastPage } from "./use-data-table";
 
 export function DataTablePagination<TData extends RowData>({
   table,
@@ -13,8 +13,9 @@ export function DataTablePagination<TData extends RowData>({
 
   const { pageIndex, pageSize } = table.state.pagination;
   const total = table.getRowCount();
-  const first = total === 0 ? 0 : pageIndex * pageSize + 1;
-  const last = Math.min(total, (pageIndex + 1) * pageSize);
+  const pastLastPage = isPastLastPage(table);
+  const first = total === 0 || pastLastPage ? 0 : pageIndex * pageSize + 1;
+  const last = pastLastPage ? 0 : Math.min(total, (pageIndex + 1) * pageSize);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 text-sm">

@@ -65,7 +65,7 @@ for module in "${modules[@]}"; do
 done
 
 if [ "$failed" -ne 0 ]; then
-  echo "cross-module SQL check failed (spec D8)" >&2
+  echo "cross-module SQL check failed (ADR 0010)" >&2
   exit 1
 fi
 echo "cross-module SQL references ok"

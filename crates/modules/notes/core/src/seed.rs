@@ -4,15 +4,20 @@
 
 use crate::application::{Expected, NoteRepository, Transactions};
 use crate::db::PgNoteRepository;
-use crate::domain::{AuthorId, CreateNote, Note, NoteId};
+use crate::domain::{AuthorId, CreateNote, ItemId, Note, NoteId};
 use app_db::PgTransactions;
+use app_domain::well_known_id;
 use app_error::AppResult;
 use notes_api::{seed, v1};
 use sqlx::PgPool;
 
-pub const ALICES_NOTE: NoteId = NoteId::from_uuid(seed::ALICES_NOTE);
-pub const BOBS_NOTE: NoteId = NoteId::from_uuid(seed::BOBS_NOTE);
-pub const ORPHANED_NOTE: NoteId = NoteId::from_uuid(seed::ORPHANED_NOTE);
+pub const ALICE_NOTE_ID_SHOPPING_LIST: NoteId =
+    NoteId::from_uuid(seed::ALICE_NOTE_ID_SHOPPING_LIST);
+pub const BOB_NOTE_ID_BIKE_REPAIRS: NoteId = NoteId::from_uuid(seed::BOB_NOTE_ID_BIKE_REPAIRS);
+pub const NOTE_ID_ORPHANED: NoteId = NoteId::from_uuid(seed::NOTE_ID_ORPHANED);
+/// Items aren't published, so their ids live here; kind `3` is an item.
+pub const SHOPPING_LIST_ITEM_ID_MILK: ItemId = ItemId::from_uuid(well_known_id(seed::MODULE, 3, 1));
+pub const SHOPPING_LIST_ITEM_ID_EGGS: ItemId = ItemId::from_uuid(well_known_id(seed::MODULE, 3, 2));
 
 fn note(published: v1::Note, body: &str) -> Note {
     Note::create(
@@ -29,7 +34,16 @@ fn note(published: v1::Note, body: &str) -> Note {
 }
 
 pub fn alices_note() -> Note {
-    note(seed::alices_note(), "milk, eggs")
+    let mut note = note(seed::alices_note(), "for the weekend");
+    for (id, text) in [
+        (SHOPPING_LIST_ITEM_ID_MILK, "Milk"),
+        (SHOPPING_LIST_ITEM_ID_EGGS, "Eggs"),
+    ] {
+        let _ = note
+            .add_item(id, text)
+            .expect("seed data satisfies the domain's invariants");
+    }
+    note
 }
 
 pub fn bobs_note() -> Note {

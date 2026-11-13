@@ -10,5 +10,6 @@ mod behaviours {
     mod finding;
     mod listing;
     mod registering;
+    mod retrying;
     mod welcoming;
 }

@@ -1,4 +1,4 @@
-//! Subscriptions (spec §4): which queues the relay fans each event out to,
+//! Subscriptions (ADR 0014): which queues the relay fans each event out to,
 //! kept in `messaging.subscription` rather than in each process's memory, so
 //! every build running during a rolling deploy relays the same way.
 

@@ -4,6 +4,8 @@ import {
   DataTable,
   DataTablePagination,
   DataTableViewOptions,
+  type ListPosition,
+  type SortKey,
   createDataTableColumnHelper,
   useDataTable,
   useListParams,
@@ -25,16 +27,30 @@ const columns = column.columns([
   }),
 ]);
 
-/** `text` is controlled so the page can keep it in the URL. */
+export const noteSummarySortKeys: readonly SortKey<NoteSummarySort>[] = [
+  "title",
+  "authorName",
+  "createdAt",
+];
+
+/** `text` and the list's position are controlled so the page can keep them in the URL. */
 export function NoteSearch({
   text,
   onTextChange,
-}: {
+  page,
+  sort,
+  onChange,
+}: ListPosition<NoteSummarySort> & {
   text: string;
+  /** A new search starts again from the first page: the caller drops the page as it applies it. */
   onTextChange: (text: string) => void;
+  onChange: (position: ListPosition<NoteSummarySort>) => void;
 }) {
   const params = useListParams<NoteSummarySort>({
-    sortable: ["title", "authorName", "createdAt"],
+    page,
+    sort,
+    onChange,
+    sortable: noteSummarySortKeys,
   });
   const found = useQuery({
     ...getNoteSearchOptions({ query: { ...params.query, ...(text.trim() && { q: text }) } }),
@@ -56,10 +72,7 @@ export function NoteSearch({
           placeholder="Search by title or author…"
           className="max-w-sm"
           value={text}
-          onChange={(e) => {
-            params.onPaginationChange((p) => ({ ...p, pageIndex: 0 }));
-            onTextChange(e.target.value);
-          }}
+          onChange={(e) => onTextChange(e.target.value)}
         />
         <DataTableViewOptions table={table} />
       </div>

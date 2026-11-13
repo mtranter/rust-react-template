@@ -1,10 +1,11 @@
+import { listSearch } from "@/components/data-table";
 import { NoteSearch } from "@/features/note-search";
 import { Link, getRouteApi } from "@tanstack/react-router";
 
 const route = getRouteApi("/search");
 
 export function SearchPage() {
-  const { q } = route.useSearch();
+  const { q, page = 1, sort } = route.useSearch();
   const navigate = route.useNavigate();
 
   return (
@@ -17,7 +18,17 @@ export function SearchPage() {
       </div>
       <NoteSearch
         text={q ?? ""}
-        onTextChange={(text) => navigate({ search: { q: text || undefined }, replace: true })}
+        onTextChange={(text) =>
+          navigate({
+            search: (prev) => ({ ...prev, q: text || undefined, page: undefined }),
+            replace: true,
+          })
+        }
+        page={page}
+        sort={sort}
+        onChange={(position) =>
+          navigate({ search: (prev) => ({ ...prev, ...listSearch(position) }) })
+        }
       />
     </main>
   );

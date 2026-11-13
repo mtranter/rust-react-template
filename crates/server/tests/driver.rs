@@ -1,10 +1,11 @@
-//! The only place in the journeys that knows the transport (spec §13). Unlike a
+//! The only place in the journeys that knows the transport (ADR 0029). Unlike a
 //! module's driver it stubs nothing: it boots the composed app as `server` does,
 //! over every registered module, with the composed worker and real JWT auth.
 
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, seed_time};
 use app_module::Context;
+use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
 use chrono::{DateTime, Utc};
@@ -85,13 +86,6 @@ impl App {
     /// Migrates, seeds and registers subscriptions for every module, as
     /// `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
-        app_db::run_migrations(&pool, &server::module_migrations())
-            .await
-            .expect("migrate every module");
-        for module in server::modules() {
-            module.seed(pool.clone()).await.expect("seed every module");
-        }
-
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
         server::register_subscriptions(&ctx)
@@ -197,3 +191,16 @@ impl Session<'_> {
         call.bearer(&self.token)
     }
 }
+
+/// Every journey's database starts as a copy of this: every module migrated
+/// and seeded, as `migrate` and `seed` leave it.
+pub const TEMPLATE: Template = Template::new("journeys", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &server::module_migrations())
+            .await
+            .expect("migrate every module");
+        for module in server::modules() {
+            module.seed(pool.clone()).await.expect("seed every module");
+        }
+    })
+});

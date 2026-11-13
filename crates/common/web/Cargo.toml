@@ -7,8 +7,10 @@ license.workspace = true
 publish = false
 
 [dependencies]
+app-domain.workspace = true
 app-error.workspace = true
 app-persistence.workspace = true
+chrono.workspace = true
 thiserror.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true

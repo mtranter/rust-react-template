@@ -1,4 +1,4 @@
-//! The only place in these tests that knows the transport (spec §13).
+//! The only place in these tests that knows the transport (ADR 0004).
 
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, SystemClock, seed_time};
@@ -6,6 +6,7 @@ use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::Version;
+use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
 use async_trait::async_trait;
@@ -114,8 +115,6 @@ pub struct Users {
 
 impl Users {
     pub async fn seeded(pool: PgPool) -> Self {
-        migrate_and_seed(&pool).await;
-
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
         let mailer = Arc::new(FakeMailer::default());
@@ -125,7 +124,7 @@ impl Users {
             .expect("register users' subscriptions");
         let worker = ctx.worker(handlers);
         let verifier = JwtVerifier::new("test-secret");
-        let api = TestApi::new(UsersEndpoints, |app| {
+        let api = TestApi::new(UsersEndpoints, ctx.idempotency(), |app| {
             app.accept(users::provider(&ctx)).data(verifier.clone())
         });
         Self {
@@ -272,6 +271,22 @@ impl Session<'_> {
             .await
     }
 
+    /// As [`change_display_name`](Self::change_display_name), sent with `key`
+    /// as its `Idempotency-Key`.
+    pub async fn change_display_name_keyed(
+        &self,
+        key: &str,
+        version: i64,
+        display_name: &str,
+    ) -> Outcome<UserJson> {
+        self.signed(self.users.api.patch("/api/users/me"))
+            .idempotency_key(key)
+            .if_match(version)
+            .json(&json!({ "displayName": display_name }))
+            .send()
+            .await
+    }
+
     pub async fn delete_account_without_precondition(&self) -> Outcome<()> {
         self.signed(self.users.api.delete("/api/users/me"))
             .send_empty()
@@ -288,13 +303,15 @@ impl Session<'_> {
 
 /// Tested directly: the directory has no HTTP entry point.
 pub async fn seeded_directory(pool: PgPool) -> Arc<dyn UserDirectory> {
-    migrate_and_seed(&pool).await;
     users::directory(&Context::new(pool, Arc::new(SystemClock)))
 }
 
-async fn migrate_and_seed(pool: &PgPool) {
-    app_db::run_migrations(pool, &[users::migrations()])
-        .await
-        .expect("migrate users");
-    seed::standard(pool).await.expect("seed users");
-}
+/// Every test's database starts as a copy of this: migrated and seeded.
+pub const TEMPLATE: Template = Template::new("users", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &[users::migrations()])
+            .await
+            .expect("migrate users");
+        seed::standard(&pool).await.expect("seed users");
+    })
+});

@@ -1,4 +1,5 @@
-import type { ListResultNoteSummaryResponse, NoteSummaryResponse } from "@/api";
+import type { ListResultNoteSummaryResponse, NoteSummaryResponse, NoteSummarySort } from "@/api";
+import type { ListPosition } from "@/components/data-table";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,7 +11,18 @@ import { server } from "../../../vitest.setup";
 
 function Searchable() {
   const [text, setText] = useState("");
-  return <NoteSearch text={text} onTextChange={setText} />;
+  const [position, setPosition] = useState<ListPosition<NoteSummarySort>>({ page: 1 });
+  return (
+    <NoteSearch
+      text={text}
+      onTextChange={(next) => {
+        setText(next);
+        setPosition((p) => ({ ...p, page: 1 }));
+      }}
+      {...position}
+      onChange={setPosition}
+    />
+  );
 }
 
 function renderSearch() {

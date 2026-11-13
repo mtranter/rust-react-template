@@ -1,4 +1,4 @@
-//! Delivers what units of work leave in `messaging` (spec §4): the relay copies
+//! Delivers what units of work leave in `messaging` (ADR 0013): the relay copies
 //! each outbox event into one delivery per subscriber, a row of `messaging.job`,
 //! then each runs in its own transaction, with retries and dead-lettering, in
 //! order per key within each queue. Any number of workers can run against one
@@ -34,7 +34,7 @@ pub struct Worker {
 /// A delivery that ran out of attempts; the later versions of its key run past
 /// it. Rerun one by clearing its `dead_at` and `attempts` in `messaging.job`:
 /// it then runs after any later versions already handled, out of order, which
-/// is why a subscriber keeping a copy of state compares versions (spec §4).
+/// is why a subscriber keeping a copy of state compares versions (ADR 0013).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeadLetter {
     pub queue: String,

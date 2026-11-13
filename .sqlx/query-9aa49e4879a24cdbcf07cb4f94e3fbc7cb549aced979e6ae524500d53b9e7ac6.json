@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM idempotency.request WHERE claimed_at <= $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9aa49e4879a24cdbcf07cb4f94e3fbc7cb549aced979e6ae524500d53b9e7ac6"
+}

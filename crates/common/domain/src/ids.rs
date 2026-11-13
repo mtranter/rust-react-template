@@ -54,7 +54,7 @@ macro_rules! uuid_newtype {
 }
 
 /// A seed's readable id, `MMMMMMMM-KKKK-0000-0000-NNNNNNNNNNNN`: module number,
-/// entity kind within the module, sequence (spec §13).
+/// entity kind within the module, sequence (ADR 0028).
 ///
 /// ```
 /// let alice = app_domain::well_known_id(1, 1, 1);

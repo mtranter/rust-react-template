@@ -1,6 +1,10 @@
 use app_db::map_db_error;
 use app_error::AppError;
+use app_test_db::Template;
 use sqlx::PgPool;
+
+/// Each test makes the table it needs.
+const TEMPLATE: Template = Template::new("map_db_error", |_| Box::pin(async {}));
 
 async fn accounts(pool: &PgPool) {
     sqlx::query(
@@ -35,7 +39,7 @@ fn meaning(constraint: &str) -> Option<AppError> {
     }
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(TEMPLATE)]
 async fn each_constraint_yields_its_own_error(pool: PgPool) {
     accounts(&pool).await;
 
@@ -49,7 +53,7 @@ async fn each_constraint_yields_its_own_error(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(TEMPLATE)]
 async fn an_unmapped_constraint_is_an_internal_error(pool: PgPool) {
     accounts(&pool).await;
 
@@ -59,7 +63,7 @@ async fn an_unmapped_constraint_is_an_internal_error(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(TEMPLATE)]
 async fn a_failure_without_a_constraint_is_an_internal_error(pool: PgPool) {
     let err = sqlx::query("SELECT * FROM missing")
         .execute(&pool)

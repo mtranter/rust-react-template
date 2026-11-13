@@ -1,4 +1,4 @@
-//! What `users` announces (spec §4): one topic per aggregate root, each event
+//! What `users` announces (ADR 0012): one topic per aggregate root, each event
 //! carrying the root as it now is.
 
 pub mod v1 {

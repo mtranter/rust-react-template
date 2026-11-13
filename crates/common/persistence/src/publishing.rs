@@ -1,4 +1,4 @@
-//! Publishing events (spec §4). Services hold an `Arc<dyn EventPublisher>` beside
+//! Publishing events (ADR 0011). Services hold an `Arc<dyn EventPublisher>` beside
 //! their repository and publish into the same [`Tx`] they save in, so an event is
 //! delivered if and only if the change it announces commits.
 

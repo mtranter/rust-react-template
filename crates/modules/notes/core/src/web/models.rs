@@ -26,6 +26,20 @@ pub struct EditNoteRequest {
     pub body: String,
 }
 
+/// Adds a line to a note's checklist. Like an edit, it carries no version.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AddItemRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ItemResponse {
+    pub id: String,
+    pub text: String,
+}
+
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct NoteResponse {
@@ -38,6 +52,9 @@ pub struct NoteResponse {
     /// note can't be edited or deleted.
     #[oai(skip_serializing_if_is_none)]
     pub archived_at: Option<String>,
+    /// Its checklist, in the order the items were added. An item is part of
+    /// the note: changing one changes the note's version.
+    pub items: Vec<ItemResponse>,
     /// Optimistic-concurrency version. Echo it back in `If-Match` to edit this
     /// note; a stale value is refused with `412 Precondition Failed`. Also
     /// mirrored in the `ETag` response header for single-item reads.
@@ -54,6 +71,14 @@ impl From<Versioned<Note>> for NoteResponse {
             body: n.body().to_string(),
             created_at: n.created_at().to_rfc3339(),
             archived_at: n.archived_at().map(|at| at.to_rfc3339()),
+            items: n
+                .items()
+                .iter()
+                .map(|item| ItemResponse {
+                    id: item.id().to_string(),
+                    text: item.text().to_string(),
+                })
+                .collect(),
             version: version.as_i64().to_string(),
         }
     }

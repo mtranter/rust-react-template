@@ -34,6 +34,7 @@ dependencies = [
  "app-error",
  "app-events",
  "app-persistence",
+ "app-test-db",
  "async-trait",
  "chrono",
  "serde",
@@ -99,6 +100,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-test-db"
+version = "0.1.0"
+dependencies = [
+ "app-test-db-macros",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "app-test-db-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "app-test-support"
 version = "0.1.0"
 dependencies = [
@@ -111,8 +129,10 @@ dependencies = [
 name = "app-web"
 version = "0.1.0"
 dependencies = [
+ "app-domain",
  "app-error",
  "app-persistence",
+ "chrono",
  "jsonwebtoken",
  "poem",
  "poem-openapi",
@@ -1517,6 +1537,7 @@ dependencies = [
  "app-error",
  "app-module",
  "app-persistence",
+ "app-test-db",
  "app-test-support",
  "app-web",
  "async-trait",
@@ -1543,6 +1564,7 @@ dependencies = [
  "app-events",
  "app-module",
  "app-persistence",
+ "app-test-db",
  "app-test-support",
  "app-web",
  "async-trait",
@@ -2565,6 +2587,7 @@ dependencies = [
  "app-domain",
  "app-module",
  "app-persistence",
+ "app-test-db",
  "app-web",
  "chrono",
  "figment",
@@ -3437,6 +3460,7 @@ dependencies = [
  "app-events",
  "app-module",
  "app-persistence",
+ "app-test-db",
  "app-test-support",
  "app-web",
  "async-trait",
@@ -3646,6 +3670,7 @@ dependencies = [
  "app-events",
  "app-module",
  "app-persistence",
+ "app-test-db",
  "app-test-support",
  "app-web",
  "async-trait",

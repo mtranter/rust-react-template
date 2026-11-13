@@ -1,4 +1,4 @@
-//! Ids are `well_known_id(MODULE, kind, sequence)` (spec §13); kind `1` is a widget.
+//! Ids are `well_known_id(MODULE, kind, sequence)` (ADR 0028); kind `1` is a widget.
 
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
@@ -14,8 +14,8 @@ use sqlx::PgPool;
 /// Unique across modules; `make check-modules` enforces it.
 pub const MODULE: u32 = 0;
 
-pub const FIRST_WIDGET: WidgetId = WidgetId::from_uuid(well_known_id(MODULE, 1, 1));
-pub const SECOND_WIDGET: WidgetId = WidgetId::from_uuid(well_known_id(MODULE, 1, 2));
+pub const WIDGET_ID_FIRST: WidgetId = WidgetId::from_uuid(well_known_id(MODULE, 1, 1));
+pub const WIDGET_ID_SECOND: WidgetId = WidgetId::from_uuid(well_known_id(MODULE, 1, 2));
 
 fn widget(id: WidgetId, name: &str, minutes: i64) -> Widget {
     Widget::create(id, CreateWidget { name: name.into() }, seed_time(minutes))
@@ -24,11 +24,11 @@ fn widget(id: WidgetId, name: &str, minutes: i64) -> Widget {
 }
 
 pub fn first_widget() -> Widget {
-    widget(FIRST_WIDGET, "First", 0)
+    widget(WIDGET_ID_FIRST, "First", 0)
 }
 
 pub fn second_widget() -> Widget {
-    widget(SECOND_WIDGET, "Second", 1)
+    widget(WIDGET_ID_SECOND, "Second", 1)
 }
 
 pub fn widgets() -> Vec<Widget> {

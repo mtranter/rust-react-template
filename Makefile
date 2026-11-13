@@ -13,11 +13,12 @@ endif
 DATABASE_URL ?= postgres://app:app@localhost:5432/app
 export DATABASE_URL
 
-# Backend tests use `#[sqlx::test]` against the same docker-compose server: it
-# creates a fresh `_sqlx_test_*` database per test and keeps bookkeeping (a
-# `_sqlx_test` schema) in the database named here — so point it at `postgres`,
-# not the dev `app` database. SQLX_OFFLINE=true keeps `query!` compiling against
-# the checked-in .sqlx cache rather than that (unmigrated) database.
+# Backend tests (`#[app_test_db::test]`) use the same docker-compose server: each
+# test binary migrates and seeds a `_test_template_*` database once, and each
+# test gets a `_test_*` copy of it, created and dropped from the database named
+# here — so point it at `postgres`, not the dev `app` database. SQLX_OFFLINE=true
+# keeps `query!` compiling against the checked-in .sqlx cache rather than that
+# (unmigrated) database.
 TEST_DATABASE_URL ?= postgres://app:app@localhost:5432/postgres
 
 CARGO ?= cargo
@@ -49,6 +50,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # Phony targets
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
+        check-backend check-frontend check-changed check-spec screens \
         build-backend-dev build-frontend db-up db-down db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
@@ -122,18 +124,22 @@ deny: _require-cargo-bin ## cargo-deny bans/licenses/advisories
 build-backend-dev: ## Debug build of every crate, including the seed bin (no DB needed)
 	SQLX_OFFLINE=true $(CARGO) build --workspace --features server/seed
 
-check-sql: ## Modules' SQL names only their own schema and the published views they declare (spec D8)
+check-sql: ## Modules' SQL names only their own schema and the published views they declare (ADR 0010)
 	./scripts/check-sql-schemas.sh
 
-check-deps: ## No module core depends on another, -api crates stay pure, write modules declare no reads (spec §4)
+check-deps: ## No module core depends on another, -api crates stay pure, write modules declare no reads (ADR 0017)
 	./scripts/check-module-deps.sh
+
+check-spec: ## The checked-in frontend/openapi.json is the backend's current spec (else `make spec` and commit it)
+	@SQLX_OFFLINE=true $(CARGO) run --quiet --bin dump-spec | cmp -s - frontend/openapi.json \
+	  || { echo "frontend/openapi.json is stale: run 'make spec' and commit it"; exit 1; }
 
 check-modules: ## Every module is registered with the server, cargo-deny and the seed feature; module numbers are unique
 	./scripts/check-modules.sh
 
 test: test-backend test-frontend ## Backend + frontend tests
 
-test-backend: db-wait ## Backend tests (#[sqlx::test], one fresh DB per test on docker-compose Postgres)
+test-backend: db-wait ## Backend tests (each a copy of its binary's migrated, seeded template DB on docker-compose Postgres)
 	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) test --workspace
 
 test-frontend: frontend/src/api ## Frontend Vitest (MSW-mocked network; no backend needed)
@@ -141,7 +147,7 @@ test-frontend: frontend/src/api ## Frontend Vitest (MSW-mocked network; no backe
 
 test-db-clean: db-wait ## Drop leftover per-test databases (failed or renamed tests leave them behind)
 	@dbs=$$(docker compose exec -T postgres psql -U app -d postgres -Atc \
-	  "select datname from pg_database where datname like '\_sqlx\_test\_%'"); \
+	  "select datname from pg_database where datname like '\_test\_%' or datname like '\_sqlx\_test\_%'"); \
 	for db in $$dbs; do docker compose exec -T postgres dropdb -U app --force "$$db"; done; \
 	docker compose exec -T postgres psql -U app -d postgres -qc "drop schema if exists _sqlx_test cascade"; \
 	echo "dropped $$(echo $$dbs | wc -w | tr -d ' ') test database(s)"
@@ -152,11 +158,23 @@ typecheck: frontend/src/api ## Frontend tsc
 lint-frontend: frontend/node_modules ## Biome lint + format check, and feature import boundaries (as CI runs them)
 	cd frontend && pnpm biome ci . && pnpm run lint:imports
 
+screens: frontend/src/api ## Screenshot every UI scenario → frontend/screens/out/ (needs Playwright's Chromium; not in check)
+	cd frontend && pnpm run screens
+
 build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
 	cd frontend && pnpm run build
 
-# Every step CI runs, backend and frontend.
-check: fmt clippy deny check-sql check-deps check-modules build-backend-dev test typecheck lint-frontend build-frontend ## CI mirror (run before calling work done)
+# Every step CI runs, backend and frontend. A step added here is added to CI,
+# and the reverse.
+check: check-backend check-frontend ## CI mirror (run before calling work done)
+
+check-backend: fmt clippy deny check-sql check-deps check-modules check-spec build-backend-dev test-backend ## The backend half of check
+
+check-frontend: typecheck lint-frontend test-frontend build-frontend ## The frontend half of check
+
+CHECK_BASE ?= main
+check-changed: ## Only the halves of check this branch's changes (since CHECK_BASE, default main) can break
+	./scripts/check-changed.sh $(CHECK_BASE)
 
 build: build-frontend ## Production build: vite build, then the release binaries (the server embeds the SPA)
 	SQLX_OFFLINE=true $(CARGO) build --release --bin server --bin worker --features embed-frontend

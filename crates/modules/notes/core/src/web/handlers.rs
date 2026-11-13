@@ -1,6 +1,6 @@
-use super::models::{CreateNoteRequest, EditNoteRequest, NoteResponse, NoteSort};
+use super::models::{AddItemRequest, CreateNoteRequest, EditNoteRequest, NoteResponse, NoteSort};
 use crate::application::{NoteService, Versioned};
-use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
+use crate::domain::{AuthorId, CreateNote, EditNote, ItemId, Note, NoteId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
@@ -26,6 +26,11 @@ enum Deleted {
 fn note_id(raw: &str) -> ApiResult<NoteId> {
     raw.parse()
         .map_err(|_| AppError::validation("invalid note id").into())
+}
+
+fn parse_item_id(raw: &str) -> ApiResult<ItemId> {
+    raw.parse()
+        .map_err(|_| AppError::validation("invalid item id").into())
 }
 
 fn tagged(note: Versioned<Note>) -> NoteResult {
@@ -108,6 +113,42 @@ impl NotesEndpoints {
         let expected = if_match_version(if_match.0)?;
         notes.0.delete(note_id(&id.0)?, expected).await?;
         Ok(Deleted::Deleted)
+    }
+
+    /// Add an item to a note's checklist. Requires `If-Match` with the note's
+    /// version, like an edit, and answers with the note at its new version.
+    #[oai(path = "/:id/items", method = "post")]
+    async fn add_item(
+        &self,
+        notes: Data<&NoteService>,
+        id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+        body: Json<AddItemRequest>,
+    ) -> ApiResult<NoteResult> {
+        let expected = if_match_version(if_match.0)?;
+        let note = notes
+            .0
+            .add_item(note_id(&id.0)?, &body.0.text, expected)
+            .await?;
+        Ok(tagged(note))
+    }
+
+    /// Remove an item from a note's checklist. Requires `If-Match` with the
+    /// note's version, and answers with the note at its new version.
+    #[oai(path = "/:id/items/:item_id", method = "delete")]
+    async fn remove_item(
+        &self,
+        notes: Data<&NoteService>,
+        id: Path<String>,
+        item_id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<NoteResult> {
+        let expected = if_match_version(if_match.0)?;
+        let note = notes
+            .0
+            .remove_item(note_id(&id.0)?, parse_item_id(&item_id.0)?, expected)
+            .await?;
+        Ok(tagged(note))
     }
 
     /// List notes, paginated. Most-recent first unless `sort` says otherwise:

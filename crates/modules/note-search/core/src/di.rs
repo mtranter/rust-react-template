@@ -1,4 +1,4 @@
-// Naming the pool to wire the finder is this module's DI seam (spec §4).
+// Naming the pool to wire the finder is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
 use crate::application::NoteSearchService;
@@ -23,7 +23,7 @@ impl Provide for NoteSearchProvider {
 }
 
 /// No migrations and no seed: this read module owns no data, only reads the
-/// views its providers publish (spec D8).
+/// views its providers publish (ADR 0010).
 pub fn module() -> Module {
     Module::new(provider)
 }

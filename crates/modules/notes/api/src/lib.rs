@@ -1,4 +1,4 @@
-//! What other modules may know of `notes` (spec D7). Notes are referred to by
+//! What other modules may know of `notes` (ADR 0008). Notes are referred to by
 //! plain `Uuid`: `NoteId` stays private to the notes domain.
 
 pub mod events;

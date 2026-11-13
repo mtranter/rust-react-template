@@ -1,4 +1,4 @@
-//! What modules announce to each other (spec §4): the [`Topic`] each aggregate
+//! What modules announce to each other (ADR 0012): the [`Topic`] each aggregate
 //! root's events belong to, each [`Event`] of it, the [`EventPayload`] every
 //! event carries and the [`EventEnvelope`] it travels in. `app-persistence`
 //! records them in a unit of work; `app-db` delivers them.

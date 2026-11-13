@@ -1,20 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 import { server } from "../vitest.setup";
-import { createAppRouter } from "./router";
-
-function renderAt(path: string) {
-  const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
-}
+import { renderAt } from "./test/render-app";
 
 test.each(["/", "/home"])("shows the notes page at %s", async (path) => {
   server.use(

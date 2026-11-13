@@ -11,7 +11,7 @@ app-domain.workspace = true
 app-error.workspace = true
 app-events.workspace = true
 app-persistence.workspace = true
-# Only the pure `users-api`, never the `users` crate itself (spec D7).
+# Only the pure `users-api`, never the `users` crate itself (ADR 0008).
 users-api.workspace = true
 notes-api.workspace = true
 async-trait.workspace = true
@@ -32,6 +32,7 @@ tracing.workspace = true
 seed = ["notes-api/seed"]
 
 [dev-dependencies]
+app-test-db.workspace = true
 # Enables `seed` for this crate's integration tests.
 notes = { path = ".", features = ["seed"] }
 # The users its seeded notes are by, for the `UserDirectory` stub.

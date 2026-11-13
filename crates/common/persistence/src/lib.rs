@@ -1,10 +1,12 @@
 mod concurrency;
+mod idempotency;
 mod listing;
 mod messaging;
 mod publishing;
 mod unit_of_work;
 
 pub use concurrency::{Expected, Version, Versioned};
+pub use idempotency::{Claimed, IdempotencyRecords, KeyClaim, RecordedResponse};
 pub use listing::{DEFAULT_LIMIT, Direction, ListQuery, Listed, MAX_LIMIT, PageRequest, Sort};
 pub use messaging::{Handle, Handlers, MAX_ATTEMPTS, Subscription};
 pub use publishing::{EventPublisher, PendingEvent};

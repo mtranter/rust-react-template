@@ -8,7 +8,9 @@ mod behaviours {
     mod creating;
     mod deleting;
     mod editing;
+    mod items;
     mod lifecycle;
     mod listing;
     mod reading;
+    mod retrying;
 }

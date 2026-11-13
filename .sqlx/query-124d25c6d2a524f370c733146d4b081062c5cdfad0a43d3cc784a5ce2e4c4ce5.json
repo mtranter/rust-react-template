@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE idempotency.request SET status = $4, headers = $5, body = $6\n            WHERE caller = $1 AND key = $2 AND claimed_at = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Int2",
+        "Jsonb",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "124d25c6d2a524f370c733146d4b081062c5cdfad0a43d3cc784a5ce2e4c4ce5"
+}

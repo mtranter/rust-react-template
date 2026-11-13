@@ -1,4 +1,4 @@
-//! What `widgets` announces (spec §4): one topic per aggregate root, each event
+//! What `widgets` announces (ADR 0012): one topic per aggregate root, each event
 //! carrying the root as it now is.
 
 pub mod v1 {

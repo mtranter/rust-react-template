@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["src/api/**", "dist/**", "openapi.json"]
+    "ignore": ["src/api/**", "dist/**", "openapi.json", "screens/mockServiceWorker.js"]
   },
   "formatter": {
     "enabled": true,

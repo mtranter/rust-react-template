@@ -10,7 +10,7 @@
 #
 # It also checks that a module with a seed declares the number its seed ids are
 # built from (`pub const MODULE: u32 = N;` in its `-api` crate's `src/seed.rs` if
-# it has one, else its core's; spec §13), and that the numbers are unique.
+# it has one, else its core's; ADR 0028), and that the numbers are unique.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -7,7 +7,7 @@ use std::time::Duration;
 const OLD: &[&str] = &["tests.first"];
 const NEW: &[&str] = &["tests.first", "tests.second"];
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn an_old_worker_leaves_a_subscription_it_doesnt_serve_to_one_that_does(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(NEW).await;
@@ -32,7 +32,7 @@ async fn an_old_worker_leaves_a_subscription_it_doesnt_serve_to_one_that_does(po
     assert!(messaging.jobs().await.is_empty());
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn an_old_workers_relay_fans_out_to_a_subscription_registered_since(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(OLD).await;
@@ -52,7 +52,7 @@ async fn an_old_workers_relay_fans_out_to_a_subscription_registered_since(pool: 
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_subscription_gets_no_event_relayed_before_it_was_registered(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(OLD).await;
@@ -73,7 +73,7 @@ async fn a_subscription_gets_no_event_relayed_before_it_was_registered(pool: PgP
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn registering_again_changes_nothing(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(NEW).await;
@@ -91,7 +91,7 @@ async fn registering_again_changes_nothing(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_queue_cannot_be_registered_under_a_second_topic(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(&["tests.q"]).await;
@@ -106,7 +106,7 @@ async fn a_queue_cannot_be_registered_under_a_second_topic(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn retiring_a_subscription_dead_letters_what_it_hadnt_run_and_relays_it_nothing_more(
     pool: PgPool,
 ) {
@@ -127,7 +127,7 @@ async fn retiring_a_subscription_dead_letters_what_it_hadnt_run_and_relays_it_no
     assert_eq!(messaging.jobs().await, [Job::retired("tests.second")]);
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_retired_queue_cannot_be_registered_again(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(NEW).await;
@@ -141,7 +141,7 @@ async fn a_retired_queue_cannot_be_registered_again(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_worker_whose_subscriptions_arent_registered_refuses_to_start(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(OLD).await;

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import type { DataTableFeatures, DataTableInstance } from "./use-data-table";
+import { type DataTableFeatures, type DataTableInstance, isPastLastPage } from "./use-data-table";
 
 const ariaSort = { asc: "ascending", desc: "descending", none: "none" } as const;
 
@@ -28,6 +28,18 @@ function SortableHeader<TData extends RowData>({
       <table.FlexRender header={header} />
       <Icon className={sorted ? undefined : "text-muted-foreground"} />
     </Button>
+  );
+}
+
+/** What a list shows on a page past its last: rows went since the link was made. */
+function PastLastPage<TData extends RowData>({ table }: { table: DataTableInstance<TData> }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <p>Nothing on page {table.state.pagination.pageIndex + 1}.</p>
+      <Button variant="outline" size="sm" onClick={() => table.setPageIndex(0)}>
+        Go to page 1
+      </Button>
+    </div>
   );
 }
 
@@ -98,7 +110,7 @@ export function DataTable<TData extends RowData>({
                 colSpan={columns.length}
                 className="h-24 text-center text-muted-foreground"
               >
-                {empty}
+                {isPastLastPage(table) ? <PastLastPage table={table} /> : empty}
               </TableCell>
             </TableRow>
           )}

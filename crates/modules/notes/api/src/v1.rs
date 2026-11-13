@@ -1,4 +1,4 @@
-//! The rows of the `notes_api.*_v1` published views (spec D8).
+//! The rows of the `notes_api.*_v1` published views (ADR 0010).
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

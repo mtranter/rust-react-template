@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT request_hash = sha256($3) AS \"same_request!\", status, headers, body\n            FROM idempotency.request\n            WHERE caller = $1 AND key = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "same_request!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "idempotency.request",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "headers",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "idempotency.request",
+            "name": "headers"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "body",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "idempotency.request",
+            "name": "body"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "16142ccf26527e07a07ef6582a2b732b06c97fff04f6ef94ad737dbbbe4ee347"
+}

@@ -1,10 +1,10 @@
-//! The notes module's seed data as other modules may know it (spec §13). Ids are
+//! The notes module's seed data as other modules may know it (ADR 0028). Ids are
 //! `well_known_id(MODULE, kind, sequence)`; kind `1` is a note, kind `2` an
 //! author. `notes::seed` saves it.
 
 use crate::v1;
 use app_domain::{seed_time, well_known_id};
-use users_api::seed::{ALICE, BOB};
+use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
 use uuid::Uuid;
 
 /// Unique across modules; `make check-modules` enforces it.
@@ -12,13 +12,13 @@ pub const MODULE: u32 = 2;
 
 /// No user has this id: stands in for an author since removed, as notes holds
 /// no foreign key to users.
-pub const UNKNOWN_AUTHOR: Uuid = well_known_id(MODULE, 2, 1);
+pub const AUTHOR_ID_UNKNOWN: Uuid = well_known_id(MODULE, 2, 1);
 
 // Notes 1 and 2 were an earlier seed's. Never reuse a seed id for other data:
 // an environment already seeded keeps the old row, since seeding skips ids it has.
-pub const ALICES_NOTE: Uuid = well_known_id(MODULE, 1, 3);
-pub const BOBS_NOTE: Uuid = well_known_id(MODULE, 1, 4);
-pub const ORPHANED_NOTE: Uuid = well_known_id(MODULE, 1, 5);
+pub const ALICE_NOTE_ID_SHOPPING_LIST: Uuid = well_known_id(MODULE, 1, 3);
+pub const BOB_NOTE_ID_BIKE_REPAIRS: Uuid = well_known_id(MODULE, 1, 4);
+pub const NOTE_ID_ORPHANED: Uuid = well_known_id(MODULE, 1, 5);
 
 fn note(id: Uuid, author_id: Uuid, title: &str, minutes: i64) -> v1::Note {
     v1::Note {
@@ -30,13 +30,18 @@ fn note(id: Uuid, author_id: Uuid, title: &str, minutes: i64) -> v1::Note {
 }
 
 pub fn alices_note() -> v1::Note {
-    note(ALICES_NOTE, ALICE, "Shopping list", 0)
+    note(
+        ALICE_NOTE_ID_SHOPPING_LIST,
+        USER_ID_ALICE,
+        "Shopping list",
+        0,
+    )
 }
 
 pub fn bobs_note() -> v1::Note {
-    note(BOBS_NOTE, BOB, "Bike repairs", 1)
+    note(BOB_NOTE_ID_BIKE_REPAIRS, USER_ID_BOB, "Bike repairs", 1)
 }
 
 pub fn orphaned_note() -> v1::Note {
-    note(ORPHANED_NOTE, UNKNOWN_AUTHOR, "Holiday shopping", 2)
+    note(NOTE_ID_ORPHANED, AUTHOR_ID_UNKNOWN, "Holiday shopping", 2)
 }

@@ -1,9 +1,9 @@
-//! The transport half of a module's test driver (spec §13), behind the `test`
+//! The transport half of a module's test driver (ADR 0004), behind the `test`
 //! feature, which only dev-dependencies enable. The driver keeps what is its
 //! module's own: domain verbs, JSON newtypes built from aggregates, and a
 //! `Refusal` declaring only the codes the module produces.
 
-use crate::{RequestIdMiddleware, render_error};
+use crate::{IDEMPOTENCY_KEY, Idempotency, RequestIdMiddleware, render_error};
 use poem::endpoint::BoxEndpoint;
 use poem::test::{TestClient, TestRequestBuilder};
 use poem::{Endpoint, EndpointExt, Route};
@@ -19,21 +19,26 @@ pub struct TestApi {
 }
 
 impl TestApi {
-    /// Mounts `endpoints` under `/api` with the server's error rendering and
-    /// request ids; `wire` adds the data they read (a provider, a verifier).
-    pub fn new<T, E>(endpoints: T, wire: impl FnOnce(Route) -> E) -> Self
+    /// Mounts `endpoints` under `/api` as the server does: with its error
+    /// rendering, `idempotency` and request ids; `wire` adds the data they read
+    /// (a provider, a verifier) outermost, as the server does.
+    pub fn new<T, E>(
+        endpoints: T,
+        idempotency: Idempotency,
+        wire: impl FnOnce(BoxEndpoint<'static>) -> E,
+    ) -> Self
     where
         T: OpenApi + 'static,
         E: Endpoint + 'static,
     {
         let api = OpenApiService::new(endpoints, "test", "1.0");
-        let app = wire(Route::new().nest("/api", api))
+        let app = Route::new()
+            .nest("/api", api)
             .catch_all_error(render_error)
+            .with(idempotency)
             .with(RequestIdMiddleware)
             .boxed();
-        Self {
-            client: TestClient::new(app),
-        }
+        Self::over(wire(app))
     }
 
     /// Over a whole app that already renders errors and stamps request ids, as
@@ -93,6 +98,10 @@ impl Call<'_> {
         self.header("If-Match", format!("\"{version}\""))
     }
 
+    pub fn idempotency_key(self, key: impl Display) -> Self {
+        Self(self.0.header(IDEMPOTENCY_KEY, key.to_string()))
+    }
+
     pub fn bearer(self, token: impl Display) -> Self {
         self.header("Authorization", format!("Bearer {token}"))
     }
@@ -109,6 +118,32 @@ impl Call<'_> {
                 .expect("the response body has the expected shape"));
         }
         Err(refused(response).await.into())
+    }
+
+    /// The whole answer, success or refusal, for comparing a retry's with the
+    /// original's.
+    pub async fn answered(self) -> Answered {
+        let response = self.0.send().await.0;
+        let status = response.status().as_u16();
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let body = response
+            .into_body()
+            .into_bytes()
+            .await
+            .expect("read the body");
+        Answered {
+            status,
+            etag,
+            body: if body.is_empty() {
+                Value::Null
+            } else {
+                serde_json::from_slice(&body).expect("the body is JSON")
+            },
+        }
     }
 
     /// For an operation that answers with no body, like a delete.
@@ -152,6 +187,35 @@ async fn refused(response: poem::Response) -> Refused {
     Refused {
         code: error.code,
         paths: error.fields.into_iter().map(|f| f.path).collect(),
+    }
+}
+
+/// An answer as a client sees it, minus its request id, which differs per
+/// request even when the answer is replayed.
+#[derive(Debug, PartialEq)]
+pub struct Answered {
+    pub status: u16,
+    pub etag: Option<String>,
+    pub body: Value,
+}
+
+impl Answered {
+    pub fn json<T: DeserializeOwned>(&self) -> T {
+        serde_json::from_value(self.body.clone()).expect("the body has the expected shape")
+    }
+
+    /// The body as `T`, or the refusal as the driver's `R`, as [`Call::send`] reads it.
+    pub fn outcome<T: DeserializeOwned, R: From<Refused>>(&self) -> Result<T, R> {
+        if (200..300).contains(&self.status) {
+            return Ok(self.json());
+        }
+        let error: ErrorShape =
+            serde_json::from_value(self.body.clone()).expect("a refusal has the error shape");
+        Err(Refused {
+            code: error.code,
+            paths: error.fields.into_iter().map(|f| f.path).collect(),
+        }
+        .into())
     }
 }
 

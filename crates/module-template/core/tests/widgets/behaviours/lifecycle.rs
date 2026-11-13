@@ -4,7 +4,7 @@ use app_test_support::assert_json_matches;
 use sqlx::PgPool;
 use widgets_api::events::v1::{WidgetCreated, WidgetRenamed};
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_widget_can_be_made_and_renamed(pool: PgPool) {
     let widgets = Widgets::seeded(pool).await;
 

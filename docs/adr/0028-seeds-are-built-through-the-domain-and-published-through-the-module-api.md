@@ -1,0 +1,12 @@
+# Seeds are built through the Domain, and published through the Module API
+
+Every Module that owns data has a Seed, `src/seed.rs` behind its `seed` feature (on for its own tests through a self dev-dependency, never in production builds): a named `const` id per well-known entity (`users::seed::USER_ID_ALICE`), a function returning each Aggregate for expected values, and `seed::standard(&pool)`, which saves whichever of the dataset is missing through the real Repository, so it can rerun on every deploy. Seeds are built with the real domain constructors, which take the id and timestamp (ADR 0007), so they satisfy every invariant and there is no second copy of the SQL. Each id constant is named `<OWNER>_<CLASS>_<IDENTIFIER>` (`USER_ID_ALICE`, `ALICE_NOTE_ID_SHOPPING_LIST`, `SHOPPING_LIST_ITEM_ID_MILK`), as Flagrante found, so the class never reads as part of the identifier. Timestamps are fixed and spaced apart (`seed_time(minutes)`) so ordering is deterministic. Tests refer to seeded data by constant, never by ids captured at runtime, and compare whole responses against Seed Aggregates.
+
+Well-known ids are readable: `MMMMMMMM-KKKK-0000-0000-NNNNNNNNNNNN`, Module number, entity kind, sequence (Alice is `00000001-0001-0000-0000-000000000001`), built with `well_known_id(MODULE, kind, sequence)`. Each Module declares its number once, as `pub const MODULE: u32`, and its kinds in that Seed's doc comment.
+
+What other Modules may know of a Seed is published in the Module API, under the `-api`'s own `seed` feature: the ids as plain `Uuid`s, and per entity a function returning its Published Record (`users_api::seed::alice() -> v1::User`). The core Seed builds each Aggregate from that record, adding what isn't published, so the data has one source; saving stays in the core, so `-api` stays pure. A Seed or test names another Module's Seed data only through its `-api`, along the dependency graph: `notes`' Seed authors notes as `users_api::seed::USER_ID_ALICE`, and its driver stubs `UserDirectory` with exactly those users. Data lines up across Modules without a consumer depending on a provider's core.
+
+## Consequences
+
+- A Module seeds only data it owns; a Module owning none (`note-search`) has no Seed, and its tests assert against providers' `-api` records, never their Aggregates.
+- `make check-modules` fails on a missing Module number or one two Modules share; `make new-module` allocates the next.

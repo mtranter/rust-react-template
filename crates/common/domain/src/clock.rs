@@ -2,7 +2,7 @@ use chrono::{DateTime, SubsecRound, TimeDelta, Utc};
 use std::sync::Mutex;
 
 /// Where `application/` reads the time; the domain takes `now` as an argument.
-/// Injected rather than ambient (spec §4), so a test can stop and move time and
+/// Injected rather than ambient (ADR 0020), so a test can stop and move time and
 /// work spawned off a request reads the same clock.
 pub trait Clock: Send + Sync {
     /// At Postgres' `timestamptz` precision (microseconds), so an aggregate

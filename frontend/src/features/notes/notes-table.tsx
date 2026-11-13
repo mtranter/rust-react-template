@@ -4,11 +4,14 @@ import {
   DataTable,
   DataTablePagination,
   DataTableViewOptions,
+  type ListPosition,
+  type SortKey,
   createDataTableColumnHelper,
   useDataTable,
   useListParams,
 } from "@/components/data-table";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { EditNoteDialog } from "./edit-note-dialog";
 
 const column = createDataTableColumnHelper<NoteResponse>();
 const columns = column.columns([
@@ -18,10 +21,24 @@ const columns = column.columns([
     header: "Created",
     cell: (info) => new Date(info.getValue()).toLocaleString(),
   }),
+  column.display({
+    id: "actions",
+    header: () => <span className="sr-only">Actions</span>,
+    enableHiding: false,
+    // An archived note can't be edited.
+    cell: (info) =>
+      info.row.original.archivedAt ? null : <EditNoteDialog note={info.row.original} />,
+  }),
 ]);
 
-export function NotesTable() {
-  const params = useListParams<NoteSort>({ sortable: ["title", "createdAt"] });
+export const noteSortKeys: readonly SortKey<NoteSort>[] = ["title", "createdAt"];
+
+export function NotesTable({
+  page,
+  sort,
+  onChange,
+}: ListPosition<NoteSort> & { onChange: (position: ListPosition<NoteSort>) => void }) {
+  const params = useListParams<NoteSort>({ page, sort, onChange, sortable: noteSortKeys });
   const notes = useQuery({
     ...getNotesOptions({ query: params.query }),
     placeholderData: keepPreviousData,
@@ -34,7 +51,7 @@ export function NotesTable() {
   });
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" aria-label="Notes">
       <div className="flex justify-end">
         <DataTableViewOptions table={table} />
       </div>

@@ -9,6 +9,11 @@ impl From<NoteError> for AppError {
                 AppError::invalid_field("title", err.to_string())
             }
             NoteError::Archived => AppError::conflict(err.to_string()),
+            NoteError::EmptyItem
+            | NoteError::ItemTooLong { .. }
+            | NoteError::DuplicateItem
+            | NoteError::TooManyItems { .. } => AppError::invalid_field("text", err.to_string()),
+            NoteError::UnknownItem => AppError::not_found("item"),
         }
     }
 }

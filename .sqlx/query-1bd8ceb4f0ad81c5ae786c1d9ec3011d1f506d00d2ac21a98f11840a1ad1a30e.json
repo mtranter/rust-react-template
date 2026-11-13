@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM idempotency.request\n            WHERE caller = $1 AND key = $2 AND claimed_at = $3 AND status IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1bd8ceb4f0ad81c5ae786c1d9ec3011d1f506d00d2ac21a98f11840a1ad1a30e"
+}

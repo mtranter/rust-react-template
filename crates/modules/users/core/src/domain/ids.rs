@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 app_domain::uuid_newtype!(
-    /// Private to this module: other modules refer to users by plain `Uuid` (spec D7).
+    /// Private to this module: other modules refer to users by plain `Uuid` (ADR 0008).
     UserId
 );
 

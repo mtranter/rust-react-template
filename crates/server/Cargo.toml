@@ -59,17 +59,18 @@ figment.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-# Optional so the backend builds before `frontend/dist` exists (spec §9).
+# Optional so the backend builds before `frontend/dist` exists (ADR 0005).
 # `mime-guess` supplies the embedded assets' Content-Type.
 rust-embed = { version = "8", optional = true, features = ["mime-guess"] }
 
 [features]
 default = []
 embed-frontend = ["dep:rust-embed", "poem/embed"]
-# Builds the `seed` bin; prod images are built without it (spec §6).
+# Builds the `seed` bin; prod images are built without it (ADR 0021).
 seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
+app-test-db.workspace = true
 # Enables `seed` for the composed-app tests and journeys.
 server = { path = ".", features = ["seed"] }
 app-web = { workspace = true, features = ["test"] }

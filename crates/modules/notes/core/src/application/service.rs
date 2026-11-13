@@ -3,7 +3,7 @@ use super::{
     EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
     Version, Versioned,
 };
-use crate::domain::{AuthorId, CreateNote, EditNote, Note, NoteId};
+use crate::domain::{AuthorId, CreateNote, EditNote, ItemId, Note, NoteError, NoteEvent, NoteId};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -60,10 +60,43 @@ impl NoteService {
 
     /// `expected` is the version the caller last read (from `If-Match`).
     pub async fn edit(&self, cmd: EditNote, expected: Version) -> AppResult<Versioned<Note>> {
+        self.change(cmd.note_id, expected, |note| note.edit(cmd))
+            .await
+    }
+
+    /// An item is a child of its note: the note's version guards it, and its
+    /// change is the note's, announced on the note's topic.
+    pub async fn add_item(
+        &self,
+        note: NoteId,
+        text: &str,
+        expected: Version,
+    ) -> AppResult<Versioned<Note>> {
+        let id = ItemId::new();
+        self.change(note, expected, |note| note.add_item(id, text))
+            .await
+    }
+
+    pub async fn remove_item(
+        &self,
+        note: NoteId,
+        item: ItemId,
+        expected: Version,
+    ) -> AppResult<Versioned<Note>> {
+        self.change(note, expected, |note| note.remove_item(item))
+            .await
+    }
+
+    async fn change(
+        &self,
+        id: NoteId,
+        expected: Version,
+        change: impl FnOnce(&mut Note) -> Result<NoteEvent, NoteError>,
+    ) -> AppResult<Versioned<Note>> {
         // Load first so a missing note is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
-        let mut note = self.get(cmd.note_id).await?.entity;
-        let event = note.edit(cmd)?;
+        let mut note = self.get(id).await?.entity;
+        let event = change(&mut note)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
             .repo

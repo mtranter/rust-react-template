@@ -3,6 +3,7 @@
 //! each module keeps its own schema.
 
 mod errors;
+mod idempotency;
 mod listing;
 mod publishing;
 mod subscriptions;
@@ -10,6 +11,7 @@ mod unit_of_work;
 mod worker;
 
 pub use errors::map_db_error;
+pub use idempotency::PgIdempotencyRecords;
 pub use listing::push_list_clauses;
 pub use publishing::PgEventPublisher;
 pub use subscriptions::{SubscriptionError, register_subscriptions};

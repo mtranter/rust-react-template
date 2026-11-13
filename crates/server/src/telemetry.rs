@@ -19,6 +19,6 @@ pub fn init(env: Environment) {
         }
     }
 
-    // OpenTelemetry seam (spec §12, non-goal per §1): add `tracing-opentelemetry`
+    // OpenTelemetry seam (not built yet: crates/AGENTS.md): add `tracing-opentelemetry`
     // and layer `tracing_opentelemetry::layer().with_tracer(tracer)` above.
 }

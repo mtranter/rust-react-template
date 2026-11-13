@@ -22,6 +22,10 @@ pub enum ErrorCode {
     UnsupportedMediaType,
     PreconditionRequired,
     PreconditionFailed,
+    /// The `Idempotency-Key` was sent before with a different request.
+    IdempotencyKeyReused,
+    /// The request first sent with this `Idempotency-Key` is still running.
+    IdempotencyKeyInFlight,
     InternalError,
 }
 

@@ -4,6 +4,7 @@
 
 use app_domain::SystemClock;
 use app_module::Context;
+use app_test_db::Template;
 use app_web::JwtVerifier;
 use poem::test::TestClient;
 use serde_json::Value;
@@ -13,17 +14,21 @@ use std::sync::Arc;
 
 /// Stands in for every path parameter: well-formed, so a lookup reaches the
 /// service and database, and matching nothing, so it ends in a not-found.
+const TEMPLATE: Template = Template::new("composed_app", |pool| {
+    Box::pin(async move {
+        app_db::run_migrations(&pool, &server::module_migrations())
+            .await
+            .expect("migrate every module");
+        for module in server::modules() {
+            module.seed(pool.clone()).await.expect("seed every module");
+        }
+    })
+});
+
 const NIL_ID: &str = "00000000-0000-0000-0000-000000000000";
 
-#[sqlx::test(migrations = false)]
+#[app_test_db::test(TEMPLATE)]
 async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
-    app_db::run_migrations(&pool, &server::module_migrations())
-        .await
-        .expect("migrate every module");
-    for module in server::modules() {
-        module.seed(pool.clone()).await.expect("seed every module");
-    }
-
     let verifier = JwtVerifier::new("test-secret");
     let bearer = format!(
         "Bearer {}",

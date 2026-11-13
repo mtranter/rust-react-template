@@ -1,4 +1,4 @@
-# Application-layer isolation guard (spec §4) — see modules/users/core/clippy.toml.
+# Application-layer isolation guard (ADR 0007) — see modules/users/core/clippy.toml.
 disallowed-types = [
     { path = "sqlx::PgPool", reason = "application/domain must reach persistence via the Repository trait, not the driver" },
     { path = "sqlx::Pool", reason = "application/domain must not name the database driver" },

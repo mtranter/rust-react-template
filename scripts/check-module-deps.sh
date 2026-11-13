@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The Cargo graph isolates modules only while nobody adds the wrong line to a
-# Cargo.toml (spec §4, D7, D8). From `cargo metadata`, this fails if:
+# Cargo.toml (ADR 0017, 0008, 0010). From `cargo metadata`, this fails if:
 #
 #   - a module core's dependencies (normal or build) include another module core;
 #     dev-dependencies may (a read module's tests run the providers' migrations
@@ -15,7 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Spec §5: the pure `common` crates. Never add a framework-coupled one.
+# ADR 0003: the pure `common` crates. Never add a framework-coupled one.
 pure_common='["app-domain", "app-error", "app-events", "app-persistence", "app-test-support"]'
 
 cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson pure "$pure_common" '
@@ -30,11 +30,11 @@ cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson
   | (.manifest_path | rel) as $manifest
   | if core then
       (shipped | select(.name as $d | $cores | index($d))
-        | "\($manifest): depends on module core `\(.name)`; use `\(.name)-api` (spec D7)"),
+        | "\($manifest): depends on module core `\(.name)`; use `\(.name)-api` (ADR 0008)"),
       (if .metadata.module.reads then "\($manifest)\t\(.metadata.module.reads | join(", "))" else empty end)
     elif api then
       shipped | select(.name as $d | ($pure + $apis) | index($d) | not)
-        | "\($manifest): `-api` crates stay pure, but it depends on `\(.name)` (spec §5, D7)"
+        | "\($manifest): `-api` crates stay pure, but it depends on `\(.name)` (ADR 0003, 0008)"
     else empty end
 ' | {
   failed=0
@@ -42,7 +42,7 @@ cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson
     if [[ "$line" == *$'\t'* ]]; then
       manifest=${line%%$'\t'*}
       [ -d "$(dirname "$manifest")/src/domain" ] || continue
-      line="$manifest: a write module (it has src/domain/) declares reads = [${line#*$'\t'}]; only a read module joins other modules' views (spec D8)"
+      line="$manifest: a write module (it has src/domain/) declares reads = [${line#*$'\t'}]; only a read module joins other modules' views (ADR 0010)"
     fi
     echo "$line"
     failed=1

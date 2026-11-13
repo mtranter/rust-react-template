@@ -43,8 +43,11 @@ jobs:
         run: ./scripts/check-modules.sh
       - name: build (offline)
         run: cargo build --workspace --features server/seed
-      # Same Postgres as local dev; `#[sqlx::test]` creates a fresh database per
-      # test on it. `--wait` blocks on the compose healthcheck.
+      - name: checked-in spec is current
+        run: make check-spec
+      # Same Postgres as local dev; each test binary migrates and seeds a template
+      # database on it once, and each test gets a copy. `--wait` blocks on the
+      # compose healthcheck.
       - name: start Postgres (docker compose)
         run: docker compose up -d --wait postgres
       - name: test
