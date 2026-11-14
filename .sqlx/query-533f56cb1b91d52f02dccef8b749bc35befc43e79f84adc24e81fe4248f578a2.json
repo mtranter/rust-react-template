@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO messaging.job\n            (queue, event_type, key, version, payload, run_at, max_attempts, created_at)\n        SELECT queue, event_type, key, version, payload, $1, $2, $1\n        FROM messaging.delivery\n        WHERE dispatched_at IS NOT NULL\n          AND (queue, event_type) IN (SELECT * FROM unnest($3::text[], $4::text[]))\n        ORDER BY seq, queue\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int4",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "533f56cb1b91d52f02dccef8b749bc35befc43e79f84adc24e81fe4248f578a2"
+}

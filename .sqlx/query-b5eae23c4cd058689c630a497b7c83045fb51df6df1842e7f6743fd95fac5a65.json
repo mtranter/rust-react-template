@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO messaging.subscription (queue, event_type, topic, starts, registered_at)\n            VALUES ($1, $2, $3, $4, now())\n            ON CONFLICT DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b5eae23c4cd058689c630a497b7c83045fb51df6df1842e7f6743fd95fac5a65"
+}

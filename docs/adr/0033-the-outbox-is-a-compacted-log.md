@@ -1,0 +1,31 @@
+# The outbox is a compacted log
+
+The outbox (`messaging.outbox`) kept every event forever: nothing deleted a row once the relay had dispatched it, so it grew with every save. And a new subscription received only the events relayed after `migrate` registered it, so a module wanting its own copy of another module's roots (a read model, a cache) had no way to learn of the roots that already existed. Both answers come from Kafka's model, which the outbox already follows (a topic per root, keyed by the root's id, ordered per key by version): a topic with `cleanup.policy=compact`, and a consumer group that starts from `earliest`.
+
+**Each topic declares a retention, in code.** `topic!` takes a required `retention:` (a `chrono::TimeDelta`, `Topic::RETENTION`), with no default, so every topic's author decides how long its recent history matters, and a new module's topic doesn't compile until it does. `users.user.v1`, `notes.note.v1` and the module template's topic keep 7 days.
+
+**`migrate` registers topics, as it registers subscriptions.** A module declares the topics it publishes (`Module::publishes::<T>()`), and `migrate` writes each to `messaging.topic (name, retention, registered_at)`; registering again takes a changed retention. So every build running during a rolling deploy compacts alike, and a worker compacts topics it doesn't subscribe to. A topic in the outbox but not in `messaging.topic` is never compacted.
+
+**Compaction keeps every key's latest event, forever.** It deletes an outbox row only when all hold: the relay has dispatched it; its `occurred_at` is older than its topic's retention, by the worker's clock; and a later version of its `(topic, key)` exists. Because every event carries its root's latest state (a deletion: as it was last), the latest event per key is a complete snapshot of every root that ever existed, deleted ones included, as their deletion. Compaction never touches `messaging.job`: a delivery is a copy, so a pending or dead-lettered job still runs.
+
+**The worker compacts, each on its own schedule, uncoordinated.** It is the worker's own maintenance of the log, not a module's scheduled work, so modules still act only by reacting to events (ADR 0015). Each worker remembers in memory when it last compacted and compacts again once `APP_OUTBOX_COMPACT_EVERY` (default 1 hour) has passed by its clock. N replicas compact up to N times a period, which is harmless: a row is deleted only while a later version of its key exists, and nothing deletes that later version unless a still later one exists, so no run, alone or racing another, deletes a key's latest version; two runs deleting one row wait on its lock, and the second deletes nothing. It deletes in batches, each its own transaction, so the relay and publishers are never held up for long.
+
+**A subscription declares where it starts: `latest` (the default, as before) or `earliest`.** An `earliest` subscription is backfilled once, when `migrate` first registers it: one job per dispatched outbox row of its topic and event types, in `seq` order, in the same transaction, holding the relay's advisory lock, so each event reaches the new queue exactly once (dispatched ones by the backfill, the rest by the relay). Each key's events stay in version order, backfilled before live, because a key's dispatched events are a prefix of its versions and a claim waits for its key's earlier versions; there is no order across keys, as on any queue. After compaction the backfill is each key's latest state plus whatever history is still within the retention. `messaging.subscription` records the start for visibility; changing an existing subscription's start in code has no effect, and `migrate` warns.
+
+**`earliest` is for keeping a copy of state**: subscribe to the whole topic and apply each event by version. A reaction to facts (mail, archiving a deleted user's notes) starts from `latest`, or it would re-run for all of history. A subscription to one event type from `earliest` gets only the keys whose retained events include that type, since compaction keeps a key's latest event whatever its type.
+
+## Considered options
+
+- **Retention in configuration** (an `APP_*` setting per topic, or one for all). Operators could tune it without a release, but how long a topic's history matters is a fact about its consumers, which its author knows; config would let builds and environments disagree, and a forgotten topic would silently take a default. Code with no default makes every author decide.
+- **Retention read from the build at compaction time**, with no `messaging.topic`. Simpler, but during a rolling deploy two builds would compact by different retentions, and a worker would compact only the topics its own build knows. Registering in `migrate` matches how subscriptions already work.
+- **A separate `compact` process or scheduled job.** One more thing to deploy and schedule, for work the worker can do between polls. Coordinating workers (a lock, a lease, a schedule table) was rejected for the same reason: compaction is idempotent and safe to run concurrently in the database alone.
+- **Deleting by age alone, without keeping each key's latest event.** It bounds storage tighter, but loses the snapshot that lets a new subscription start from `earliest` with every existing root.
+- **Rewinding an existing subscription** to `earliest` or to a point in time (resetting a consumer group's offset). It would re-run reactions such as mail, and nothing needs it yet: a new queue starts from `earliest` instead.
+- **Removing deleted keys' last events after a while** (Kafka's `delete.retention.ms` for tombstones). A consumer starting later would never learn that root existed, which a copy of state may need. Every key's latest event stays forever.
+
+## Consequences
+
+- The outbox holds, per key, its latest event plus at most a retention's worth of history, and stays small; the worker logs how many rows each compaction deleted.
+- A new topic must declare its retention, and its module must declare it publishes it (`Module::publishes`) or it is never compacted.
+- `messaging.job` still keeps dead letters until someone reruns or deletes them; compaction doesn't clean it.
+- Compaction by size, or per-topic schedules, are not built: one schedule compacts every topic, each by its own retention.

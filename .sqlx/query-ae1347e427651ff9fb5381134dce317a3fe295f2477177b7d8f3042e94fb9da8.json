@@ -1,0 +1,59 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT event_type, topic, starts, retired_at IS NOT NULL AS \"retired!\"\n            FROM messaging.subscription WHERE queue = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "event_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging.subscription",
+            "name": "event_type"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "topic",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging.subscription",
+            "name": "topic"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "starts",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging.subscription",
+            "name": "starts"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "retired!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "ae1347e427651ff9fb5381134dce317a3fe295f2477177b7d8f3042e94fb9da8"
+}
