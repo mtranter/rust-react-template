@@ -41,6 +41,7 @@ pub mod v1 {
         /// Everything that happens to a note, keyed by its id.
         pub topic NoteTopic("notes.note.v1") {
             source: "/notes",
+            retention: app_events::TimeDelta::days(7),
             entity: Note,
             key: |note| note.id.to_string(),
             events: NoteEvent, NoteEventKind;

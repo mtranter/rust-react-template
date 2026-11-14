@@ -7,9 +7,11 @@ mod envelope;
 mod payload;
 mod topic;
 
+/// What a [`Topic::RETENTION`] is, so a `-api` needs no `chrono` of its own.
+pub use chrono::TimeDelta;
 pub use envelope::{EventAttributes, EventEnvelope};
 pub use payload::{EventPayload, NoContext};
-pub use topic::{DecodeError, Subscribable, Topic, TopicEnvelope};
+pub use topic::{DecodeError, PublishedTopic, Subscribable, Topic, TopicEnvelope};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;

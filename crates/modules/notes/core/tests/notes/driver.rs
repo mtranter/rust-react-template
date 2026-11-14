@@ -133,7 +133,7 @@ impl Notes {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
         let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
-        app_db::register_subscriptions(&ctx.pool(), &handlers)
+        app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
             .await
             .expect("register notes' subscriptions");
         let worker = ctx.worker(handlers);

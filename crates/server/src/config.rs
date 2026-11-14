@@ -34,6 +34,9 @@ pub struct AppConfig {
     pub jwt_audience: Option<String>,
     /// How long the `worker` bin waits between polls once nothing is due.
     pub worker_poll_ms: u64,
+    /// How often, in seconds, each `worker` compacts the outbox (ADR 0033),
+    /// each on its own schedule.
+    pub outbox_compact_every: u64,
 }
 
 impl Default for AppConfig {
@@ -49,6 +52,7 @@ impl Default for AppConfig {
             jwt_issuer: None,
             jwt_audience: None,
             worker_poll_ms: 1000,
+            outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
         }
     }
 }

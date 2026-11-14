@@ -6,6 +6,7 @@ use crate::db::{PgWidgetRepository, migrations};
 use app_module::{Context, Module};
 use app_web::Provide;
 use std::sync::Arc;
+use widgets_api::events::v1::WidgetTopic;
 
 pub struct WidgetsProvider(WidgetService);
 
@@ -27,7 +28,9 @@ impl Provide for WidgetsProvider {
 }
 
 pub fn module() -> Module {
-    let module = Module::new(provider).with_migrations(migrations());
+    let module = Module::new(provider)
+        .publishes::<WidgetTopic>()
+        .with_migrations(migrations());
     #[cfg(feature = "seed")]
     let module = module.with_seed(|pool| async move { crate::seed::standard(&pool).await });
     module

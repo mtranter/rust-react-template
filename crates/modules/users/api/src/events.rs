@@ -19,6 +19,7 @@ pub mod v1 {
         /// Everything that happens to a user, keyed by their id.
         pub topic UserTopic("users.user.v1") {
             source: "/users",
+            retention: app_events::TimeDelta::days(7),
             entity: User,
             key: |user| user.id.to_string(),
             events: UserEvent, UserEventKind;

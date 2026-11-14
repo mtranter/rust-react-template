@@ -79,6 +79,7 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-persistence",
  "app-web",
  "poem",
@@ -2585,6 +2586,8 @@ version = "0.1.0"
 dependencies = [
  "app-db",
  "app-domain",
+ "app-error",
+ "app-events",
  "app-module",
  "app-persistence",
  "app-test-db",

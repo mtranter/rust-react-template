@@ -4,6 +4,7 @@
 
 use app_domain::SystemClock;
 use app_module::Context;
+use chrono::TimeDelta;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,10 +14,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server::telemetry::init(config.env);
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
-    let worker = server::worker(&Context::new(pool, Arc::new(SystemClock)));
+    let compact_every = TimeDelta::seconds(config.outbox_compact_every as i64);
+    let worker =
+        server::worker(&Context::new(pool, Arc::new(SystemClock))).compacting_every(compact_every);
 
     let interval = Duration::from_millis(config.worker_poll_ms);
-    tracing::info!(?interval, "starting worker");
+    tracing::info!(?interval, %compact_every, "starting worker");
     worker.run(interval, server::shutdown_signal()).await?;
     tracing::info!("worker stopped");
     Ok(())

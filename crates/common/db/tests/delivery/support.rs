@@ -1,7 +1,7 @@
 use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_error::{AppError, AppResult};
-use app_events::{EnvelopeOf, TopicEnvelope};
+use app_events::{EnvelopeOf, PublishedTopic, TopicEnvelope};
 use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version};
 use app_test_db::Template;
 use async_trait::async_trait;
@@ -19,11 +19,14 @@ pub struct Ping {
 app_events::topic! {
     pub topic PingTopic("tests.ping.v1") {
         source: "/tests",
+        retention: TimeDelta::days(7),
         entity: Ping,
         key: |ping| ping.name.clone(),
         events: PingEvent, PingEventKind;
         Pinged => Pinged: "tests.pinged",
         Ponged => Ponged: "tests.ponged",
+        /// The ping is gone, as it was last: a deletion.
+        Dropped => Dropped: "tests.dropped",
     }
 }
 
@@ -31,6 +34,7 @@ app_events::topic! {
     /// Another topic of the same entity.
     pub topic PokeTopic("tests.poke.v1") {
         source: "/tests",
+        retention: TimeDelta::days(1),
         entity: Ping,
         key: |ping| ping.name.clone(),
         events: PokeEvent, PokeEventKind;
@@ -48,11 +52,25 @@ pub fn pong(name: &str, version: i64) -> PendingEvent {
     happened(name, version, PingEvent::Ponged)
 }
 
+/// `name` dropped, at `version`.
+pub fn drop(name: &str, version: i64) -> PendingEvent {
+    happened(name, version, PingEvent::Dropped)
+}
+
 fn happened(name: &str, version: i64, event: PingEvent) -> PendingEvent {
     PendingEvent::on::<PingTopic>(
         Version::from_i64(version),
         &Ping { name: name.into() },
         event,
+    )
+}
+
+/// `name` poked, at `version`.
+pub fn poke(name: &str, version: i64) -> PendingEvent {
+    PendingEvent::on::<PokeTopic>(
+        Version::from_i64(version),
+        &Ping { name: name.into() },
+        PokeEvent::Poked,
     )
 }
 
@@ -115,6 +133,7 @@ impl Handle<PingTopic> for Recorder {
         let what = match event.event {
             PingEvent::Pinged => "pinged",
             PingEvent::Ponged => "ponged",
+            PingEvent::Dropped => "dropped",
         };
         self.record(what, &event.key, event.version)
     }
@@ -192,7 +211,14 @@ impl Messaging {
     }
 
     pub async fn register(&self, handlers: &Handlers) -> Result<(), SubscriptionError> {
-        app_db::register_subscriptions(&self.pool, handlers).await
+        app_db::register_subscriptions(&self.pool, self.clock.as_ref(), handlers).await
+    }
+
+    /// As `migrate` does for a build publishing `topics`.
+    pub async fn register_topics(&self, topics: &[PublishedTopic]) {
+        app_db::register_topics(&self.pool, topics)
+            .await
+            .expect("register the topics");
     }
 
     /// The migration ADR 0014 documents.
@@ -212,6 +238,32 @@ impl Messaging {
         .expect("dead-letter its jobs");
     }
 
+    /// Compaction fails until [`mend_compaction`](Self::mend_compaction),
+    /// while the relay and jobs run on.
+    pub async fn break_compaction(&self) {
+        sqlx::query("ALTER TABLE messaging.topic RENAME TO topic_broken")
+            .execute(&self.pool)
+            .await
+            .expect("break compaction");
+    }
+
+    pub async fn mend_compaction(&self) {
+        sqlx::query("ALTER TABLE messaging.topic_broken RENAME TO topic")
+            .execute(&self.pool)
+            .await
+            .expect("mend compaction");
+    }
+
+    /// Reruns every dead letter, as `DeadLetter` documents.
+    pub async fn rerun_dead_letters(&self) {
+        sqlx::query(
+            "UPDATE messaging.job SET dead_at = NULL, attempts = 0 WHERE dead_at IS NOT NULL",
+        )
+        .execute(&self.pool)
+        .await
+        .expect("rerun the dead letters");
+    }
+
     /// `name` pinged, at its first version.
     pub async fn ping(&self, name: &str) {
         self.publish(vec![ping(name, 1)]).await.expect("publish");
@@ -226,6 +278,27 @@ impl Messaging {
             publisher.publish(&mut tx, event).await?;
         }
         tx.commit().await
+    }
+
+    /// Every event the outbox still holds, oldest first:
+    /// `<event type> <key> v<version>`.
+    pub async fn outbox(&self) -> Vec<String> {
+        let payloads: Vec<serde_json::Value> =
+            sqlx::query_scalar("SELECT payload FROM messaging.outbox ORDER BY seq")
+                .fetch_all(&self.pool)
+                .await
+                .expect("read the outbox");
+        payloads
+            .iter()
+            .map(|e| {
+                format!(
+                    "{} {} v{}",
+                    str(&e["type"]),
+                    str(&e["partitionkey"]),
+                    e["entityversion"]
+                )
+            })
+            .collect()
     }
 
     /// Every job still to run or dead, oldest first.
@@ -259,6 +332,10 @@ impl Job {
             ..Self::untouched(queue)
         }
     }
+}
+
+fn str(value: &serde_json::Value) -> &str {
+    value.as_str().expect("a string")
 }
 
 pub async fn run(worker: &Worker) {

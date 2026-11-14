@@ -6,6 +6,7 @@ use crate::db::{PgNoteRepository, migrations};
 use app_module::{Context, Module};
 use app_persistence::Handlers;
 use app_web::Provide;
+use notes_api::events::v1::NoteTopic;
 use std::sync::Arc;
 use users_api::UserDirectory;
 use users_api::events::v1::UserDeleted;
@@ -42,6 +43,7 @@ pub fn handlers(ctx: &Context, users: Arc<dyn UserDirectory>) -> Handlers {
 /// `users` is the users module's `directory`, passed in by the server (ADR 0008).
 pub fn module(users: fn(&Context) -> Arc<dyn UserDirectory>) -> Module {
     let module = Module::new(move |ctx: &Context| provider(ctx, users(ctx)))
+        .publishes::<NoteTopic>()
         .with_handlers(move |ctx| handlers(ctx, users(ctx)))
         .with_migrations(migrations());
     #[cfg(feature = "seed")]

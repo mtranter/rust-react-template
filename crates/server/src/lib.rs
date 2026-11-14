@@ -13,6 +13,7 @@ pub use modules::{Endpoints, modules};
 pub use shutdown::shutdown_signal;
 
 use app_db::{ModuleMigrations, SubscriptionError, Worker};
+use app_error::AppResult;
 use app_module::Context;
 use app_persistence::Handlers;
 use app_web::Idempotent;
@@ -43,7 +44,17 @@ pub fn worker(ctx: &Context) -> Worker {
     ctx.worker(handlers(ctx))
 }
 
+/// Registers every module's topics, as `migrate` does after migrating, so
+/// every worker compacts each by its retention.
+pub async fn register_topics(ctx: &Context) -> AppResult<()> {
+    let topics: Vec<_> = modules()
+        .iter()
+        .flat_map(|module| module.topics().to_vec())
+        .collect();
+    app_db::register_topics(&ctx.pool(), &topics).await
+}
+
 /// Registers every module's subscriptions, as `migrate` does after migrating.
 pub async fn register_subscriptions(ctx: &Context) -> Result<(), SubscriptionError> {
-    app_db::register_subscriptions(&ctx.pool(), &handlers(ctx)).await
+    app_db::register_subscriptions(&ctx.pool(), ctx.clock().as_ref(), &handlers(ctx)).await
 }

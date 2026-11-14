@@ -1,5 +1,5 @@
 use crate::{EnvelopeOf, Event, EventEnvelope};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -20,6 +20,9 @@ pub trait Topic: Send + Sync + 'static {
     const NAME: &'static str;
     /// The publishing module: `/<module>`.
     const SOURCE: &'static str;
+    /// How long a key's superseded events stay in the outbox once relayed:
+    /// compaction deletes older ones, but never a key's latest event.
+    const RETENTION: TimeDelta;
     /// Every event type, one per variant of [`Event`](Self::Event).
     const TYPES: &'static [&'static str];
     /// The root's state, every property but the audit ones.
@@ -36,6 +39,23 @@ pub trait Topic: Send + Sync + 'static {
     fn encode_context(event: &Self::Event) -> serde_json::Result<Value>;
 
     fn decode(event_type: &str, context: Value) -> Result<Self::Event, DecodeError>;
+}
+
+/// A topic as `migrate` registers it in `messaging.topic`, which the worker
+/// compacts by: a topic not registered is never compacted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishedTopic {
+    pub name: &'static str,
+    pub retention: TimeDelta,
+}
+
+impl PublishedTopic {
+    pub const fn of<T: Topic>() -> Self {
+        Self {
+            name: T::NAME,
+            retention: T::RETENTION,
+        }
+    }
 }
 
 /// What a queue subscribes to: a whole [`Topic`], or one [`Event`] of it.
@@ -147,6 +167,7 @@ pub enum DecodeError {
 ///     /// Every change to a to-do list.
 ///     pub topic ListTopic("lists.list.v1") {
 ///         source: "/lists",
+///         retention: app_events::TimeDelta::days(7),
 ///         entity: List,
 ///         key: |list| list.id.to_string(),
 ///         events: ListEvent, ListEventKind;
@@ -165,6 +186,7 @@ macro_rules! topic {
         $(#[$meta:meta])*
         $vis:vis topic $topic:ident($name:literal) {
             source: $source:literal,
+            retention: $retention:expr,
             entity: $entity:ty,
             key: |$root:ident| $key:expr,
             events: $event:ident, $kind:ident;
@@ -230,6 +252,7 @@ macro_rules! topic {
         impl $crate::Topic for $topic {
             const NAME: &'static str = $name;
             const SOURCE: &'static str = $source;
+            const RETENTION: $crate::TimeDelta = $retention;
             const TYPES: &'static [&'static str] = &[$($type),+];
             type Entity = $entity;
             type Event = $event;

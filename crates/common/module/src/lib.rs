@@ -6,6 +6,7 @@
 use app_db::{ModuleMigrations, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool};
 use app_domain::Clock;
 use app_error::AppResult;
+use app_events::{PublishedTopic, Topic};
 use app_persistence::{EventPublisher, Handlers, Transactions};
 use app_web::{Accept, Idempotency, Provide};
 use poem::EndpointExt;
@@ -68,6 +69,7 @@ type Seed = Box<dyn Fn(Pool) -> Pin<Box<dyn Future<Output = AppResult<()>> + Sen
 pub struct Module {
     provide: Provider,
     handlers: Option<HandlersFn>,
+    topics: Vec<PublishedTopic>,
     migrations: Option<ModuleMigrations>,
     seed: Option<Seed>,
 }
@@ -79,6 +81,7 @@ impl Module {
         Self {
             provide: Box::new(move |ctx, app| app.accept(provider(ctx)).boxed()),
             handlers: None,
+            topics: Vec::new(),
             migrations: None,
             seed: None,
         }
@@ -93,6 +96,13 @@ impl Module {
             handlers: Some(Box::new(handlers)),
             ..self
         }
+    }
+
+    /// A topic the module publishes, which `migrate` registers with its
+    /// retention, so the worker compacts it.
+    pub fn publishes<T: Topic>(mut self) -> Self {
+        self.topics.push(PublishedTopic::of::<T>());
+        self
     }
 
     pub fn with_migrations(self, migrations: ModuleMigrations) -> Self {
@@ -116,6 +126,10 @@ impl Module {
 
     pub fn migrations(&self) -> Option<ModuleMigrations> {
         self.migrations
+    }
+
+    pub fn topics(&self) -> &[PublishedTopic] {
+        &self.topics
     }
 
     /// Adds the module's request data (its service) to `app`.

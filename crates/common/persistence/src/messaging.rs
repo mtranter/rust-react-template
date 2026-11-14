@@ -37,7 +37,27 @@ pub struct Handlers {
 struct Queue {
     topic: &'static str,
     event_types: &'static [&'static str],
+    starts: Start,
     handler: Arc<dyn ErasedHandler>,
+}
+
+/// Which events a new subscription receives: those relayed after `migrate`
+/// first registers it, or also every one its topic's outbox holds then.
+/// Fixed at that first registration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start {
+    Latest,
+    Earliest,
+}
+
+impl Start {
+    /// As `messaging.subscription.starts` records it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Start::Latest => "latest",
+            Start::Earliest => "earliest",
+        }
+    }
 }
 
 /// A queue and an event type of the topic it's bound to: one row of
@@ -47,6 +67,7 @@ pub struct Subscription {
     pub queue: &'static str,
     pub topic: &'static str,
     pub event_type: &'static str,
+    pub starts: Start,
 }
 
 impl Handlers {
@@ -62,11 +83,35 @@ impl Handlers {
         queue: &'static str,
         handler: impl Handle<S> + 'static,
     ) -> Self {
+        self.subscribe(queue, Start::Latest, handler)
+    }
+
+    /// As [`on`](Self::on), but a new subscription is first delivered every
+    /// event of `S` its topic's outbox still holds, oldest first: after
+    /// compaction, each key's latest event and the history within the topic's
+    /// retention. For a copy of state, applied by version: a reaction to facts
+    /// would re-run for history. Live events of a key wait for its backfilled
+    /// ones; other keys' don't.
+    pub fn on_from_earliest<S: Subscribable>(
+        self,
+        queue: &'static str,
+        handler: impl Handle<S> + 'static,
+    ) -> Self {
+        self.subscribe(queue, Start::Earliest, handler)
+    }
+
+    fn subscribe<S: Subscribable>(
+        self,
+        queue: &'static str,
+        starts: Start,
+        handler: impl Handle<S> + 'static,
+    ) -> Self {
         self.with_queue(
             queue,
             Queue {
                 topic: <S::Topic as Topic>::NAME,
                 event_types: S::TYPES,
+                starts,
                 handler: Arc::new(TypedHandler::<S, _>::new(handler)),
             },
         )
@@ -88,6 +133,7 @@ impl Handlers {
                 queue,
                 topic: q.topic,
                 event_type,
+                starts: q.starts,
             })
         })
     }
@@ -170,6 +216,7 @@ mod tests {
     app_events::topic! {
         pub topic PingTopic("tests.ping.v1") {
             source: "/tests",
+            retention: app_events::TimeDelta::days(7),
             entity: Ping,
             key: |ping| ping.name.clone(),
             events: PingEvent, PingEventKind;
@@ -182,6 +229,7 @@ mod tests {
     app_events::topic! {
         pub topic PongTopic("tests.pong.v1") {
             source: "/tests",
+            retention: app_events::TimeDelta::days(7),
             entity: Pong,
             key: |pong| pong.count.to_string(),
             events: PongEvent, PongEventKind;
@@ -278,6 +326,7 @@ mod tests {
             queue,
             topic,
             event_type,
+            starts: Start::Latest,
         }
     }
 

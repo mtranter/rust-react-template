@@ -4,11 +4,12 @@
 
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, seed_time};
+use app_events::Event;
 use app_module::Context;
 use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::json;
 use sqlx::PgPool;
 use std::fmt::Display;
@@ -83,11 +84,14 @@ pub struct App {
 }
 
 impl App {
-    /// Migrates, seeds and registers subscriptions for every module, as
-    /// `migrate` and `seed` do, then builds the app and worker as `server` does.
+    /// Migrates, seeds and registers topics and subscriptions for every
+    /// module, as `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
+        server::register_topics(&ctx)
+            .await
+            .expect("register every module's topics");
         server::register_subscriptions(&ctx)
             .await
             .expect("register every module's subscriptions");
@@ -116,6 +120,29 @@ impl App {
             .run_until_idle()
             .await
             .expect("the worker reaches the database");
+    }
+
+    pub fn later(&self, by: TimeDelta) {
+        self.clock.advance(by);
+    }
+
+    /// Compacts the outbox, as the composed worker does on its schedule.
+    pub async fn compact(&self) {
+        self.worker
+            .compact()
+            .await
+            .expect("the worker reaches the database");
+    }
+
+    /// The root of every `E` the outbox still holds, by id, oldest first.
+    pub async fn keys_announcing<E: Event>(&self) -> Vec<String> {
+        self.worker
+            .published::<E>()
+            .await
+            .expect("read the outbox")
+            .into_iter()
+            .map(|event| event.partition_key)
+            .collect()
     }
 
     /// Background work that ran out of attempts.

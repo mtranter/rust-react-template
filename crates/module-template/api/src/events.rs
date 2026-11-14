@@ -18,6 +18,7 @@ pub mod v1 {
         /// Everything that happens to a widget, keyed by its id.
         pub topic WidgetTopic("widgets.widget.v1") {
             source: "/widgets",
+            retention: app_events::TimeDelta::days(7),
             entity: Widget,
             key: |widget| widget.id.to_string(),
             events: WidgetEvent, WidgetEventKind;

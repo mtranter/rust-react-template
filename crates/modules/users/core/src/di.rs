@@ -9,7 +9,7 @@ use app_persistence::Handlers;
 use app_web::Provide;
 use std::sync::Arc;
 use users_api::UserDirectory;
-use users_api::events::v1::UserRegistered;
+use users_api::events::v1::{UserRegistered, UserTopic};
 
 pub struct UsersProvider(UserService);
 
@@ -46,6 +46,7 @@ pub fn handlers(ctx: &Context, mailer: Arc<dyn Mailer>) -> Handlers {
 
 pub fn module() -> Module {
     let module = Module::new(provider)
+        .publishes::<UserTopic>()
         .with_handlers(|ctx| handlers(ctx, Arc::new(LogMailer)))
         .with_migrations(migrations());
     #[cfg(feature = "seed")]

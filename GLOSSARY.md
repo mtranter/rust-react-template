@@ -82,7 +82,7 @@ Something that happened to an Aggregate, announced for Modules to react to (e.g.
 _Avoid_: Message, command, notification
 
 **Topic**:
-Every Event that happens to one kind of Aggregate Root (e.g. `users.user.v1`), keyed by the root's id. Declared in the Module API with an exhaustive list of its Events, and versioned as a whole.
+Every Event that happens to one kind of Aggregate Root (e.g. `users.user.v1`), keyed by the root's id. Declared in the Module API with an exhaustive list of its Events and a **Retention**, how long the Outbox keeps its history, and versioned as a whole.
 
 **Event Publisher**:
 The interface, in common code, through which a Service publishes an Event into its Unit of Work, beside the Repository it saves through. The DB Layer's implementation writes it to the Outbox.
@@ -94,11 +94,11 @@ What an Event carries: the **entity**, the Aggregate Root's whole state as it no
 The CloudEvents wrapper every Event is stored and delivered in: its id, source Module, Topic, type, key (the root's id), the root's version and time, around its Event Payload.
 
 **Subscriber**:
-A Module's reaction to an Event, or to every Event of a Topic, another Module's or its own (e.g. archiving a deleted user's notes, welcoming a registered user). It changes only its own Module's data, and may run more than once. Each is a **Subscription**: its own queue, registered when migrating.
+A Module's reaction to an Event, or to every Event of a Topic, another Module's or its own (e.g. archiving a deleted user's notes, welcoming a registered user). It changes only its own Module's data, and may run more than once. Each is a **Subscription**: its own queue, registered when migrating, which **starts** from `latest` (only Events relayed after it was registered) or `earliest` (first given every Event its Topic's Outbox still holds).
 _Avoid_: Listener, consumer, handler (for the concept)
 
 **Outbox**:
-Where a Unit of Work records its Events, so they are delivered if and only if it commits. Shared by every Module and owned by none.
+Where a Unit of Work records its Events, so they are delivered if and only if it commits. Shared by every Module and owned by none. A **compacted** log: the Worker deletes a relayed Event once it is older than its Topic's Retention and a later one of its key exists, so every key's latest Event stays forever.
 
 **Worker**:
 The process that delivers Events to their Subscribers, each delivery in its own Unit of Work, in order per key, retrying a failure and setting it aside as a **Dead Letter** once its attempts run out.

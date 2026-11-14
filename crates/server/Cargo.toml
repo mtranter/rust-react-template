@@ -44,9 +44,11 @@ path = "tests/journeys.rs"
 [dependencies]
 app-db.workspace = true
 app-domain.workspace = true
+app-error.workspace = true
 app-module.workspace = true
 app-persistence.workspace = true
 app-web.workspace = true
+chrono.workspace = true
 users.workspace = true
 notes.workspace = true
 note-search.workspace = true
@@ -71,10 +73,10 @@ seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
 app-test-db.workspace = true
+app-events.workspace = true
 # Enables `seed` for the composed-app tests and journeys.
 server = { path = ".", features = ["seed"] }
 app-web = { workspace = true, features = ["test"] }
-chrono.workspace = true
 # The seeded ids the journeys name.
 users-api = { workspace = true, features = ["seed"] }
 notes-api = { workspace = true, features = ["seed"] }

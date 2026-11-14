@@ -119,7 +119,7 @@ impl Users {
         let ctx = Context::new(pool, clock.clone());
         let mailer = Arc::new(FakeMailer::default());
         let handlers = users::handlers(&ctx, mailer.clone());
-        app_db::register_subscriptions(&ctx.pool(), &handlers)
+        app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
             .await
             .expect("register users' subscriptions");
         let worker = ctx.worker(handlers);

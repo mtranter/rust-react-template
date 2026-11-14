@@ -95,6 +95,7 @@ mod tests {
     crate::topic! {
         topic ListTopic("lists.list.v1") {
             source: "/lists",
+            retention: crate::TimeDelta::days(7),
             entity: List,
             key: |list| list.id.to_string(),
             events: ListEvent, ListEventKind;
@@ -106,6 +107,7 @@ mod tests {
     crate::topic! {
         topic OtherTopic("others.list.v1") {
             source: "/others",
+            retention: crate::TimeDelta::days(7),
             entity: List,
             key: |list| list.id.to_string(),
             events: OtherEvent, OtherEventKind;

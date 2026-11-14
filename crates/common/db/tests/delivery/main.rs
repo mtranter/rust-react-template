@@ -4,6 +4,9 @@
 
 mod support;
 
+mod compaction;
 mod contract;
 mod deploys;
+mod earliest;
 mod order;
+mod polling;

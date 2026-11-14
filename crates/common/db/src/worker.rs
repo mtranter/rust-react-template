@@ -11,24 +11,30 @@ use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, Event, Topic};
 use app_persistence::{Handlers, MAX_ATTEMPTS};
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// How long a claimed job is hidden from other workers. A handler that runs
 /// longer may run twice at once; one whose worker dies runs again after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
+/// Each its own transaction, so a compaction never holds the outbox for long.
+const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
-const RELAY_LOCK: i64 = 0x72_656c_6179;
+pub(crate) const RELAY_LOCK: i64 = 0x72_656c_6179;
 
 pub struct Worker {
     pool: PgPool,
     clock: Arc<dyn Clock>,
     handlers: Arc<Handlers>,
+    compact_every: TimeDelta,
+    /// By the worker's clock; in memory only, so a restarted worker compacts
+    /// at its first poll.
+    last_compacted: Mutex<Option<DateTime<Utc>>>,
 }
 
 /// A delivery that ran out of attempts; the later versions of its key run past
@@ -57,12 +63,26 @@ impl Worker {
             pool,
             clock,
             handlers: Arc::new(handlers),
+            compact_every: Self::COMPACT_EVERY,
+            last_compacted: Mutex::new(None),
         }
     }
 
-    /// Polls every `interval` until `shutdown` resolves. Refuses to start
-    /// unless [`check_subscriptions`](Self::check_subscriptions) passes; after
-    /// that, a failure to reach the database is logged and retried at the next poll.
+    /// How often a worker compacts unless told otherwise.
+    pub const COMPACT_EVERY: TimeDelta = TimeDelta::hours(1);
+
+    /// How often [`compact_if_due`](Self::compact_if_due) compacts.
+    pub fn compacting_every(self, every: TimeDelta) -> Self {
+        Self {
+            compact_every: every,
+            ..self
+        }
+    }
+
+    /// Polls every `interval` until `shutdown` resolves, compacting the
+    /// outbox after each poll that it's due. Refuses to start unless
+    /// [`check_subscriptions`](Self::check_subscriptions) passes; after that,
+    /// a failure to reach the database is logged and retried at the next poll.
     pub async fn run(
         &self,
         interval: Duration,
@@ -73,6 +93,9 @@ impl Worker {
         loop {
             if let Err(err) = self.run_until_idle().await {
                 tracing::error!(error = %describe(&err), "worker poll failed");
+            }
+            if let Err(err) = self.compact_if_due().await {
+                tracing::error!(error = %describe(&err), "outbox compaction failed");
             }
             tokio::select! {
                 _ = &mut shutdown => return Ok(()),
@@ -199,13 +222,10 @@ impl Worker {
             r#"
             INSERT INTO messaging.job
                 (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
-            SELECT s.queue, o.event_type, o.key, o.version, o.payload, $2, $3, $2
-            FROM messaging.outbox o
-            JOIN messaging.subscription s
-              ON s.topic = o.topic AND s.event_type = o.event_type
-             AND s.retired_at IS NULL
-            WHERE o.seq = ANY($1)
-            ORDER BY o.seq, s.queue
+            SELECT queue, event_type, key, version, payload, $2, $3, $2
+            FROM messaging.delivery
+            WHERE seq = ANY($1)
+            ORDER BY seq, queue
             "#,
             &seqs,
             now,
@@ -216,6 +236,68 @@ impl Worker {
         .map_err(AppError::internal)?;
         tx.commit().await.map_err(AppError::internal)?;
         Ok(seqs.len())
+    }
+
+    /// Deletes every relayed event older than its registered topic's
+    /// retention by the worker's clock, but never its key's latest version,
+    /// a deletion's included: the outbox keeps the latest state of every key.
+    /// Returns how many it deleted. Runs alongside the relay, publishers and
+    /// other compactions: a row is deleted only while a later version of its
+    /// key exists, which nothing deletes unless a still later one does.
+    /// Deliveries are copies, so `messaging.job` is untouched.
+    pub async fn compact(&self) -> AppResult<u64> {
+        let now = self.clock.now();
+        let mut deleted = 0;
+        loop {
+            let batch = sqlx::query!(
+                r#"
+                DELETE FROM messaging.outbox WHERE seq IN (
+                    SELECT o.seq FROM messaging.outbox o
+                    JOIN messaging.topic t ON t.name = o.topic
+                    WHERE o.dispatched_at IS NOT NULL
+                      AND o.occurred_at < $1::timestamptz - t.retention
+                      AND EXISTS (
+                          SELECT 1 FROM messaging.outbox later
+                          WHERE later.topic = o.topic AND later.key = o.key
+                            AND later.version > o.version
+                      )
+                    LIMIT $2
+                )
+                "#,
+                now,
+                COMPACT_BATCH,
+            )
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::internal)?
+            .rows_affected();
+            deleted += batch;
+            // Not `< COMPACT_BATCH`: a batch comes up short when another
+            // compaction took some of its rows, with more still to delete.
+            if batch == 0 {
+                break;
+            }
+        }
+        tracing::info!(deleted, "outbox compacted");
+        Ok(deleted)
+    }
+
+    /// [`compact`](Self::compact)s at a worker's first call, then at its
+    /// first call once `compact_every` has passed since the last, by its
+    /// clock. Workers don't coordinate: each compacts on its own schedule,
+    /// which `compact` makes safe. The time is taken before compacting, so a
+    /// failed compaction waits for the next period rather than the next poll.
+    pub async fn compact_if_due(&self) -> AppResult<()> {
+        let now = self.clock.now();
+        {
+            let mut last = self.last_compacted.lock().expect("not poisoned");
+            if last.is_some_and(|last| now < last + self.compact_every) {
+                return Ok(());
+            }
+            *last = Some(now);
+        }
+        self.compact().await?;
+        Ok(())
     }
 
     /// Claims and runs the job due first, if any, of the subscriptions this
