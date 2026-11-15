@@ -25,7 +25,7 @@ ADR 0033 had `migrate` backfill a new `earliest` subscription in the transaction
 ## Consequences
 
 - Registering an `earliest` subscription is fast however large its topic. The copy runs in the background, and `messaging.backfill` shows its progress (`after_seq` against the topic's `seq`) and when it completed.
-- A copy built from `earliest` is incomplete until its backfill completes. [ADR 0036](0036-read-modules-keep-event-fed-projections.md) serves one only once it has caught up (`app_db::caught_up`).
+- A copy built from `earliest` is incomplete until its backfill completes. [ADR 0036](0036-modules-keep-event-fed-projections.md) serves one only once it has caught up (`app_db::caught_up`).
 - A claim joins the outbox for any queue with an unfinished backfill: a cost only while a backfill runs, and indexed by `outbox_event_idx`.
 - The backfill is copied 1000 events per transaction unless `Worker::backfilling_in_chunks_of` says otherwise; there is no throttle.
 - Rebuilding a copy (a new index shape, a new column) is a new queue from `earliest` beside the old one, switched over once it completes: `app_db::Generations` (ADR 0036).

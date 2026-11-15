@@ -9,4 +9,5 @@ mod behaviours {
     mod listing;
     mod reading;
     mod renaming;
+    mod searching;
 }

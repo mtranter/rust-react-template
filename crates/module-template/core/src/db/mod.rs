@@ -4,6 +4,8 @@
 
 mod migrations;
 mod repository;
+mod search;
 
 pub use migrations::{MIGRATOR, SCHEMA, migrations};
 pub use repository::PgWidgetRepository;
+pub use search::{PgWidgetSearch, SEARCH, SearchRows};

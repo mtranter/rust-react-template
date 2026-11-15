@@ -1,7 +1,7 @@
 //! Ids, timestamps, and the version are plain strings so the generated TS client
 //! stays dependency-free.
 
-use crate::application::{Versioned, WidgetSortKey};
+use crate::application::{Versioned, WidgetMatch, WidgetSortKey};
 use crate::domain::Widget;
 use app_persistence::{Direction, Sort};
 use app_web::SortParam;
@@ -40,6 +40,22 @@ impl From<Versioned<Widget>> for WidgetResponse {
             name: w.name().to_string(),
             created_at: w.created_at().to_rfc3339(),
             version: version.as_i64().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct WidgetMatchResponse {
+    pub id: String,
+    pub name: String,
+}
+
+impl From<WidgetMatch> for WidgetMatchResponse {
+    fn from(m: WidgetMatch) -> Self {
+        Self {
+            id: m.id.to_string(),
+            name: m.name,
         }
     }
 }

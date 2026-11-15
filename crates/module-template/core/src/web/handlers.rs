@@ -1,5 +1,7 @@
-use super::models::{CreateWidgetRequest, RenameWidgetRequest, WidgetResponse, WidgetSort};
-use crate::application::{Versioned, WidgetService};
+use super::models::{
+    CreateWidgetRequest, RenameWidgetRequest, WidgetMatchResponse, WidgetResponse, WidgetSort,
+};
+use crate::application::{PageRequest, Versioned, WidgetService};
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
@@ -94,5 +96,22 @@ impl WidgetsEndpoints {
         let page = query.page;
         let listed = widgets.0.list(query).await?;
         Ok(Json(ListResult::new(listed, page)))
+    }
+
+    /// Search widgets by name: those whose name starts with `name`, ignoring
+    /// case, in name order, paginated. Served from a copy kept from widgets'
+    /// events, so a write shows here only once the worker has delivered it;
+    /// answers `unavailable` until the copy has caught up.
+    #[oai(path = "/search", method = "get", operation_id = "search_widgets")]
+    async fn search(
+        &self,
+        widgets: Data<&WidgetService>,
+        name: Query<String>,
+        limit: Query<Option<i64>>,
+        offset: Query<Option<i64>>,
+    ) -> ApiResult<Json<ListResult<WidgetMatchResponse>>> {
+        let page = PageRequest::new(limit.0, offset.0);
+        let found = widgets.0.search(&name.0, page).await?;
+        Ok(Json(ListResult::new(found, Some(page))))
     }
 }

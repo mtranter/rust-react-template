@@ -19,8 +19,7 @@ while IFS= read -r path; do
     frontend/openapi.json) backend=true frontend=true ;;
     frontend/*) frontend=true ;;
     crates/* | .sqlx/* | Cargo.toml | Cargo.lock | deny.toml | rust-toolchain.toml | \
-      docker-compose.yml | scripts/check-*.sh | scripts/migrate-schema.sh | scripts/new-module.sh | \
-      scripts/new-projection.sh)
+      docker-compose.yml | scripts/check-*.sh | scripts/migrate-schema.sh | scripts/new-module.sh)
       backend=true ;;
     *) backend=true frontend=true ;;
   esac

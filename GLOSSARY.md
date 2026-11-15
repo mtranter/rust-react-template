@@ -64,16 +64,16 @@ The small, pure surface a Module offers to other Modules in-process, in its own 
 _Avoid_: Interface crate, contracts
 
 **Published View**:
-A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that other Modules' SQL may read, in a schema named for the Module API: a data product the Module publishes for querying. It is to SQL what the Module API is to Rust. It only gains columns; a breaking change is a new version beside the old. Read Modules no longer read them: they keep a Projection instead.
+A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that other Modules' SQL may read, in a schema named for the Module API: a data product the Module publishes for querying. It is to SQL what the Module API is to Rust. It only gains columns; a breaking change is a new version beside the old. No Module reads them any more: a Module keeps a Projection instead.
 
 **Published Record**:
 The plain Rust row of a Published View (e.g. `users_api::v1::User` for `users_api.user_v1`), in the providing Module's API. It describes the Module's Seed data to other Modules and is what their tests assert against. It never stands in for the Aggregate, and a capability trait never returns it.
 
 **Read Module**:
-A Module that owns no source data and enforces no business rules: it answers queries spanning Modules from its own Projection of their Aggregate Roots, returning Read Models. It has Web, Application and DB Layers but no Domain Layer.
+A Module that owns no source data and enforces no business rules: it answers queries no one Module owns (notes with their authors' names) from its own Projections of other Modules' Aggregate Roots, returning Read Models. It has Web, Application and DB Layers but no Domain Layer.
 
 **Projection**:
-A Read Module's own copy of other Modules' Aggregate Roots, kept in its own tables from their Topics by Subscriptions starting from `earliest`. Common code applies each Event only when it is newer than the copy and keeps a tombstone for a removed root; the Module writes only its rows. It **catches up** once its backfill is copied and handled. A rebuilt copy is a new **Generation** (new tables, new queues), served once it catches up; until any has, the Read Module answers that it is unavailable.
+A Module's own copy of Aggregate Roots, kept in its own tables from their Topics by Subscriptions starting from `earliest`: usually another Module's roots, to list or search by their columns, or its own in a shape its Aggregate's tables can't serve. Any Module may keep one; a Read Module is one that keeps nothing else. Common code applies each Event only when it is newer than the copy and keeps a tombstone for a removed root; the Module writes only its rows. It **catches up** once its backfill is copied and handled. A rebuilt copy is a new **Generation** (new tables, new queues), served once it catches up; until any has, a read served from it answers that it is unavailable.
 _Avoid_: Cache, replica
 
 **Read Model**:

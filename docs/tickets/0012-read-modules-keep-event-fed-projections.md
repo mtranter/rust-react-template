@@ -31,7 +31,11 @@ ADR 0036.
 - [x] `app_db::caught_up` and `Generations`: a copy is served only once its backfill is copied and handled, and a rebuilt generation takes over once it catches up; `unavailable` (503) until then.
 - [x] `note-search` keeps `note_search.note` and `note_search.author` from the notes and users topics; its tests publish the providers' events and cover renames, deletions and not being caught up.
 - [x] The notes entity carries `createdAt`; seeds publish their creation events.
-- [x] `make new-projection NAME=<module> FROM=<provider>` scaffolds a read module from `crates/projection-template` that compiles and passes its tests (tried against `notes`).
+- [x] The module template keeps a projection of its own topic (`widgets.widget_search`, `search_widgets`), so `make new-module` scaffolds one into every module; there is no separate projection template.
 - [x] The search page says when search is still catching up.
-- [x] ADR 0036; ADR 0010, ADR 0035, `crates/AGENTS.md` and the glossary point at it.
+- [x] ADR 0036; ADR 0009, ADR 0010, ADR 0035, `crates/AGENTS.md` and the glossary point at it.
 - [x] `make check` passes.
+
+## Comments
+
+- 2026-11-15: Dropped `crates/projection-template` and `make new-projection`. A projection is something a module holds, not a kind of module, so it lives in the module template, copying its own topic as the worked example; a scaffolded module keeps it, points it at another module's topic, or deletes it. `note-search` stays a read module, for a read no one module owns. ADR 0036 amended (and ADR 0009 marked amended by it).
