@@ -35,5 +35,5 @@ ADR 0010 joined the providers' views in one query: always consistent, no lag. Bu
 
 - A Projection is eventually consistent: a write shows in search once the worker delivers it, even in the Module that made it. Journeys run the worker before searching.
 - A Module keeping a copy of another's roots depends on that provider's `-api` crate for its Topic. It needs no core dev-dependency: its Driver publishes the provider's events, as a Subscriber's does.
-- A fresh deployment answers 503 for a read served from a Projection until its worker has run once.
+- A Projection registered against a topic whose outbox holds nothing yet, as in a fresh deployment, is caught up as soon as `migrate` registers it (ADR 0035, ticket 0019), so it is served, empty, with no worker run. Seeds are published after `migrate`, so they are live events and show once the worker delivers them, like any write. A deployment adding a Projection of a topic with history answers 503 for it until its worker has copied and handled the backfill.
 - `messaging.projection_version` grows by one row per key per queue and keeps tombstones forever, as the Outbox keeps each key's latest event.

@@ -1,4 +1,5 @@
 use crate::support::{Job, Messaging, PingTopic, Pinged, ping, pong, run};
+use app_db::caught_up;
 use app_events::PublishedTopic;
 use app_persistence::Handlers;
 use chrono::TimeDelta;
@@ -252,6 +253,20 @@ async fn registering_copies_nothing_and_a_worker_copies_the_backfill(pool: PgPoo
 
     assert_eq!(copied, 2);
     assert_eq!(queued().await, 2);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_backfill_with_no_relayed_events_of_its_type_is_caught_up_once_registered(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    history(&messaging, vec![pong("alice", 1)]).await;
+    let handlers = Handlers::new().on_from_earliest::<Pinged>(COPY, messaging.recorder(COPY));
+
+    messaging.register(&handlers).await.unwrap();
+    let ready = caught_up(&messaging.pool, &[COPY]).await.unwrap();
+    let copied = messaging.worker_of(handlers).backfill().await.unwrap();
+
+    assert!(ready, "not caught up straight after registration");
+    assert_eq!(copied, 0);
 }
 
 /// Every job of `queue` still to run, `<key> v<version>`, in the order copied.

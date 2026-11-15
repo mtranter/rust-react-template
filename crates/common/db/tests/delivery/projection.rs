@@ -1,4 +1,6 @@
-use crate::support::{LoggedErrors, Messaging, PingEvent, PingTopic, drop, ping, pong, run};
+use crate::support::{
+    LoggedErrors, Messaging, PingEvent, PingTopic, Pinged, drop, ping, pong, run,
+};
 use app_db::{Generations, Project, Projecting, caught_up, conn, dead_letters_in};
 use app_domain::seed_time;
 use app_error::{AppError, AppResult};
@@ -145,6 +147,44 @@ async fn a_projection_has_caught_up_once_its_backfill_is_copied_and_handled(pool
 }
 
 #[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_caught_up_projection_stays_caught_up_when_its_queue_subscribes_to_another_event_type(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    messaging.ping("alice").await;
+    let pings = Handlers::new().on_from_earliest::<Pinged>(COPY, messaging.recorder(COPY));
+    messaging.register(&pings).await.unwrap();
+    run(&messaging.worker_of(pings)).await;
+    assert!(caught_up(&messaging.pool, &[COPY]).await.unwrap());
+
+    messaging
+        .register(&recording(&messaging, COPY))
+        .await
+        .unwrap();
+
+    assert!(caught_up(&messaging.pool, &[COPY]).await.unwrap());
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_projection_registered_before_any_event_is_relayed_waits_only_for_those_events(
+    pool: PgPool,
+) {
+    let messaging = with_copy_table(pool).await;
+    messaging.ping("alice").await;
+    let handlers = projecting(COPY);
+    messaging.register(&handlers).await.unwrap();
+    let worker = messaging.worker_of(handlers);
+    let ready = || async { caught_up(&messaging.pool, &[COPY]).await.unwrap() };
+    assert!(!ready().await, "alice's ping not relayed yet");
+
+    assert_eq!(worker.relay().await.unwrap(), 1);
+    assert!(!ready().await, "alice's ping relayed but not handled");
+
+    while worker.run_next().await.unwrap() {}
+    assert!(ready().await);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_latest_subscription_has_nothing_to_catch_up_with(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(&["tests.first"]).await;
@@ -155,6 +195,9 @@ async fn a_latest_subscription_has_nothing_to_catch_up_with(pool: PgPool) {
 #[app_test_db::test(crate::support::TEMPLATE)]
 async fn nothing_is_served_until_a_generation_has_caught_up(pool: PgPool) {
     let messaging = with_copy_table(pool).await;
+    messaging.migrate(&["tests.first"]).await;
+    messaging.ping("alice").await;
+    run(&messaging.worker(&["tests.first"])).await;
     let handlers = projecting(COPY);
     messaging.register(&handlers).await.unwrap();
     let generations = Generations::new(messaging.pool.clone()).then(1, &[COPY]);

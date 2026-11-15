@@ -122,22 +122,40 @@ async fn backfill(
     let topics: Vec<&str> = subscriptions.iter().map(|s| s.topic).collect();
     // A sequence isn't transactional: read under the lock, its value is the last
     // committed batch's, or a rolled-back one's later still, which owns no events.
-    sqlx::query!(
+    // A backfill with nothing to copy completes here, so a queue gaining an event
+    // type new to its topic stays caught up.
+    let completed = sqlx::query!(
         r#"
+        WITH registering AS (
+            SELECT (SELECT CASE WHEN is_called THEN last_value ELSE 0 END
+                    FROM messaging.relay_batch) AS through_batch,
+                   (SELECT coalesce(max(seq), 0) FROM messaging.outbox) AS through_seq
+        )
         INSERT INTO messaging.backfill
-            (queue, event_type, topic, through_batch, through_seq, registered_at)
-        SELECT s.queue, s.event_type, s.topic,
-               (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM messaging.relay_batch),
-               (SELECT coalesce(max(seq), 0) FROM messaging.outbox),
-               $1
+            (queue, event_type, topic, through_batch, through_seq, registered_at, completed_at)
+        SELECT s.queue, s.event_type, s.topic, r.through_batch, r.through_seq, $1::timestamptz,
+               CASE WHEN EXISTS (
+                   SELECT 1 FROM messaging.outbox o
+                   WHERE o.topic = s.topic AND o.event_type = s.event_type
+                     AND o.relay_batch <= r.through_batch
+               ) THEN NULL ELSE $1::timestamptz END
         FROM unnest($2::text[], $3::text[], $4::text[]) AS s (queue, event_type, topic)
+        CROSS JOIN registering r
+        RETURNING queue, event_type, completed_at IS NOT NULL AS "completed!"
         "#,
         clock.now(),
         &queues as &[&str],
         &event_types as &[&str],
         &topics as &[&str],
     )
-    .execute(conn)
+    .fetch_all(conn)
     .await?;
+    for backfill in completed.iter().filter(|b| b.completed) {
+        tracing::info!(
+            queue = backfill.queue,
+            event_type = backfill.event_type,
+            "backfill complete"
+        );
+    }
     Ok(())
 }
