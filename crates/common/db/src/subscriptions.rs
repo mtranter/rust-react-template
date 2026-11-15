@@ -4,7 +4,7 @@
 
 use crate::worker::RELAY_LOCK;
 use app_domain::Clock;
-use app_persistence::{Handlers, MAX_ATTEMPTS, Start, Subscription};
+use app_persistence::{Handlers, Start, Subscription};
 use sqlx::{PgConnection, PgPool};
 
 /// Why `migrate` refused to register a build's subscriptions.
@@ -27,8 +27,8 @@ pub enum SubscriptionError {
 /// Registers every subscription `handlers` serve: `migrate` runs it after the
 /// migrations, before a rollout, so a build's subscriptions exist before any
 /// of its processes publishes or relays. Each receives the events relayed after
-/// it commits, and one starting from [`Start::Earliest`] is first backfilled
-/// with every relayed event of its type the outbox holds, due by `clock`.
+/// it commits, and one starting from [`Start::Earliest`] is also backfilled,
+/// by the worker, with every relayed event of its type the outbox holds.
 /// Registering again changes nothing, a changed start included.
 pub async fn register_subscriptions(
     pool: &PgPool,
@@ -105,36 +105,35 @@ pub async fn register_subscriptions(
     Ok(())
 }
 
-/// Under the relay's lock, so each event reaches a new queue once: every
-/// relayed one now, every other by the relay once this commits. A key's relayed
-/// events are a prefix of its versions, so its live ones still come after.
-/// Every subscription in one statement, so a compaction can't run between two
-/// event types and leave a gap in a key's prefix: one snapshot keeps it whole.
+/// Under the relay's lock, so each event reaches a new queue once: those of
+/// every batch relayed so far by the backfill, every later one by the relay. The
+/// copying is the worker's ([`Worker::backfill`](crate::Worker::backfill)), so
+/// this stays one short transaction however long the topic's outbox.
 async fn backfill(
     conn: &mut PgConnection,
     clock: &dyn Clock,
     subscriptions: &[Subscription],
 ) -> sqlx::Result<()> {
-    // Its own statement, so the backfill's snapshot is taken once the lock is held.
     sqlx::query!("SELECT pg_advisory_xact_lock($1)", RELAY_LOCK)
         .execute(&mut *conn)
         .await?;
     let queues: Vec<&str> = subscriptions.iter().map(|s| s.queue).collect();
     let event_types: Vec<&str> = subscriptions.iter().map(|s| s.event_type).collect();
+    let topics: Vec<&str> = subscriptions.iter().map(|s| s.topic).collect();
+    // A sequence isn't transactional: read under the lock, its value is the last
+    // committed batch's, or a rolled-back one's later still, which owns no events.
     sqlx::query!(
         r#"
-        INSERT INTO messaging.job
-            (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
-        SELECT queue, event_type, key, version, payload, $1, $2, $1
-        FROM messaging.delivery
-        WHERE dispatched_at IS NOT NULL
-          AND (queue, event_type) IN (SELECT * FROM unnest($3::text[], $4::text[]))
-        ORDER BY seq, queue
+        INSERT INTO messaging.backfill (queue, event_type, topic, through_batch, registered_at)
+        SELECT s.queue, s.event_type, s.topic,
+               (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM messaging.relay_batch),
+               $1
+        FROM unnest($2::text[], $3::text[], $4::text[]) AS s (queue, event_type, topic)
         "#,
         clock.now(),
-        MAX_ATTEMPTS,
         &queues as &[&str],
         &event_types as &[&str],
+        &topics as &[&str],
     )
     .execute(conn)
     .await?;

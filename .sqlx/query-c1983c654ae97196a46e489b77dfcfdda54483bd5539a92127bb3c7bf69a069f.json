@@ -1,0 +1,37 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                WITH chunk AS (\n                    SELECT seq, key, version, payload FROM messaging.outbox\n                    WHERE topic = $1 AND event_type = $2\n                      AND seq > $3 AND relay_batch <= $4\n                    ORDER BY seq\n                    LIMIT $5\n                ), copied AS (\n                    INSERT INTO messaging.job\n                        (queue, event_type, key, version, payload, run_at, max_attempts, created_at)\n                    SELECT $6, $2, key, version, payload, $7, $8, $7\n                    FROM chunk ORDER BY seq\n                )\n                SELECT max(seq) AS last_seq, count(*) AS \"copied!\" FROM chunk\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "last_seq",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "copied!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "c1983c654ae97196a46e489b77dfcfdda54483bd5539a92127bb3c7bf69a069f"
+}

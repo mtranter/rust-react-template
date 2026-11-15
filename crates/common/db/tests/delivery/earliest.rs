@@ -231,3 +231,24 @@ async fn an_event_published_while_it_is_registered_is_delivered_once(pool: PgPoo
         assert_eq!(versions, &(1..=VERSIONS).collect::<Vec<_>>());
     }
 }
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn registering_copies_nothing_and_a_worker_copies_the_backfill(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    history(&messaging, vec![ping("alice", 1), ping("bob", 1)]).await;
+    let handlers = copying(&messaging);
+    messaging.register(&handlers).await.unwrap();
+    let queued = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM messaging.job WHERE queue = $1")
+            .bind(COPY)
+            .fetch_one(&messaging.pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(queued().await, 0);
+
+    let copied = messaging.worker_of(handlers).backfill().await.unwrap();
+
+    assert_eq!(copied, 2);
+    assert_eq!(queued().await, 2);
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO messaging.backfill (queue, event_type, topic, through_batch, registered_at)\n        SELECT s.queue, s.event_type, s.topic,\n               (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM messaging.relay_batch),\n               $1\n        FROM unnest($2::text[], $3::text[], $4::text[]) AS s (queue, event_type, topic)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9b467c4dc80c7b79536b8b94a8932398f9cc293212c0f1af0f473a3f8d88a84f"
+}

@@ -4,7 +4,8 @@
 //! order per key within each queue. Any number of workers can run against one
 //! database: one relays at a time, every claim skips rows another worker holds,
 //! and a worker claims only the subscriptions its own handlers can decode, so
-//! builds can differ during a rolling deploy.
+//! builds can differ during a rolling deploy. Workers also copy each new
+//! `earliest` subscription's backfill into its queue, a chunk at a time.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
@@ -22,6 +23,8 @@ use std::time::Duration;
 /// longer may run twice at once; one whose worker dies runs again after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
+/// Each its own transaction, so a backfill never holds anything for long.
+const BACKFILL_CHUNK: i64 = 1000;
 /// Each its own transaction, so a compaction never holds the outbox for long.
 const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
@@ -155,17 +158,18 @@ impl Worker {
         Ok(())
     }
 
-    /// Relays and runs until nothing is due by the worker's clock, including
-    /// whatever the handlers publish. A failed delivery backs off past
-    /// `now`, so this returns rather than retrying it.
+    /// Relays, backfills and runs until nothing is due by the worker's clock,
+    /// including whatever the handlers publish. A failed delivery backs off
+    /// past `now`, so this returns rather than retrying it.
     pub async fn run_until_idle(&self) -> AppResult<()> {
         loop {
             let relayed = self.relay().await?;
+            let backfilled = self.backfill().await?;
             let mut ran = false;
             while self.run_next().await? {
                 ran = true;
             }
-            if relayed == 0 && !ran {
+            if relayed == 0 && backfilled == 0 && !ran {
                 return Ok(());
             }
         }
@@ -211,7 +215,11 @@ impl Worker {
 
         let now = self.clock.now();
         sqlx::query!(
-            "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
+            r#"
+            UPDATE messaging.outbox
+            SET dispatched_at = $1, relay_batch = (SELECT nextval('messaging.relay_batch'))
+            WHERE seq = ANY($2)
+            "#,
             now,
             &seqs,
         )
@@ -236,6 +244,114 @@ impl Worker {
         .map_err(AppError::internal)?;
         tx.commit().await.map_err(AppError::internal)?;
         Ok(seqs.len())
+    }
+
+    /// Copies the next chunk of one unfinished backfill into its queue, as jobs
+    /// due now, and moves its cursor past them in the same transaction, so a
+    /// worker that dies loses nothing and the next one carries on. Returns how
+    /// many events it copied; 0 once no backfill has any left to copy. Any
+    /// worker copies any backfill, as any relays any event; two never copy
+    /// the same one at once, and neither waits for the other.
+    ///
+    /// The events are fixed when `migrate` registers the backfill, so the
+    /// relay never races it, and compaction only removes events whose key has
+    /// a later version still to come. Copying in `seq` order copies each key's
+    /// versions in order, and [`run_next`](Self::run_next) holds a key's live
+    /// events back until its earlier ones are copied.
+    pub async fn backfill(&self) -> AppResult<u64> {
+        loop {
+            match self.backfill_chunk().await? {
+                Some(0) => continue,
+                Some(copied) => return Ok(copied),
+                None => return Ok(0),
+            }
+        }
+    }
+
+    /// `None` when no backfill is left unfinished; `Some(0)` when one finished.
+    async fn backfill_chunk(&self) -> AppResult<Option<u64>> {
+        let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
+        let Some(backfill) = sqlx::query!(
+            r#"
+            SELECT b.queue, b.event_type, b.topic, b.through_batch, b.after_seq,
+                   s.retired_at IS NOT NULL AS "retired!"
+            FROM messaging.backfill b
+            JOIN messaging.subscription s USING (queue, event_type)
+            WHERE b.completed_at IS NULL
+            ORDER BY b.registered_at, b.queue, b.event_type
+            LIMIT 1
+            FOR UPDATE OF b SKIP LOCKED
+            "#,
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::internal)?
+        else {
+            return Ok(None);
+        };
+
+        let now = self.clock.now();
+        let chunk = if backfill.retired {
+            None
+        } else {
+            let chunk = sqlx::query!(
+                r#"
+                WITH chunk AS (
+                    SELECT seq, key, version, payload FROM messaging.outbox
+                    WHERE topic = $1 AND event_type = $2
+                      AND seq > $3 AND relay_batch <= $4
+                    ORDER BY seq
+                    LIMIT $5
+                ), copied AS (
+                    INSERT INTO messaging.job
+                        (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
+                    SELECT $6, $2, key, version, payload, $7, $8, $7
+                    FROM chunk ORDER BY seq
+                )
+                SELECT max(seq) AS last_seq, count(*) AS "copied!" FROM chunk
+                "#,
+                backfill.topic,
+                backfill.event_type,
+                backfill.after_seq,
+                backfill.through_batch,
+                BACKFILL_CHUNK,
+                backfill.queue,
+                now,
+                MAX_ATTEMPTS,
+            )
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::internal)?;
+            chunk.last_seq.map(|last_seq| (last_seq, chunk.copied))
+        };
+        // A retired subscription's backfill completes with nothing copied: its
+        // queue's jobs are dead letters.
+        let (after_seq, completed_at, copied) = match chunk {
+            Some((last_seq, copied)) => (last_seq, None, copied),
+            None => (backfill.after_seq, Some(now), 0),
+        };
+        sqlx::query!(
+            r#"
+            UPDATE messaging.backfill SET after_seq = $3, completed_at = $4
+            WHERE queue = $1 AND event_type = $2
+            "#,
+            backfill.queue,
+            backfill.event_type,
+            after_seq,
+            completed_at,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        if completed_at.is_some() {
+            tracing::info!(
+                queue = backfill.queue,
+                event_type = backfill.event_type,
+                "backfill complete"
+            );
+        }
+        tx.commit().await.map_err(AppError::internal)?;
+        Ok(Some(copied as u64))
     }
 
     /// Deletes every relayed event older than its registered topic's
@@ -302,8 +418,8 @@ impl Worker {
 
     /// Claims and runs the job due first, if any, of the subscriptions this
     /// worker serves, and of those only one whose key has no earlier version
-    /// still to run in its queue: running, backing off, or waiting for a worker
-    /// that can decode it. A job's row lasts until the transaction handling it
+    /// still to run in its queue: running, backing off, waiting for a worker
+    /// that can decode it, or not yet copied by its queue's backfill. A job's row lasts until the transaction handling it
     /// commits, so a key's next version waits for that. The claim counts as an
     /// attempt, so a job that kills its worker is dead-lettered too, eventually.
     /// It looks up each subscription's first due job by index, so jobs no
@@ -331,6 +447,15 @@ impl Worker {
                           SELECT 1 FROM messaging.job earlier
                           WHERE earlier.queue = j.queue AND earlier.key = j.key
                             AND earlier.version < j.version AND earlier.dead_at IS NULL
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.backfill b
+                          JOIN messaging.outbox uncopied
+                            ON uncopied.topic = b.topic AND uncopied.event_type = b.event_type
+                          WHERE b.queue = j.queue AND b.completed_at IS NULL
+                            AND uncopied.key = j.key AND uncopied.version < j.version
+                            AND uncopied.seq > b.after_seq
+                            AND uncopied.relay_batch <= b.through_batch
                       )
                     ORDER BY run_at, id
                     LIMIT 1
