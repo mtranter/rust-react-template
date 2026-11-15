@@ -94,6 +94,7 @@ cargo fmt --all
 # `sqlx prepare` checks every crate's queries against the dev database, the
 # template's and the new module's included.
 ./scripts/migrate-schema.sh crates/module-template/core widgets
+./scripts/migrate-schema.sh crates/projection-template/core widget_index
 ./scripts/migrate-schema.sh "$dir" "$ident"
 SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 
