@@ -20,7 +20,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// How long a claimed job is hidden from other workers. A handler that runs
-/// longer may run twice at once; one whose worker dies runs again after it.
+/// longer may run twice at once, but only one run's database writes commit;
+/// its effects outside the database, such as mail, can happen twice, which is
+/// one reason subscribers stay idempotent. One whose worker dies runs again
+/// after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
 /// Each its own transaction, so a compaction never holds the outbox for long.
@@ -509,17 +512,29 @@ impl Worker {
         Ok(true)
     }
 
-    /// The handler's writes and the job's removal commit together, so a
-    /// handler that only writes to the database takes effect exactly once.
+    /// The handler's writes and the job's removal commit together, and only
+    /// if this run removes the job, so a handler that only writes to the
+    /// database takes effect exactly once, even past its lease: a run another
+    /// worker completed first rolls its writes back. The removal ignores
+    /// `dead_at`, so a dead letter whose slow handler succeeds is removed.
     async fn complete(&self, job: &Claimed) -> AppResult<()> {
         let mut tx = begin(&self.pool).await?;
         self.handlers
             .handle(&job.queue, &mut tx, job.payload.clone())
             .await?;
-        sqlx::query!("DELETE FROM messaging.job WHERE id = $1", job.id)
+        let removed = sqlx::query!("DELETE FROM messaging.job WHERE id = $1", job.id)
             .execute(conn(&mut tx))
             .await
-            .map_err(AppError::internal)?;
+            .map_err(AppError::internal)?
+            .rows_affected();
+        if removed == 0 {
+            tracing::warn!(
+                queue = job.queue,
+                "delivery already completed by another worker: its lease ran out, \
+                 so this run's writes are rolled back"
+            );
+            return Ok(());
+        }
         tx.commit().await
     }
 

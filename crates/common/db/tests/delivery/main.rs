@@ -8,6 +8,7 @@ mod compaction;
 mod contract;
 mod deploys;
 mod earliest;
+mod effects;
 mod order;
 mod polling;
 mod projection;
