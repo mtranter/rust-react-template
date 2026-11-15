@@ -243,8 +243,9 @@ impl Worker {
         sqlx::query!(
             r#"
             INSERT INTO messaging.job
-                (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
-            SELECT queue, event_type, key, version, payload, $2, $3, $2
+                (queue, event_type, key, version, payload, outbox_seq, run_at, max_attempts,
+                 created_at)
+            SELECT queue, event_type, key, version, payload, seq, $2, $3, $2
             FROM messaging.delivery
             WHERE seq = ANY($1)
             ORDER BY seq, queue
@@ -320,8 +321,9 @@ impl Worker {
                     LIMIT $5
                 ), copied AS (
                     INSERT INTO messaging.job
-                        (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
-                    SELECT $6, $2, key, version, payload, $7, $8, $7
+                        (queue, event_type, key, version, payload, outbox_seq, run_at,
+                         max_attempts, created_at)
+                    SELECT $6, $2, key, version, payload, seq, $7, $8, $7
                     FROM chunk ORDER BY seq
                 )
                 SELECT max(seq) AS last_seq, count(*) AS "copied!" FROM chunk

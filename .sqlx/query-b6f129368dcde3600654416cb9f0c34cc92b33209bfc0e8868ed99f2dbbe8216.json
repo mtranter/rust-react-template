@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            (SELECT count(DISTINCT queue) FROM messaging.subscription\n             WHERE queue = ANY($1) AND retired_at IS NULL) = cardinality($1)\n            AND NOT EXISTS (\n                SELECT 1 FROM messaging.backfill b\n                WHERE b.queue = ANY($1)\n                  AND (b.completed_at IS NULL OR EXISTS (\n                      SELECT 1 FROM messaging.outbox o\n                      WHERE o.dispatched_at IS NULL AND o.topic = b.topic\n                        AND o.event_type = b.event_type AND o.seq <= b.through_seq\n                  ) OR EXISTS (\n                      SELECT 1 FROM messaging.job j\n                      WHERE j.queue = b.queue AND j.event_type = b.event_type\n                        AND j.dead_at IS NULL AND j.outbox_seq <= b.through_seq\n                  ))\n            ) AS \"caught_up!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "caught_up!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b6f129368dcde3600654416cb9f0c34cc92b33209bfc0e8868ed99f2dbbe8216"
+}

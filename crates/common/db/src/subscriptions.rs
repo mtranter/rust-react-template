@@ -124,9 +124,11 @@ async fn backfill(
     // committed batch's, or a rolled-back one's later still, which owns no events.
     sqlx::query!(
         r#"
-        INSERT INTO messaging.backfill (queue, event_type, topic, through_batch, registered_at)
+        INSERT INTO messaging.backfill
+            (queue, event_type, topic, through_batch, through_seq, registered_at)
         SELECT s.queue, s.event_type, s.topic,
                (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM messaging.relay_batch),
+               (SELECT coalesce(max(seq), 0) FROM messaging.outbox),
                $1
         FROM unnest($2::text[], $3::text[], $4::text[]) AS s (queue, event_type, topic)
         "#,

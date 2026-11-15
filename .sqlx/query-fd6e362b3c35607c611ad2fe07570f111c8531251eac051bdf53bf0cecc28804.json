@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO messaging.job\n                (queue, event_type, key, version, payload, outbox_seq, run_at, max_attempts,\n                 created_at)\n            SELECT queue, event_type, key, version, payload, seq, $2, $3, $2\n            FROM messaging.delivery\n            WHERE seq = ANY($1)\n            ORDER BY seq, queue\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd6e362b3c35607c611ad2fe07570f111c8531251eac051bdf53bf0cecc28804"
+}

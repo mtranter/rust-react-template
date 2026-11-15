@@ -4,7 +4,7 @@ Amends [ADR 0033](0033-the-outbox-is-a-compacted-log.md)'s "A subscription decla
 
 ADR 0033 had `migrate` backfill a new `earliest` subscription in the transaction that registers it: it inserted one job per relayed outbox event of the subscription's topic and types in one statement, while holding the relay's advisory lock. At template scale that takes milliseconds. A module added years later to keep a copy of a topic with millions of keys would have its deploy wait on one huge insert, and no event of any topic would be relayed until it finished. Keeping a copy of another module's state (a search projection, a cache) is what `earliest` exists for, so the backfill has to scale with the topic.
 
-**`migrate` only records the backfill.** Still under the relay's lock, it writes a `messaging.backfill` row per new `earliest` subscription. The row records the last relay batch committed so far (`through_batch`). The backfill's events are its topic's and types' events relayed in that batch or an earlier one; every later event goes to the new queue through the relay, as before. The lock is held for one small insert.
+**`migrate` only records the backfill.** Still under the relay's lock, it writes a `messaging.backfill` row per new `earliest` subscription. The row records the last relay batch committed so far (`through_batch`) and the outbox's highest `seq` (`through_seq`). The backfill's events are its topic's and types' events relayed in that batch or an earlier one; every later event goes to the new queue through the relay, as before. `through_seq` bounds what the copy must catch up with: every event its topic held at registration, relayed or still waiting for the relay, has a `seq` at or below it (ticket 0013). The lock is held for one small insert.
 
 **Relay batches are numbered in commit order.** The relay takes a number from `messaging.relay_batch` under its lock and stamps it on every event it dispatches (`outbox.relay_batch`). The outbox's `seq` can't mark the boundary: it is assigned at insert, not at commit, so a lower `seq` can commit after a higher one (ADR 0013). Only one relay runs at a time, and it holds the lock until it commits, so batch numbers follow commit order. Events relayed before batches were numbered belong to batch 0.
 
@@ -25,7 +25,7 @@ ADR 0033 had `migrate` backfill a new `earliest` subscription in the transaction
 ## Consequences
 
 - Registering an `earliest` subscription is fast however large its topic. The copy runs in the background, and `messaging.backfill` shows its progress (`after_seq` against the topic's `seq`) and when it completed.
-- A copy built from `earliest` is incomplete until its backfill completes. [ADR 0036](0036-modules-keep-event-fed-projections.md) serves one only once it has caught up (`app_db::caught_up`).
+- A copy built from `earliest` is incomplete until it has caught up: every event its topic held at registration, relayed then or not, is handled. [ADR 0036](0036-modules-keep-event-fed-projections.md) serves one only once it has caught up (`app_db::caught_up`).
 - A claim joins the outbox for any queue with an unfinished backfill: a cost only while a backfill runs, and indexed by `outbox_event_idx`.
 - The backfill is copied 1000 events per transaction unless `Worker::backfilling_in_chunks_of` says otherwise; there is no throttle.
 - Rebuilding a copy (a new index shape, a new column) is a new queue from `earliest` beside the old one, switched over once it completes: `app_db::Generations` (ADR 0036).

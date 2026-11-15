@@ -194,3 +194,80 @@ async fn a_rebuilt_generation_is_served_once_it_catches_up_and_the_old_one_until
     run(&messaging.worker_of(both())).await;
     assert_eq!(generations.serving().await.unwrap(), 2);
 }
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_projection_waits_for_the_events_still_unrelayed_when_it_was_registered(pool: PgPool) {
+    let messaging = with_copy_table(pool).await;
+    let events: Vec<_> = (0..250).map(|i| ping(&format!("key{i}"), 1)).collect();
+    messaging.publish(events).await.unwrap();
+    let handlers = projecting(COPY);
+    messaging.register(&handlers).await.unwrap();
+    let worker = messaging.worker_of(handlers);
+
+    // One pass of `run_until_idle`'s loop.
+    assert_eq!(worker.relay().await.unwrap(), 100);
+    worker.backfill().await.unwrap();
+    while worker.run_next().await.unwrap() {}
+
+    let held = rows(&messaging).await.len();
+    let ready = caught_up(&messaging.pool, &[COPY]).await.unwrap();
+    assert!(!ready, "caught up with {held} of 250 keys");
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_projection_waits_for_its_last_copied_chunk_whatever_the_workers_clocks(pool: PgPool) {
+    let messaging = with_copy_table(pool).await;
+    messaging.migrate(&["tests.first"]).await;
+    messaging
+        .publish(vec![ping("alice", 1), ping("bob", 1)])
+        .await
+        .unwrap();
+    run(&messaging.worker(&["tests.first"])).await;
+    messaging.register(&projecting(COPY)).await.unwrap();
+    let worker = messaging
+        .worker_of(projecting(COPY))
+        .backfilling_in_chunks_of(1);
+
+    assert_eq!(worker.backfill().await.unwrap(), 1);
+    assert!(worker.run_next().await.unwrap());
+    // Worker A copies the last chunk; worker B, 5ms behind, finds none left.
+    messaging.later(TimeDelta::milliseconds(10));
+    assert_eq!(worker.backfill().await.unwrap(), 1);
+    messaging.later(TimeDelta::milliseconds(-5));
+    assert_eq!(worker.backfill().await.unwrap(), 0);
+
+    let held = rows(&messaging).await.len();
+    let ready = caught_up(&messaging.pool, &[COPY]).await.unwrap();
+    assert!(
+        !ready,
+        "caught up holding {held} of 2 keys, a job unhandled"
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn an_event_published_after_registration_does_not_hold_a_projection_back(pool: PgPool) {
+    let messaging = with_copy_table(pool).await;
+    messaging.ping("alice").await;
+    let handlers = projecting(COPY);
+    messaging.register(&handlers).await.unwrap();
+    run(&messaging.worker_of(handlers)).await;
+
+    messaging.ping("bob").await;
+
+    assert!(caught_up(&messaging.pool, &[COPY]).await.unwrap());
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn an_event_relayed_after_registration_does_not_hold_a_projection_back(pool: PgPool) {
+    let messaging = with_copy_table(pool).await;
+    messaging.ping("alice").await;
+    let handlers = projecting(COPY);
+    messaging.register(&handlers).await.unwrap();
+    let worker = messaging.worker_of(handlers);
+    run(&worker).await;
+
+    messaging.ping("bob").await;
+    assert_eq!(worker.relay().await.unwrap(), 1);
+
+    assert!(caught_up(&messaging.pool, &[COPY]).await.unwrap());
+}

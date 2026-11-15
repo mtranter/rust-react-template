@@ -2,7 +2,8 @@
 //! (ADR 0036): a projection. The framework decides whether an event is newer
 //! than what the copy holds and keeps a tombstone for a removed key; the module
 //! only writes its rows. [`Generations`] says which copy to serve from: the
-//! newest that has caught up with its backfill.
+//! newest that has [`caught_up`], having handled every event its topics held
+//! when `migrate` registered it.
 
 use crate::unit_of_work::conn;
 use app_error::{AppError, AppResult};
@@ -94,9 +95,11 @@ where
 }
 
 /// Whether every one of `queues` is registered and has caught up with its
-/// backfill: the backfill is copied and every job copied by then is handled
-/// (or dead). A copy fed by them then holds every key its topics held when
-/// `migrate` registered them, and keeps up from there.
+/// backfill: every event its topics held when `migrate` registered it, relayed
+/// by then or not, is copied or relayed into the queue and handled (or dead).
+/// Those are the events at or below the outbox's highest `seq` at registration;
+/// a later one is live and holds nothing back. A copy fed by them then holds
+/// every key its topics held at registration, and keeps up from there.
 pub async fn caught_up(pool: &PgPool, queues: &[&str]) -> AppResult<bool> {
     let mut queues: Vec<&str> = queues.to_vec();
     queues.sort_unstable();
@@ -110,9 +113,13 @@ pub async fn caught_up(pool: &PgPool, queues: &[&str]) -> AppResult<bool> {
                 SELECT 1 FROM messaging.backfill b
                 WHERE b.queue = ANY($1)
                   AND (b.completed_at IS NULL OR EXISTS (
+                      SELECT 1 FROM messaging.outbox o
+                      WHERE o.dispatched_at IS NULL AND o.topic = b.topic
+                        AND o.event_type = b.event_type AND o.seq <= b.through_seq
+                  ) OR EXISTS (
                       SELECT 1 FROM messaging.job j
-                      WHERE j.queue = b.queue AND j.dead_at IS NULL
-                        AND j.created_at <= b.completed_at
+                      WHERE j.queue = b.queue AND j.event_type = b.event_type
+                        AND j.dead_at IS NULL AND j.outbox_seq <= b.through_seq
                   ))
             ) AS "caught_up!"
         "#,
