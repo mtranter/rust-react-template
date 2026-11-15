@@ -18,7 +18,7 @@ Rules for the Rust backend, a modular monolith: each module is a crate that owns
 ## Commands
 
 - `make new-module NAME=<module> [ENTITY=<aggregate>]` scaffolds and registers a write module, with a projection of its own topic to keep, repoint or delete (see "Adding a module").
-- `make prepare` after changing any `query!` (refreshes the checked-in `.sqlx`; needs a migrated DB). `make migrate`, `make seed`, `make check-sql`, `make check-deps`, `make check-modules`, `make check-spec`, `make db-up|db-wait|db-down`; the rest: `make help`.
+- `make prepare` after changing any `query!` (refreshes the checked-in `.sqlx`; needs a migrated DB). `make migrate`, `make seed`, `make check-sql`, `make check-deps`, `make check-modules`, `make check-spec`, `make db-up|db-wait|db-down`, `make db-reset` (deletes the dev database's volume, then migrates and seeds); the rest: `make help`.
 - One test: `make db-wait`, then `SQLX_OFFLINE=true DATABASE_URL=postgres://app:app@localhost:5432/postgres cargo test -p users registering::` (any substring of the test path). The database is `postgres`, never `app` (tests create theirs beside it); without `SQLX_OFFLINE=true`, `query!` fails with `relation "users.account" does not exist`.
 - Rust CLI tools are repo-local, run as `cargo bin <tool>` (`cargo bin cargo-deny check`), never a global `cargo deny`/`sqlx`. To bump one, edit `[workspace.metadata.bin]` in the root `Cargo.toml` with a range qualifier (`^0.20`) and re-run `make setup`.
 - For Rust symbols (callers, implementations, a type) prefer the LSP tool to grep: grep misses re-exports and trait impls. Grep for strings and non-Rust files.

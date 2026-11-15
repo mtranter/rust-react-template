@@ -51,7 +51,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
         check-backend check-frontend check-changed check-spec screens \
-        build-backend-dev build-frontend db-up db-down db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
+        build-backend-dev build-frontend db-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
 help: ## Show this help
@@ -78,6 +78,10 @@ db-wait: db-up ## Wait until Postgres is healthy
 
 db-down: ## Stop local Postgres
 	docker compose down
+
+db-reset: ## Delete local Postgres and its data volume, then migrate and seed afresh
+	docker compose down -v postgres
+	$(MAKE) seed
 
 migrate: db-wait ## Apply all module migrations in dependency order
 	$(CARGO) run --bin migrate
