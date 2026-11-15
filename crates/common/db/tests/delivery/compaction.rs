@@ -251,6 +251,27 @@ async fn a_worker_compacts_at_its_first_poll(pool: PgPool) {
 }
 
 #[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_worker_checking_its_clock_doesnt_compact_while_it_is_far_from_the_databases(
+    pool: PgPool,
+) {
+    let messaging = messaging_keeping_pings(pool).await;
+    let worker = messaging.worker(QUEUE).checking_its_clock();
+    messaging
+        .publish(vec![ping("alice", 1), ping("alice", 2)])
+        .await
+        .unwrap();
+    run(&worker).await;
+
+    messaging.later(TimeDelta::days(8));
+    assert!(worker.compact_if_due().await.is_err());
+
+    assert_eq!(
+        messaging.outbox().await,
+        ["tests.pinged alice v1", "tests.pinged alice v2"]
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_worker_compacts_again_only_once_its_period_has_passed(pool: PgPool) {
     let messaging = messaging_keeping_pings(pool).await;
     let worker = messaging

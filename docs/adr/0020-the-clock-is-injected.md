@@ -9,3 +9,4 @@ Services and the Worker read the time from `app_domain::Clock`, held as `Arc<dyn
 ## Consequences
 
 - Tests control time and backoff: time moves only when a test moves it (`later(by)`).
+- Workers judge leases, due times and retention by their own clocks, so several workers' clocks must agree to well within the lease. The `worker` binary checks its clock against the database's at start-up and before each compaction, refusing past a minute (`Worker::check_clock`, ticket 0020). The comparisons stay on the injected clock: moving them to the database's `now()` would take time out of tests' hands. Both sides are instants, so time zone settings don't matter; a database whose clock is wrong stops every worker, which is accepted.

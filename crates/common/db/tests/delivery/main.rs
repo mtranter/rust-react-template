@@ -4,6 +4,7 @@
 
 mod support;
 
+mod clock;
 mod compaction;
 mod contract;
 mod deploys;

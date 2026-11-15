@@ -23,8 +23,17 @@ use std::time::Duration;
 /// longer may run twice at once, but only one run's database writes commit;
 /// its effects outside the database, such as mail, can happen twice, which is
 /// one reason subscribers stay idempotent. One whose worker dies runs again
-/// after it.
+/// after it. Each worker judges it by its own clock, so workers' clocks must
+/// agree to well within it: the `worker` binary refuses to start, and skips
+/// compaction, while its clock is more than [`CLOCK_REFUSED`] from the
+/// database's ([`Worker::check_clock`]).
 const LEASE: TimeDelta = TimeDelta::minutes(5);
+/// Two workers each within this of the database's clock are within twice it
+/// of each other, well inside the [`LEASE`].
+const CLOCK_REFUSED: TimeDelta = TimeDelta::minutes(1);
+/// Seconds, not milliseconds: the query's round trip adds to the measured
+/// difference.
+const CLOCK_WARNED: TimeDelta = TimeDelta::seconds(5);
 const RELAY_BATCH: i64 = 100;
 /// Each its own transaction, so a compaction never holds the outbox for long.
 const COMPACT_BATCH: i64 = 1000;
@@ -40,6 +49,7 @@ pub struct Worker {
     handlers: Arc<Handlers>,
     compact_every: TimeDelta,
     backfill_chunk: i64,
+    checks_clock_before_compacting: bool,
     /// By the worker's clock; in memory only, so a restarted worker compacts
     /// at its first poll.
     last_compacted: Mutex<Option<DateTime<Utc>>>,
@@ -73,7 +83,19 @@ impl Worker {
             handlers: Arc::new(handlers),
             compact_every: Self::COMPACT_EVERY,
             backfill_chunk: Self::BACKFILL_CHUNK,
+            checks_clock_before_compacting: false,
             last_compacted: Mutex::new(None),
+        }
+    }
+
+    /// [`compact_if_due`](Self::compact_if_due) refuses to compact while
+    /// [`check_clock`](Self::check_clock) fails, since compaction can't be
+    /// undone. Off unless asked for: a test driving time itself keeps a clock
+    /// far from the database's.
+    pub fn checking_its_clock(self) -> Self {
+        Self {
+            checks_clock_before_compacting: true,
+            ..self
         }
     }
 
@@ -174,6 +196,31 @@ impl Worker {
                     "a live subscription this worker doesn't serve"
                 );
             }
+        }
+        Ok(())
+    }
+
+    /// Fails when this worker's clock is more than [`CLOCK_REFUSED`] from the
+    /// database's, and warns past [`CLOCK_WARNED`]. Not part of
+    /// [`run`](Self::run): a test driving time itself must be able to skip it.
+    pub async fn check_clock(&self) -> AppResult<()> {
+        // `clock_timestamp()`, not `now()`, which is when the transaction began.
+        let database = sqlx::query_scalar!(r#"SELECT clock_timestamp() AS "now!""#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::internal)?;
+        let worker = self.clock.now();
+        let skew = worker.signed_duration_since(database).abs();
+        if skew > CLOCK_REFUSED {
+            return Err(AppError::internal(ClockSkew { worker, database }));
+        }
+        if skew > CLOCK_WARNED {
+            tracing::warn!(
+                worker = %worker,
+                database = %database,
+                skew_ms = skew.num_milliseconds(),
+                "this worker's clock is drifting from the database's"
+            );
         }
         Ok(())
     }
@@ -426,7 +473,9 @@ impl Worker {
     /// first call once `compact_every` has passed since the last, by its
     /// clock. Workers don't coordinate: each compacts on its own schedule,
     /// which `compact` makes safe. The time is taken before compacting, so a
-    /// failed compaction waits for the next period rather than the next poll.
+    /// failed compaction waits for the next period rather than the next poll;
+    /// so does one refused for this worker's clock, when
+    /// [`checking_its_clock`](Self::checking_its_clock).
     pub async fn compact_if_due(&self) -> AppResult<()> {
         let now = self.clock.now();
         {
@@ -435,6 +484,9 @@ impl Worker {
                 return Ok(());
             }
             *last = Some(now);
+        }
+        if self.checks_clock_before_compacting {
+            self.check_clock().await?;
         }
         self.compact().await?;
         Ok(())
@@ -671,6 +723,25 @@ struct OtherTopic {
     queue: &'static str,
     registered: String,
     served: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "this worker's clock reads {worker}, {} the database's {database}: fix its time sync",
+    apart(*worker - *database)
+)]
+struct ClockSkew {
+    worker: DateTime<Utc>,
+    database: DateTime<Utc>,
+}
+
+fn apart(skew: TimeDelta) -> String {
+    let side = if skew > TimeDelta::zero() {
+        "ahead of"
+    } else {
+        "behind"
+    };
+    format!("{}s {side}", skew.num_seconds().abs())
 }
 
 /// 10s, doubling per attempt, at most an hour.
