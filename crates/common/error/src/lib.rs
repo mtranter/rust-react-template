@@ -33,6 +33,11 @@ pub enum AppError {
     #[error("precondition failed: {0}")]
     PreconditionFailed(String),
 
+    /// Not ready to answer yet, such as a read model still being built; a retry
+    /// later may succeed.
+    #[error("unavailable: {0}")]
+    Unavailable(String),
+
     /// The source is logged but never sent to clients.
     #[error("internal error")]
     Internal(#[source] Box<dyn StdError + Send + Sync + 'static>),
@@ -80,6 +85,10 @@ impl AppError {
 
     pub fn precondition_failed(msg: impl Into<String>) -> Self {
         AppError::PreconditionFailed(msg.into())
+    }
+
+    pub fn unavailable(msg: impl Into<String>) -> Self {
+        AppError::Unavailable(msg.into())
     }
 }
 

@@ -20,6 +20,9 @@ pub mod v1 {
         /// Its checklist, in the order the items were added.
         #[serde(default)]
         pub items: Vec<Item>,
+        /// When it was created; absent from events published before it was added.
+        #[serde(default)]
+        pub created_at: Option<DateTime<Utc>>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

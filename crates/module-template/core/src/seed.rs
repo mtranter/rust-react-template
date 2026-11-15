@@ -3,13 +3,14 @@
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{Expected, Transactions, WidgetRepository};
+use crate::application::{EventPublisher, Expected, Transactions, WidgetRepository, pending};
 use crate::db::PgWidgetRepository;
-use crate::domain::{CreateWidget, Widget, WidgetId};
-use app_db::PgTransactions;
-use app_domain::{seed_time, well_known_id};
+use crate::domain::{CreateWidget, Widget, WidgetEvent, WidgetId};
+use app_db::{PgEventPublisher, PgTransactions};
+use app_domain::{FixedClock, seed_time, well_known_id};
 use app_error::AppResult;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// Unique across modules; `make check-modules` enforces it.
 pub const MODULE: u32 = 0;
@@ -36,13 +37,18 @@ pub fn widgets() -> Vec<Widget> {
 }
 
 /// Saves only what's missing, so a deployed environment can re-run it on every
-/// release without failing or undoing edits to seeded entities.
+/// release without failing or undoing edits to seeded entities. Announces each
+/// widget it saves, as of when it was created, so a copy kept from the topic
+/// has it too.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgWidgetRepository::new(pool.clone());
     let mut tx = PgTransactions::new(pool.clone()).begin().await?;
     for widget in widgets() {
         if repo.get(widget.id()).await?.is_none() {
-            repo.save(&mut tx, &widget, Expected::New).await?;
+            let version = repo.save(&mut tx, &widget, Expected::New).await?;
+            PgEventPublisher::new(Arc::new(FixedClock::new(widget.created_at())))
+                .publish(&mut tx, pending(&widget, version, WidgetEvent::Created))
+                .await?;
         }
     }
     tx.commit().await

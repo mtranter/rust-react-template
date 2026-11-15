@@ -2,14 +2,15 @@
 
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{Expected, NoteRepository, Transactions};
+use crate::application::{EventPublisher, Expected, NoteRepository, Transactions, pending};
 use crate::db::PgNoteRepository;
-use crate::domain::{AuthorId, CreateNote, ItemId, Note, NoteId};
-use app_db::PgTransactions;
-use app_domain::well_known_id;
+use crate::domain::{AuthorId, CreateNote, ItemId, Note, NoteEvent, NoteId};
+use app_db::{PgEventPublisher, PgTransactions};
+use app_domain::{FixedClock, well_known_id};
 use app_error::AppResult;
 use notes_api::{seed, v1};
 use sqlx::PgPool;
+use std::sync::Arc;
 
 pub const ALICE_NOTE_ID_SHOPPING_LIST: NoteId =
     NoteId::from_uuid(seed::ALICE_NOTE_ID_SHOPPING_LIST);
@@ -59,13 +60,18 @@ pub fn notes() -> Vec<Note> {
 }
 
 /// Saves only what's missing, so a deployed environment can re-run it on every
-/// release without failing or undoing edits to seeded entities.
+/// release without failing or undoing edits to seeded entities. Announces each
+/// note it saves, as of when it was created, so a copy kept from the topic
+/// (`note-search`'s) has it too.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgNoteRepository::new(pool.clone());
     let mut tx = PgTransactions::new(pool.clone()).begin().await?;
     for note in notes() {
         if repo.get(note.id()).await?.is_none() {
-            repo.save(&mut tx, &note, Expected::New).await?;
+            let version = repo.save(&mut tx, &note, Expected::New).await?;
+            PgEventPublisher::new(Arc::new(FixedClock::new(note.created_at())))
+                .publish(&mut tx, pending(&note, version, NoteEvent::Created))
+                .await?;
         }
     }
     tx.commit().await

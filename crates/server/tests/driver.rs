@@ -85,6 +85,7 @@ pub struct App {
     verifier: JwtVerifier,
     worker: Worker,
     clock: Arc<FixedClock>,
+    seeded_through: i64,
 }
 
 impl App {
@@ -100,6 +101,7 @@ impl App {
             .await
             .expect("register every module's subscriptions");
         let worker = server::worker(&ctx);
+        let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::over(server::build_app(
             &ctx,
@@ -112,6 +114,7 @@ impl App {
             verifier,
             worker,
             clock,
+            seeded_through,
         }
     }
 
@@ -139,10 +142,11 @@ impl App {
             .expect("the worker reaches the database");
     }
 
-    /// The root of every `E` the outbox still holds, by id, oldest first.
+    /// The root of every `E` the outbox still holds but the seeds', by id,
+    /// oldest first.
     pub async fn keys_announcing<E: Event>(&self) -> Vec<String> {
         self.worker
-            .published::<E>()
+            .published_after::<E>(self.seeded_through)
             .await
             .expect("read the outbox")
             .into_iter()
@@ -159,7 +163,10 @@ impl App {
         self.api.get(format!("/api/notes/{id}")).send().await
     }
 
+    /// Once the worker has delivered what was announced: note-search answers
+    /// from its own copy, kept from the events.
     pub async fn search_notes(&self, text: &str) -> Found {
+        self.run_pending_events().await;
         let found: Outcome<Found> = self
             .api
             .get("/api/note-search")
@@ -310,5 +317,15 @@ pub const TEMPLATE: Template = Template::new("journeys", |pool| {
         for module in server::modules() {
             module.seed(pool.clone()).await.expect("seed every module");
         }
+        // As in an environment seeded before this build: its subscriptions
+        // receive none of the seeds' events, but an `earliest` one's backfill does.
+        app_db::Worker::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+            Default::default(),
+        )
+        .relay()
+        .await
+        .expect("relay the seeds' events");
     })
 });

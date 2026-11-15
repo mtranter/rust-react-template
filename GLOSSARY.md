@@ -64,13 +64,17 @@ The small, pure surface a Module offers to other Modules in-process, in its own 
 _Avoid_: Interface crate, contracts
 
 **Published View**:
-A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that other Modules' SQL may read, in a schema named for the Module API: a data product the Module publishes for querying. It is to SQL what the Module API is to Rust. It only gains columns; a breaking change is a new version beside the old. Only Read Modules read them.
+A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that other Modules' SQL may read, in a schema named for the Module API: a data product the Module publishes for querying. It is to SQL what the Module API is to Rust. It only gains columns; a breaking change is a new version beside the old. No Module reads them any more: a Module keeps a Projection instead.
 
 **Published Record**:
 The plain Rust row of a Published View (e.g. `users_api::v1::User` for `users_api.user_v1`), in the providing Module's API. It describes the Module's Seed data to other Modules and is what their tests assert against. It never stands in for the Aggregate, and a capability trait never returns it.
 
 **Read Module**:
-A Module that owns no source data and enforces no business rules: it answers queries spanning Modules by joining their Published Views, returning Read Models. It has Web, Application and DB Layers but no Domain Layer. It may own data derived from the views it reads (e.g. a search index), never data of its own.
+A Module that owns no source data and enforces no business rules: it answers queries no one Module owns (notes with their authors' names) from its own Projections of other Modules' Aggregate Roots, returning Read Models. It has Web, Application and DB Layers but no Domain Layer.
+
+**Projection**:
+A Module's own copy of Aggregate Roots, kept in its own tables from their Topics by Subscriptions starting from `earliest`: usually another Module's roots, to list or search by their columns, or its own in a shape its Aggregate's tables can't serve. Any Module may keep one; a Read Module is one that keeps nothing else. Common code applies each Event only when it is newer than the copy and keeps a tombstone for a removed root; the Module writes only its rows. It **catches up** once every Event its Topics held when its Subscriptions were registered, relayed by then or not, is delivered and handled. A rebuilt copy is a new **Generation** (new tables, new queues), served once it catches up; until any has, a read served from it answers that it is unavailable.
+_Avoid_: Cache, replica
 
 **Read Model**:
 A shape assembled for reading, such as a note with its author's name, rather than an Aggregate. It is never saved and protects no invariants.
@@ -94,7 +98,7 @@ What an Event carries: the **entity**, the Aggregate Root's whole state as it no
 The CloudEvents wrapper every Event is stored and delivered in: its id, source Module, Topic, type, key (the root's id), the root's version and time, around its Event Payload.
 
 **Subscriber**:
-A Module's reaction to an Event, or to every Event of a Topic, another Module's or its own (e.g. archiving a deleted user's notes, welcoming a registered user). It changes only its own Module's data, and may run more than once. Each is a **Subscription**: its own queue, registered when migrating, which **starts** from `latest` (only Events relayed after it was registered) or `earliest` (first given every Event its Topic's Outbox still holds).
+A Module's reaction to an Event, or to every Event of a Topic, another Module's or its own (e.g. archiving a deleted user's notes, welcoming a registered user). It changes only its own Module's data, and may run more than once. Each is a **Subscription**: its own queue, registered when migrating, which **starts** from `latest` (only Events relayed after it was registered) or `earliest` (also given every Event its Topic's Outbox held when it was registered, copied in by the Worker a chunk at a time).
 _Avoid_: Listener, consumer, handler (for the concept)
 
 **Outbox**:

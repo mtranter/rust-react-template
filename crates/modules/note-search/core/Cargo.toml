@@ -6,13 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-# A read module (ADR 0010): owns no tables and reads only these published views.
-# `make check-sql` refuses any other cross-module reference in its SQL.
-[package.metadata.module]
-reads = ["users_api.user_v1", "notes_api.note_v1"]
+# A read module (ADR 0010, 0036): it reads no other module's tables or views,
+# only its own copy, kept from the providers' topics.
 
 [dependencies]
 app-error.workspace = true
+app-events.workspace = true
+notes-api.workspace = true
+users-api.workspace = true
 app-persistence.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
@@ -27,12 +28,7 @@ sqlx.workspace = true
 [dev-dependencies]
 app-test-db.workspace = true
 app-domain.workspace = true
-# The providers run for real: their migrations publish the views this module
-# reads and their seeds fill them. Only `migrations()` and `seed::standard` are
-# used: the one core-to-core edge, and test-only (ADR 0010).
-users = { workspace = true, features = ["seed"] }
-notes = { workspace = true, features = ["seed"] }
-# What the tests assert against: the providers' seed data as published.
+# What the tests publish, as the providers would: their seed data as published.
 users-api = { workspace = true, features = ["seed"] }
 notes-api = { workspace = true, features = ["seed"] }
 app-test-support.workspace = true

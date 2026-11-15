@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT queue, count(*) AS \"dead_letters!\" FROM messaging.job\n        WHERE queue = ANY($1) AND dead_at IS NOT NULL\n        GROUP BY queue\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "queue",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging.job",
+            "name": "queue"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "dead_letters!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "35ff6514c587af2c22e20b36e5e4b5593414d3bed2f2aa2f7ff6d0b8bdbaf7a3"
+}

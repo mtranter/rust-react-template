@@ -8,8 +8,11 @@ use async_trait::async_trait;
 use chrono::TimeDelta;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tracing_subscriber::layer::SubscriberExt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ping {
@@ -88,14 +91,32 @@ impl Log {
 #[derive(Clone, Default)]
 struct Faults(Arc<Mutex<HashMap<(String, i64), u32>>>);
 
+/// Which `(key, version)`s never finish handling, and how many times one began.
+#[derive(Clone, Default)]
+struct Hangs {
+    keys: Arc<Mutex<HashSet<(String, i64)>>>,
+    begun: Arc<AtomicUsize>,
+}
+
 pub struct Recorder {
     queue: &'static str,
     log: Log,
     faults: Faults,
+    hangs: Hangs,
 }
 
 impl Recorder {
-    fn record(&self, event: &str, key: &str, version: i64) -> AppResult<()> {
+    async fn record(&self, event: &str, key: &str, version: i64) -> AppResult<()> {
+        let hangs = self
+            .hangs
+            .keys
+            .lock()
+            .unwrap()
+            .contains(&(key.into(), version));
+        if hangs {
+            self.hangs.begun.fetch_add(1, Ordering::SeqCst);
+            std::future::pending::<()>().await;
+        }
         if let Some(left) = self
             .faults
             .0
@@ -117,6 +138,7 @@ impl Recorder {
 impl Handle<Pinged> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Pinged>) -> AppResult<()> {
         self.record("pinged", &event.partition_key, event.entity_version)
+            .await
     }
 }
 
@@ -124,6 +146,7 @@ impl Handle<Pinged> for Recorder {
 impl Handle<Poked> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Poked>) -> AppResult<()> {
         self.record("poked", &event.partition_key, event.entity_version)
+            .await
     }
 }
 
@@ -135,7 +158,7 @@ impl Handle<PingTopic> for Recorder {
             PingEvent::Ponged => "ponged",
             PingEvent::Dropped => "dropped",
         };
-        self.record(what, &event.key, event.version)
+        self.record(what, &event.key, event.version).await
     }
 }
 
@@ -145,6 +168,7 @@ pub struct Messaging {
     clock: Arc<FixedClock>,
     pub log: Log,
     faults: Faults,
+    hangs: Hangs,
 }
 
 impl Messaging {
@@ -154,6 +178,7 @@ impl Messaging {
             clock: Arc::new(FixedClock::new(seed_time(0))),
             log: Log::default(),
             faults: Faults::default(),
+            hangs: Hangs::default(),
         }
     }
 
@@ -162,6 +187,7 @@ impl Messaging {
             queue,
             log: self.log.clone(),
             faults: self.faults.clone(),
+            hangs: self.hangs.clone(),
         }
     }
 
@@ -172,6 +198,30 @@ impl Messaging {
             .lock()
             .unwrap()
             .insert((key.into(), version), times);
+    }
+
+    /// Handling `key` at `version` never returns, in any queue.
+    pub fn hangs(&self, key: &str, version: i64) {
+        self.hangs
+            .keys
+            .lock()
+            .unwrap()
+            .insert((key.into(), version));
+    }
+
+    /// Runs `worker` until one of its handlers hangs, then drops it
+    /// mid-handler, as a worker that is killed or stopped would be.
+    pub async fn run_until_a_handler_hangs(&self, worker: &Worker) {
+        let begun = self.hangs.begun.load(Ordering::SeqCst);
+        let hung = async {
+            while self.hangs.begun.load(Ordering::SeqCst) == begun {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        tokio::select! {
+            _ = worker.run_until_idle() => panic!("the worker went idle without a handler hanging"),
+            () = hung => {}
+        }
     }
 
     pub fn later(&self, by: TimeDelta) {
@@ -223,19 +273,23 @@ impl Messaging {
 
     /// The migration ADR 0014 documents.
     pub async fn retire(&self, queue: &str) {
-        sqlx::query("UPDATE messaging.subscription SET retired_at = now() WHERE queue = $1")
+        sqlx::query("SELECT messaging.retire($1)")
             .bind(queue)
             .execute(&self.pool)
             .await
             .expect("retire the subscription");
-        sqlx::query(
-            "UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired' \
-             WHERE queue = $1 AND dead_at IS NULL",
-        )
-        .bind(queue)
-        .execute(&self.pool)
-        .await
-        .expect("dead-letter its jobs");
+    }
+
+    /// [`retire`](Self::retire) in a transaction left open: it takes effect
+    /// once the caller commits it.
+    pub async fn retiring(&self, queue: &str) -> sqlx::Transaction<'static, sqlx::Postgres> {
+        let mut tx = self.pool.begin().await.expect("begin");
+        sqlx::query("SELECT messaging.retire($1)")
+            .bind(queue)
+            .execute(&mut *tx)
+            .await
+            .expect("retire the subscription");
+        tx
     }
 
     /// Compaction fails until [`mend_compaction`](Self::mend_compaction),
@@ -350,3 +404,51 @@ pub const TEMPLATE: Template = Template::new("delivery", |pool| {
             .expect("migrate messaging");
     })
 });
+
+/// The error events logged on this thread from [`capture`](Self::capture) until
+/// the guard drops, each as `<message> <field>=<value>…`. A test runs on one
+/// thread, so another test's logging never shows here.
+#[derive(Clone, Default)]
+pub struct LoggedErrors(Arc<Mutex<Vec<String>>>);
+
+impl LoggedErrors {
+    pub fn capture() -> (Self, tracing::subscriber::DefaultGuard) {
+        let errors = Self::default();
+        let subscriber = tracing_subscriber::registry().with(errors.clone());
+        (errors, tracing::subscriber::set_default(subscriber))
+    }
+
+    pub fn lines(&self) -> Vec<String> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LoggedErrors {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if *event.metadata().level() != tracing::Level::ERROR {
+            return;
+        }
+        let mut line = Line::default();
+        event.record(&mut line);
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("{}{}", line.message, line.fields));
+    }
+}
+
+#[derive(Default)]
+struct Line {
+    message: String,
+    fields: String,
+}
+
+impl tracing::field::Visit for Line {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{value:?}");
+        } else {
+            self.fields += &format!(" {}={value:?}", field.name());
+        }
+    }
+}

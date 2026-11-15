@@ -4,7 +4,7 @@ use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
-use app_persistence::{Handlers, Version};
+use app_persistence::Version;
 use app_test_db::Template;
 use app_web::testing::{Page, Refused, TestApi};
 use app_web::{Accept, json_newtype};
@@ -24,6 +24,8 @@ pub enum Refusal {
     NotFound,
     PreconditionRequired,
     Stale,
+    /// The search copy hasn't caught up with what widgets had published yet.
+    Unavailable,
 }
 
 impl Refusal {
@@ -40,6 +42,7 @@ impl From<Refused> for Refusal {
             "not_found" => Refusal::NotFound,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
+            "unavailable" => Refusal::Unavailable,
             other => panic!("unexpected error code {other}"),
         }
     }
@@ -71,34 +74,70 @@ pub fn announced(widget: &Widget) -> EventPayload<v1::Widget, NoContext> {
 
 pub type WidgetsPage = Page<WidgetJson>;
 
+json_newtype!(pub WidgetMatchJson);
+
+impl From<Widget> for WidgetMatchJson {
+    fn from(w: Widget) -> Self {
+        Self(json!({ "id": w.id().to_string(), "name": w.name() }))
+    }
+}
+
+pub type MatchesPage = Page<WidgetMatchJson>;
+
 pub struct Widgets {
     api: TestApi,
     worker: Worker,
+    seeded_through: i64,
 }
 
 impl Widgets {
     pub async fn seeded(pool: PgPool) -> Self {
         // Fixed after the seeds, so what a test creates is the newest.
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock);
+        let ctx = Context::new(pool, clock.clone());
         let api = TestApi::new(WidgetsEndpoints, ctx.idempotency(), |app| {
             app.accept(widgets::provider(&ctx))
         });
-        // Widgets handles no events or jobs; the worker reads what it published.
-        let worker = ctx.worker(Handlers::new());
-        Self { api, worker }
+        // Registered after the seeds, so the search copy starts from the backfill.
+        let handlers = widgets::handlers(&ctx);
+        app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
+            .await
+            .expect("register the search copy's subscription");
+        let worker = ctx.worker(handlers);
+        let seeded_through = worker.outbox_end().await.expect("read the outbox");
+        Self {
+            api,
+            worker,
+            seeded_through,
+        }
     }
 
     /// Every `E` widgets has announced to other modules, oldest first, with the
     /// version of the widget each announces.
     pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker
-            .published::<E>()
+            .published_after::<E>(self.seeded_through)
             .await
             .expect("read the outbox")
             .into_iter()
             .map(|event| (Version::from_i64(event.entity_version), event.data))
             .collect()
+    }
+
+    /// Delivers what widgets has published to its search copy.
+    pub async fn run_pending_events(&self) {
+        self.worker
+            .run_until_idle()
+            .await
+            .expect("the worker reaches the database");
+    }
+
+    pub async fn search(&self, name: &str) -> Outcome<MatchesPage> {
+        self.api
+            .get("/api/widgets/search")
+            .queries(&[("name", name.to_string())])
+            .send()
+            .await
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<WidgetJson> {
@@ -158,5 +197,15 @@ pub const TEMPLATE: Template = Template::new("widgets", |pool| {
             .await
             .expect("migrate widgets");
         seed::standard(&pool).await.expect("seed widgets");
+        // As in an environment seeded before this build: its subscriptions
+        // receive none of the seeds' events, but an `earliest` one's backfill does.
+        app_db::Worker::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+            Default::default(),
+        )
+        .relay()
+        .await
+        .expect("relay the seeds' events");
     })
 });

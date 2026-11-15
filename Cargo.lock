@@ -43,6 +43,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -1566,6 +1567,7 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-module",
  "app-persistence",
  "app-test-db",
@@ -1573,14 +1575,12 @@ dependencies = [
  "app-web",
  "async-trait",
  "chrono",
- "notes",
  "notes-api",
  "poem",
  "poem-openapi",
  "serde_json",
  "sqlx",
  "tokio",
- "users",
  "users-api",
  "uuid",
 ]

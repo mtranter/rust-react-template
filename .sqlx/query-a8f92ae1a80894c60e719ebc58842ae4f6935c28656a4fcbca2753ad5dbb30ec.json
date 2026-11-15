@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE messaging.outbox\n            SET dispatched_at = $1, relay_batch = (SELECT nextval('messaging.relay_batch'))\n            WHERE seq = ANY($2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a8f92ae1a80894c60e719ebc58842ae4f6935c28656a4fcbca2753ad5dbb30ec"
+}

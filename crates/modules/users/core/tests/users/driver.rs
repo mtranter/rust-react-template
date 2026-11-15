@@ -111,6 +111,7 @@ pub struct Users {
     worker: Worker,
     clock: Arc<FixedClock>,
     mailer: Arc<FakeMailer>,
+    seeded_through: i64,
 }
 
 impl Users {
@@ -123,6 +124,7 @@ impl Users {
             .await
             .expect("register users' subscriptions");
         let worker = ctx.worker(handlers);
+        let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(UsersEndpoints, ctx.idempotency(), |app| {
             app.accept(users::provider(&ctx)).data(verifier.clone())
@@ -133,6 +135,7 @@ impl Users {
             worker,
             clock,
             mailer,
+            seeded_through,
         }
     }
 
@@ -180,7 +183,10 @@ impl Users {
     }
 
     pub async fn announced_envelopes<E: Event>(&self) -> Vec<EnvelopeOf<E>> {
-        self.worker.published::<E>().await.expect("read the outbox")
+        self.worker
+            .published_after::<E>(self.seeded_through)
+            .await
+            .expect("read the outbox")
     }
 
     pub async fn register(&self, email: &str, display_name: &str) -> Outcome<UserJson> {
@@ -313,5 +319,15 @@ pub const TEMPLATE: Template = Template::new("users", |pool| {
             .await
             .expect("migrate users");
         seed::standard(&pool).await.expect("seed users");
+        // As in an environment seeded before this build: its subscriptions
+        // receive none of the seeds' events, but an `earliest` one's backfill does.
+        app_db::Worker::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+            Default::default(),
+        )
+        .relay()
+        .await
+        .expect("relay the seeds' events");
     })
 });

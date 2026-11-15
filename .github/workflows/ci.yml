@@ -8,6 +8,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
+  # cargo-binstall (behind `cargo bin`) asks the GitHub API for release assets;
+  # unauthenticated, shared runners hit its rate limit, and its build-from-source
+  # fallback can't install into cargo-run-bin's `.bin`.
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   backend:

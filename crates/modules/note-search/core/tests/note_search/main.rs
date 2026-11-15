@@ -4,6 +4,7 @@
 mod driver;
 
 mod behaviours {
+    mod copying;
     mod listing;
     mod searching;
 }

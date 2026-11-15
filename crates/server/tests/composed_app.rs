@@ -37,6 +37,14 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
         verifier.issue(NIL_ID, 60).expect("issue token")
     );
     let ctx = Context::new(pool, Arc::new(SystemClock));
+    // A read module serving its own copy answers once the worker has caught it up.
+    server::register_subscriptions(&ctx)
+        .await
+        .expect("register every module's subscriptions");
+    server::worker(&ctx)
+        .run_until_idle()
+        .await
+        .expect("the worker reaches the database");
     let client = TestClient::new(server::build_app(
         &ctx,
         verifier,

@@ -128,6 +128,53 @@ async fn retiring_a_subscription_dead_letters_what_it_hadnt_run_and_relays_it_no
 }
 
 #[app_test_db::test(crate::support::TEMPLATE)]
+async fn no_relay_runs_while_a_retirement_is_uncommitted_and_the_next_relays_nothing_to_the_retired_queue(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    messaging.migrate(NEW).await;
+    let relay = messaging.worker_on(messaging.pool.clone());
+    messaging.ping("alice").await;
+    let retiring = messaging.retiring("tests.second").await;
+
+    let while_retiring = relay.relay().await.expect("relay");
+    retiring.commit().await.expect("commit the retirement");
+    let after = relay.relay().await.expect("relay");
+
+    assert_eq!((while_retiring, after), (0, 1));
+    assert_eq!(messaging.jobs().await, [Job::untouched("tests.first")]);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn retiring_waits_for_a_registration_without_holding_the_relays_lock(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    messaging.migrate(NEW).await;
+    let mut registering = messaging.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE messaging.subscription IN SHARE ROW EXCLUSIVE MODE")
+        .execute(&mut *registering)
+        .await
+        .unwrap();
+
+    let retire = messaging.retire("tests.second");
+    tokio::pin!(retire);
+    let waited = tokio::time::timeout(Duration::from_millis(200), &mut retire).await;
+    // `RELAY_LOCK` in worker.rs, which a registration takes next.
+    let relay_lock_free: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock($1)")
+        .bind(0x72_656c_6179_i64)
+        .fetch_one(&mut *registering)
+        .await
+        .unwrap();
+    registering.commit().await.unwrap();
+    retire.await;
+
+    assert!(waited.is_err(), "retiring didn't wait for the registration");
+    assert!(
+        relay_lock_free,
+        "retiring held the relay's lock while it waited: a deadlock with the registration"
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_retired_queue_cannot_be_registered_again(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(NEW).await;

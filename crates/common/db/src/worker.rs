@@ -4,7 +4,8 @@
 //! order per key within each queue. Any number of workers can run against one
 //! database: one relays at a time, every claim skips rows another worker holds,
 //! and a worker claims only the subscriptions its own handlers can decode, so
-//! builds can differ during a rolling deploy.
+//! builds can differ during a rolling deploy. Workers also copy each new
+//! `earliest` subscription's backfill into its queue, a chunk at a time.
 
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
@@ -19,19 +20,36 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// How long a claimed job is hidden from other workers. A handler that runs
-/// longer may run twice at once; one whose worker dies runs again after it.
+/// longer may run twice at once, but only one run's database writes commit;
+/// its effects outside the database, such as mail, can happen twice, which is
+/// one reason subscribers stay idempotent. One whose worker dies runs again
+/// after it. Each worker judges it by its own clock, so workers' clocks must
+/// agree to well within it: the `worker` binary refuses to start, and skips
+/// compaction, while its clock is more than [`CLOCK_REFUSED`] from the
+/// database's ([`Worker::check_clock`]).
 const LEASE: TimeDelta = TimeDelta::minutes(5);
+/// Two workers each within this of the database's clock are within twice it
+/// of each other, well inside the [`LEASE`].
+const CLOCK_REFUSED: TimeDelta = TimeDelta::minutes(1);
+/// Seconds, not milliseconds: the query's round trip adds to the measured
+/// difference.
+const CLOCK_WARNED: TimeDelta = TimeDelta::seconds(5);
 const RELAY_BATCH: i64 = 100;
 /// Each its own transaction, so a compaction never holds the outbox for long.
 const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
+/// `messaging.retire` (migration 0009) takes it too, as 491327873401.
 pub(crate) const RELAY_LOCK: i64 = 0x72_656c_6179;
+const UNFINISHED: &str =
+    "no attempt finished: its worker stopped or outran the lease on the last one";
 
 pub struct Worker {
     pool: PgPool,
     clock: Arc<dyn Clock>,
     handlers: Arc<Handlers>,
     compact_every: TimeDelta,
+    backfill_chunk: i64,
+    checks_clock_before_compacting: bool,
     /// By the worker's clock; in memory only, so a restarted worker compacts
     /// at its first poll.
     last_compacted: Mutex<Option<DateTime<Utc>>>,
@@ -64,7 +82,20 @@ impl Worker {
             clock,
             handlers: Arc::new(handlers),
             compact_every: Self::COMPACT_EVERY,
+            backfill_chunk: Self::BACKFILL_CHUNK,
+            checks_clock_before_compacting: false,
             last_compacted: Mutex::new(None),
+        }
+    }
+
+    /// [`compact_if_due`](Self::compact_if_due) refuses to compact while
+    /// [`check_clock`](Self::check_clock) fails, since compaction can't be
+    /// undone. Off unless asked for: a test driving time itself keeps a clock
+    /// far from the database's.
+    pub fn checking_its_clock(self) -> Self {
+        Self {
+            checks_clock_before_compacting: true,
+            ..self
         }
     }
 
@@ -75,6 +106,20 @@ impl Worker {
     pub fn compacting_every(self, every: TimeDelta) -> Self {
         Self {
             compact_every: every,
+            ..self
+        }
+    }
+
+    /// How many events a worker copies per transaction of a backfill unless
+    /// told otherwise: each chunk is its own transaction, so a backfill never
+    /// holds anything for long.
+    pub const BACKFILL_CHUNK: i64 = 1000;
+
+    /// How many events each transaction of [`backfill`](Self::backfill) copies.
+    pub fn backfilling_in_chunks_of(self, events: i64) -> Self {
+        assert!(events > 0, "a backfill chunk copies at least one event");
+        Self {
+            backfill_chunk: events,
             ..self
         }
     }
@@ -155,17 +200,43 @@ impl Worker {
         Ok(())
     }
 
-    /// Relays and runs until nothing is due by the worker's clock, including
-    /// whatever the handlers publish. A failed delivery backs off past
-    /// `now`, so this returns rather than retrying it.
+    /// Fails when this worker's clock is more than [`CLOCK_REFUSED`] from the
+    /// database's, and warns past [`CLOCK_WARNED`]. Not part of
+    /// [`run`](Self::run): a test driving time itself must be able to skip it.
+    pub async fn check_clock(&self) -> AppResult<()> {
+        // `clock_timestamp()`, not `now()`, which is when the transaction began.
+        let database = sqlx::query_scalar!(r#"SELECT clock_timestamp() AS "now!""#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::internal)?;
+        let worker = self.clock.now();
+        let skew = worker.signed_duration_since(database).abs();
+        if skew > CLOCK_REFUSED {
+            return Err(AppError::internal(ClockSkew { worker, database }));
+        }
+        if skew > CLOCK_WARNED {
+            tracing::warn!(
+                worker = %worker,
+                database = %database,
+                skew_ms = skew.num_milliseconds(),
+                "this worker's clock is drifting from the database's"
+            );
+        }
+        Ok(())
+    }
+
+    /// Relays, backfills and runs until nothing is due by the worker's clock,
+    /// including whatever the handlers publish. A failed delivery backs off
+    /// past `now`, so this returns rather than retrying it.
     pub async fn run_until_idle(&self) -> AppResult<()> {
         loop {
             let relayed = self.relay().await?;
+            let backfilled = self.backfill().await?;
             let mut ran = false;
             while self.run_next().await? {
                 ran = true;
             }
-            if relayed == 0 && !ran {
+            if relayed == 0 && backfilled == 0 && !ran {
                 return Ok(());
             }
         }
@@ -211,7 +282,11 @@ impl Worker {
 
         let now = self.clock.now();
         sqlx::query!(
-            "UPDATE messaging.outbox SET dispatched_at = $1 WHERE seq = ANY($2)",
+            r#"
+            UPDATE messaging.outbox
+            SET dispatched_at = $1, relay_batch = (SELECT nextval('messaging.relay_batch'))
+            WHERE seq = ANY($2)
+            "#,
             now,
             &seqs,
         )
@@ -221,8 +296,9 @@ impl Worker {
         sqlx::query!(
             r#"
             INSERT INTO messaging.job
-                (queue, event_type, key, version, payload, run_at, max_attempts, created_at)
-            SELECT queue, event_type, key, version, payload, $2, $3, $2
+                (queue, event_type, key, version, payload, outbox_seq, run_at, max_attempts,
+                 created_at)
+            SELECT queue, event_type, key, version, payload, seq, $2, $3, $2
             FROM messaging.delivery
             WHERE seq = ANY($1)
             ORDER BY seq, queue
@@ -238,9 +314,123 @@ impl Worker {
         Ok(seqs.len())
     }
 
+    /// Copies the next chunk (1000 events unless
+    /// [`backfilling_in_chunks_of`](Self::backfilling_in_chunks_of) says
+    /// otherwise) of one unfinished backfill into its queue, as jobs
+    /// due now, and moves its cursor past them in the same transaction, so a
+    /// worker that dies loses nothing and the next one carries on. Returns how
+    /// many events it copied; 0 once no backfill has any left to copy. Any
+    /// worker copies any backfill, as any relays any event; two never copy
+    /// the same one at once, and neither waits for the other.
+    ///
+    /// The events are fixed when `migrate` registers the backfill, so the
+    /// relay never races it, and compaction leaves them until they are
+    /// copied. Copying in `seq` order copies each key's versions in order,
+    /// and [`run_next`](Self::run_next) holds a key's live events back until
+    /// its earlier ones are copied.
+    pub async fn backfill(&self) -> AppResult<u64> {
+        loop {
+            match self.copy_chunk().await? {
+                Some(0) => continue,
+                Some(copied) => return Ok(copied),
+                None => return Ok(0),
+            }
+        }
+    }
+
+    /// `None` when no backfill is left unfinished; `Some(0)` when one finished.
+    async fn copy_chunk(&self) -> AppResult<Option<u64>> {
+        let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
+        let Some(backfill) = sqlx::query!(
+            r#"
+            SELECT b.queue, b.event_type, b.topic, b.through_batch, b.after_seq,
+                   s.retired_at IS NOT NULL AS "retired!"
+            FROM messaging.backfill b
+            JOIN messaging.subscription s USING (queue, event_type)
+            WHERE b.completed_at IS NULL
+            ORDER BY b.registered_at, b.queue, b.event_type
+            LIMIT 1
+            FOR UPDATE OF b SKIP LOCKED
+            "#,
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::internal)?
+        else {
+            return Ok(None);
+        };
+
+        let now = self.clock.now();
+        let chunk = if backfill.retired {
+            None
+        } else {
+            let chunk = sqlx::query!(
+                r#"
+                WITH chunk AS (
+                    SELECT seq, key, version, payload FROM messaging.outbox
+                    WHERE topic = $1 AND event_type = $2
+                      AND seq > $3 AND relay_batch <= $4
+                    ORDER BY seq
+                    LIMIT $5
+                ), copied AS (
+                    INSERT INTO messaging.job
+                        (queue, event_type, key, version, payload, outbox_seq, run_at,
+                         max_attempts, created_at)
+                    SELECT $6, $2, key, version, payload, seq, $7, $8, $7
+                    FROM chunk ORDER BY seq
+                )
+                SELECT max(seq) AS last_seq, count(*) AS "copied!" FROM chunk
+                "#,
+                backfill.topic,
+                backfill.event_type,
+                backfill.after_seq,
+                backfill.through_batch,
+                self.backfill_chunk,
+                backfill.queue,
+                now,
+                MAX_ATTEMPTS,
+            )
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::internal)?;
+            chunk.last_seq.map(|last_seq| (last_seq, chunk.copied))
+        };
+        // A retired subscription's backfill completes with nothing copied: its
+        // queue's jobs are dead letters.
+        let (after_seq, completed_at, copied) = match chunk {
+            Some((last_seq, copied)) => (last_seq, None, copied),
+            None => (backfill.after_seq, Some(now), 0),
+        };
+        sqlx::query!(
+            r#"
+            UPDATE messaging.backfill SET after_seq = $3, completed_at = $4
+            WHERE queue = $1 AND event_type = $2
+            "#,
+            backfill.queue,
+            backfill.event_type,
+            after_seq,
+            completed_at,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        if completed_at.is_some() {
+            tracing::info!(
+                queue = backfill.queue,
+                event_type = backfill.event_type,
+                "backfill complete"
+            );
+        }
+        tx.commit().await.map_err(AppError::internal)?;
+        Ok(Some(copied as u64))
+    }
+
     /// Deletes every relayed event older than its registered topic's
     /// retention by the worker's clock, but never its key's latest version,
     /// a deletion's included: the outbox keeps the latest state of every key.
+    /// Nor one an unfinished backfill has yet to copy: its replacement may be
+    /// later than the events [`caught_up`](crate::caught_up) waits for, so a
+    /// copy would be served without its key until that one is handled.
     /// Returns how many it deleted. Runs alongside the relay, publishers and
     /// other compactions: a row is deleted only while a later version of its
     /// key exists, which nothing deletes unless a still later one does.
@@ -260,6 +450,12 @@ impl Worker {
                           SELECT 1 FROM messaging.outbox later
                           WHERE later.topic = o.topic AND later.key = o.key
                             AND later.version > o.version
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.backfill b
+                          WHERE b.completed_at IS NULL AND b.topic = o.topic
+                            AND b.event_type = o.event_type
+                            AND o.seq > b.after_seq AND o.relay_batch <= b.through_batch
                       )
                     LIMIT $2
                 )
@@ -286,7 +482,9 @@ impl Worker {
     /// first call once `compact_every` has passed since the last, by its
     /// clock. Workers don't coordinate: each compacts on its own schedule,
     /// which `compact` makes safe. The time is taken before compacting, so a
-    /// failed compaction waits for the next period rather than the next poll.
+    /// failed compaction waits for the next period rather than the next poll;
+    /// so does one refused for this worker's clock, when
+    /// [`checking_its_clock`](Self::checking_its_clock).
     pub async fn compact_if_due(&self) -> AppResult<()> {
         let now = self.clock.now();
         {
@@ -296,16 +494,21 @@ impl Worker {
             }
             *last = Some(now);
         }
+        if self.checks_clock_before_compacting {
+            self.check_clock().await?;
+        }
         self.compact().await?;
         Ok(())
     }
 
     /// Claims and runs the job due first, if any, of the subscriptions this
     /// worker serves, and of those only one whose key has no earlier version
-    /// still to run in its queue: running, backing off, or waiting for a worker
-    /// that can decode it. A job's row lasts until the transaction handling it
-    /// commits, so a key's next version waits for that. The claim counts as an
-    /// attempt, so a job that kills its worker is dead-lettered too, eventually.
+    /// still to run in its queue: running, backing off, waiting for a worker
+    /// that can decode it, or not yet copied by its queue's backfill. A job's
+    /// row lasts until the transaction handling it commits, so a key's next
+    /// version waits for that. The claim counts as an attempt, so a job whose
+    /// worker died (or whose handler outran the lease) on its last attempt is
+    /// dead-lettered when next claimed, without running its handler again.
     /// It looks up each subscription's first due job by index, so jobs no
     /// running worker serves cost nothing; it briefly locks one per
     /// subscription, which other workers skip.
@@ -332,6 +535,15 @@ impl Worker {
                           WHERE earlier.queue = j.queue AND earlier.key = j.key
                             AND earlier.version < j.version AND earlier.dead_at IS NULL
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.backfill b
+                          JOIN messaging.outbox uncopied
+                            ON uncopied.topic = b.topic AND uncopied.event_type = b.event_type
+                          WHERE b.queue = j.queue AND b.completed_at IS NULL
+                            AND uncopied.key = j.key AND uncopied.version < j.version
+                            AND uncopied.seq > b.after_seq
+                            AND uncopied.relay_batch <= b.through_batch
+                      )
                     ORDER BY run_at, id
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED
@@ -353,31 +565,68 @@ impl Worker {
             return Ok(false);
         };
 
-        if let Err(err) = self.complete(&job).await {
+        if job.attempts > job.max_attempts {
+            self.abandon(&job).await?;
+        } else if let Err(err) = self.complete(&job).await {
             self.fail(&job, &err).await?;
         }
         Ok(true)
     }
 
-    /// The handler's writes and the job's removal commit together, so a
-    /// handler that only writes to the database takes effect exactly once.
+    /// The handler's writes and the job's removal commit together, and only
+    /// if this run removes the job, so a handler that only writes to the
+    /// database takes effect exactly once, even past its lease: a run another
+    /// worker completed first rolls its writes back. The removal ignores
+    /// `dead_at`, so a dead letter whose slow handler succeeds is removed.
     async fn complete(&self, job: &Claimed) -> AppResult<()> {
         let mut tx = begin(&self.pool).await?;
         self.handlers
             .handle(&job.queue, &mut tx, job.payload.clone())
             .await?;
-        sqlx::query!("DELETE FROM messaging.job WHERE id = $1", job.id)
+        let removed = sqlx::query!("DELETE FROM messaging.job WHERE id = $1", job.id)
             .execute(conn(&mut tx))
             .await
-            .map_err(AppError::internal)?;
+            .map_err(AppError::internal)?
+            .rows_affected();
+        if removed == 0 {
+            tracing::warn!(
+                queue = job.queue,
+                "delivery already completed by another worker: its lease ran out, \
+                 so this run's writes are rolled back"
+            );
+            return Ok(());
+        }
         tx.commit().await
     }
 
+    /// A job dead-lettered while its handler ran (retired, or abandoned as
+    /// unfinished) stays dead with the reason it was given, rather than
+    /// being revived to retry.
     async fn fail(&self, job: &Claimed, err: &AppError) -> AppResult<()> {
         let now = self.clock.now();
         let error = describe(err);
         let dead = job.attempts >= job.max_attempts;
-        if dead {
+        let recorded = sqlx::query!(
+            r#"
+            UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4
+            WHERE id = $1 AND dead_at IS NULL
+            "#,
+            job.id,
+            error,
+            now + backoff(job.attempts),
+            dead.then_some(now),
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::internal)?
+        .rows_affected();
+        if recorded == 0 {
+            tracing::warn!(
+                queue = job.queue,
+                error,
+                "job failed after it was dead-lettered; left dead"
+            );
+        } else if dead {
             tracing::error!(
                 queue = job.queue,
                 attempts = job.attempts,
@@ -392,15 +641,26 @@ impl Worker {
                 "job failed; will retry"
             );
         }
+        Ok(())
+    }
+
+    /// A slow handler's eventual `complete` still deletes the dead letter.
+    async fn abandon(&self, job: &Claimed) -> AppResult<()> {
+        tracing::error!(
+            queue = job.queue,
+            attempts = job.max_attempts,
+            error = UNFINISHED,
+            "job dead-lettered"
+        );
         sqlx::query!(
             r#"
-            UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4
+            UPDATE messaging.job
+            SET dead_at = $2, attempts = max_attempts, last_error = concat_ws(': ', $3::text, last_error)
             WHERE id = $1
             "#,
             job.id,
-            error,
-            now + backoff(job.attempts),
-            dead.then_some(now),
+            self.clock.now(),
+            UNFINISHED,
         )
         .execute(&self.pool)
         .await
@@ -410,14 +670,30 @@ impl Worker {
 
     /// Every `E` published so far, oldest first: for tests and diagnostics.
     pub async fn published<E: Event>(&self) -> AppResult<Vec<EnvelopeOf<E>>> {
+        self.published_after::<E>(0).await
+    }
+
+    /// Where the outbox ends now: pass it to
+    /// [`published_after`](Self::published_after) to leave out what was
+    /// published before, such as a test's seeds.
+    pub async fn outbox_end(&self) -> AppResult<i64> {
+        sqlx::query_scalar!(r#"SELECT coalesce(max(seq), 0) AS "end!" FROM messaging.outbox"#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::internal)
+    }
+
+    /// Every `E` published since the outbox ended at `end`, oldest first.
+    pub async fn published_after<E: Event>(&self, end: i64) -> AppResult<Vec<EnvelopeOf<E>>> {
         let payloads = sqlx::query_scalar!(
             r#"
             SELECT payload FROM messaging.outbox
-            WHERE topic = $1 AND event_type = $2
+            WHERE topic = $1 AND event_type = $2 AND seq > $3
             ORDER BY seq
             "#,
             <E::Topic as Topic>::NAME,
             E::TYPE,
+            end,
         )
         .fetch_all(&self.pool)
         .await
@@ -456,6 +732,25 @@ struct OtherTopic {
     queue: &'static str,
     registered: String,
     served: &'static str,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "this worker's clock reads {worker}, {} the database's {database}: fix its time sync",
+    apart(*worker - *database)
+)]
+struct ClockSkew {
+    worker: DateTime<Utc>,
+    database: DateTime<Utc>,
+}
+
+fn apart(skew: TimeDelta) -> String {
+    let side = if skew > TimeDelta::zero() {
+        "ahead of"
+    } else {
+        "behind"
+    };
+    format!("{}s {side}", skew.num_seconds().abs())
 }
 
 /// 10s, doubling per attempt, at most an hour.

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO messaging.projection_version (queue, key, version, removed)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (queue, key) DO UPDATE\n            SET version = EXCLUDED.version, removed = EXCLUDED.removed\n            WHERE projection_version.version < EXCLUDED.version\n            RETURNING true AS \"newer!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "newer!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "80b594f68d8334544c305a34a40232fc90816544d774d7b91612c0b1242e4bfc"
+}

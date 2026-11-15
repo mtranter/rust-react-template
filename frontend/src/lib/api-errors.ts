@@ -32,6 +32,11 @@ export function shownByForm(error: unknown, formFields: readonly string[] | unde
   return error.fields.every((f) => formFields.includes(f.path));
 }
 
+/** The server isn't ready to answer yet (a read model still being built): retrying later may work. */
+export function isUnavailable(error: unknown): boolean {
+  return isErrorBody(error) && error.code === "unavailable";
+}
+
 /** The change carried a version the server had moved past: someone else changed it meanwhile. */
 export function isPreconditionFailed(error: unknown): boolean {
   return isErrorBody(error) && error.code === "precondition_failed";

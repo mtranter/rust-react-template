@@ -3,5 +3,8 @@
 #![allow(clippy::disallowed_types)]
 
 mod finder;
+pub mod migrations;
+mod projections;
 
 pub use finder::PgNoteFinder;
+pub use projections::{AuthorRows, COPY_AUTHORS, COPY_NOTES, NoteRows};

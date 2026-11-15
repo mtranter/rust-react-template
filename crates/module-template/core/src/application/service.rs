@@ -1,7 +1,7 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, Transactions, Version, Versioned,
-    WidgetRepository, WidgetSortKey,
+    EventPublisher, Expected, ListQuery, Listed, PageRequest, Transactions, Version, Versioned,
+    WidgetMatch, WidgetRepository, WidgetSearch, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_domain::Clock;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct WidgetService {
     repo: Arc<dyn WidgetRepository>,
+    search: Arc<dyn WidgetSearch>,
     publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
@@ -19,12 +20,14 @@ pub struct WidgetService {
 impl WidgetService {
     pub fn new(
         repo: Arc<dyn WidgetRepository>,
+        search: Arc<dyn WidgetSearch>,
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             repo,
+            search,
             publisher,
             transactions,
             clock,
@@ -82,5 +85,11 @@ impl WidgetService {
         query: ListQuery<WidgetSortKey>,
     ) -> AppResult<Listed<Versioned<Widget>>> {
         self.repo.list(&query).await
+    }
+
+    /// From the search copy, so a write shows here once the worker has
+    /// delivered its event, unlike [`get`](Self::get) and [`list`](Self::list).
+    pub async fn search(&self, name: &str, page: PageRequest) -> AppResult<Listed<WidgetMatch>> {
+        self.search.search(name, page).await
     }
 }
