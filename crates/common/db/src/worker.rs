@@ -324,10 +324,10 @@ impl Worker {
     /// the same one at once, and neither waits for the other.
     ///
     /// The events are fixed when `migrate` registers the backfill, so the
-    /// relay never races it, and compaction only removes events whose key has
-    /// a later version still to come. Copying in `seq` order copies each key's
-    /// versions in order, and [`run_next`](Self::run_next) holds a key's live
-    /// events back until its earlier ones are copied.
+    /// relay never races it, and compaction leaves them until they are
+    /// copied. Copying in `seq` order copies each key's versions in order,
+    /// and [`run_next`](Self::run_next) holds a key's live events back until
+    /// its earlier ones are copied.
     pub async fn backfill(&self) -> AppResult<u64> {
         loop {
             match self.copy_chunk().await? {
@@ -428,6 +428,9 @@ impl Worker {
     /// Deletes every relayed event older than its registered topic's
     /// retention by the worker's clock, but never its key's latest version,
     /// a deletion's included: the outbox keeps the latest state of every key.
+    /// Nor one an unfinished backfill has yet to copy: its replacement may be
+    /// later than the events [`caught_up`](crate::caught_up) waits for, so a
+    /// copy would be served without its key until that one is handled.
     /// Returns how many it deleted. Runs alongside the relay, publishers and
     /// other compactions: a row is deleted only while a later version of its
     /// key exists, which nothing deletes unless a still later one does.
@@ -447,6 +450,12 @@ impl Worker {
                           SELECT 1 FROM messaging.outbox later
                           WHERE later.topic = o.topic AND later.key = o.key
                             AND later.version > o.version
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM messaging.backfill b
+                          WHERE b.completed_at IS NULL AND b.topic = o.topic
+                            AND b.event_type = o.event_type
+                            AND o.seq > b.after_seq AND o.relay_batch <= b.through_batch
                       )
                     LIMIT $2
                 )

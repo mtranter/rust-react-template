@@ -12,7 +12,7 @@ ADR 0033 had `migrate` backfill a new `earliest` subscription in the transaction
 
 **A key's live events still wait for its backfilled ones.** A claim already waits for a job of an earlier version of its key in its queue. It now also waits for an earlier version of its key that its queue's unfinished backfill has yet to copy. The cursor moves in the transaction that inserts the copied jobs, so a claim sees either an uncopied event or its job, never neither. Each key is still delivered in version order with backfilled events first, and other keys' live events don't wait. ADR 0033's guarantees hold unchanged.
 
-**Compaction can't open a gap.** The backfill's events are fixed when it is registered, so nothing is added to them later. Compaction deletes an event only when a later version of its key exists. That later version is still to be copied, or has been relayed to the queue, so each key's latest state still arrives.
+**Compaction can't open a gap.** The backfill's events are fixed when it is registered, so nothing is added to them later. Compaction deletes an event only when a later version of its key exists. That later version is still to be copied, or has been relayed to the queue, so each key's latest state still arrives. And compaction leaves an event an unfinished backfill has yet to copy (ticket 0022): the later version may have been published after registration, which readiness doesn't wait for ([ADR 0036](0036-modules-keep-event-fed-projections.md)), so deleting the earlier one would let a copy be served without its key until the later one is handled.
 
 ## Considered options
 

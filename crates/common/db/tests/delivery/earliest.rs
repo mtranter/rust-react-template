@@ -132,6 +132,58 @@ async fn after_compaction_it_receives_each_keys_latest_event_and_the_history_wit
     );
 }
 
+/// A Ping a week past its retention, with a newer version relayed after
+/// `tests.copy` was registered and before its backfill copied anything.
+async fn replaced_before_its_backfill_copied_it(messaging: &Messaging) -> Handlers {
+    messaging
+        .register_topics(&[PublishedTopic::of::<PingTopic>()])
+        .await;
+    history(messaging, vec![ping("alice", 1), ping("bob", 1)]).await;
+    messaging.later(TimeDelta::days(8));
+    let handlers = copying(messaging);
+    messaging.register(&handlers).await.unwrap();
+    messaging.publish(vec![pong("alice", 2)]).await.unwrap();
+    messaging.worker(OLD).relay().await.unwrap();
+    handlers
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn compaction_keeps_an_event_an_unfinished_backfill_has_yet_to_copy(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let handlers = replaced_before_its_backfill_copied_it(&messaging).await;
+
+    let deleted = messaging.worker(OLD).compact().await.unwrap();
+    run(&messaging.worker_of(handlers)).await;
+
+    assert_eq!(deleted, 0);
+    assert_eq!(
+        copied_of(&messaging, "alice"),
+        ["tests.copy: pinged alice v1", "tests.copy: ponged alice v2"]
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn compaction_deletes_an_event_once_an_unfinished_backfill_has_copied_it(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let handlers = replaced_before_its_backfill_copied_it(&messaging).await;
+    let worker = messaging.worker_of(handlers).backfilling_in_chunks_of(1);
+    worker.backfill().await.unwrap();
+
+    let deleted = worker.compact().await.unwrap();
+    run(&worker).await;
+
+    assert_eq!(deleted, 1);
+    assert_eq!(
+        messaging.outbox().await,
+        ["tests.pinged bob v1", "tests.ponged alice v2"]
+    );
+    assert_eq!(
+        copied_of(&messaging, "alice"),
+        ["tests.copy: pinged alice v1", "tests.copy: ponged alice v2"]
+    );
+    assert_eq!(copied_of(&messaging, "bob"), ["tests.copy: pinged bob v1"]);
+}
+
 #[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_latest_subscription_receives_only_later_events(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
