@@ -162,17 +162,37 @@ impl<G: Copy> Generations<G> {
     pub async fn serving(&self) -> AppResult<G> {
         let known = *self.serving.lock().expect("not poisoned");
         let newer = known.unwrap_or(self.newest_first.len());
-        for (at, (generation, queues)) in self.newest_first[..newer].iter().enumerate() {
+        for (at, (_, queues)) in self.newest_first[..newer].iter().enumerate() {
             if caught_up(&self.pool, queues).await? {
-                *self.serving.lock().expect("not poisoned") = Some(at);
-                return Ok(*generation);
+                let at = newest(&mut self.serving.lock().expect("not poisoned"), at);
+                return Ok(self.newest_first[at].0);
             }
         }
-        match known {
+        match *self.serving.lock().expect("not poisoned") {
             Some(at) => Ok(self.newest_first[at].0),
             None => Err(AppError::unavailable(
                 "this read model is still being built: retry later",
             )),
         }
+    }
+}
+
+/// Caches `at` unless a newer generation (a smaller index) is cached already,
+/// which a concurrent `serving` may have done while this one awaited a check.
+fn newest(serving: &mut Option<usize>, at: usize) -> usize {
+    let newest = serving.map_or(at, |cached| cached.min(at));
+    *serving = Some(newest);
+    newest
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_older_generation_caught_up_after_a_newer_one_is_served_leaves_the_newer_one_served() {
+        let mut serving = Some(0);
+        assert_eq!(newest(&mut serving, 1), 0);
+        assert_eq!(serving, Some(0));
     }
 }
