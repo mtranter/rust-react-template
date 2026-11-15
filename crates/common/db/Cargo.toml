@@ -23,3 +23,4 @@ uuid.workspace = true
 [dev-dependencies]
 app-test-db.workspace = true
 serde.workspace = true
+tracing-subscriber.workspace = true

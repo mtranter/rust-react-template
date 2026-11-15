@@ -99,7 +99,10 @@ where
 /// by then or not, is copied or relayed into the queue and handled (or dead).
 /// Those are the events at or below the outbox's highest `seq` at registration;
 /// a later one is live and holds nothing back. A copy fed by them then holds
-/// every key its topics held at registration, and keeps up from there.
+/// every key its topics held at registration, and keeps up from there, except
+/// those of its dead letters: they don't hold it back, since one poisoned event
+/// would take the whole read model down, and [`Generations`] logs them at error
+/// when it first serves the copy.
 pub async fn caught_up(pool: &PgPool, queues: &[&str]) -> AppResult<bool> {
     let mut queues: Vec<&str> = queues.to_vec();
     queues.sort_unstable();
@@ -127,6 +130,27 @@ pub async fn caught_up(pool: &PgPool, queues: &[&str]) -> AppResult<bool> {
     )
     .fetch_one(pool)
     .await
+    .map_err(AppError::internal)
+}
+
+/// How many dead letters each of `queues` holds, for those holding any.
+pub async fn dead_letters_in(pool: &PgPool, queues: &[&str]) -> AppResult<Vec<(String, i64)>> {
+    sqlx::query!(
+        r#"
+        SELECT queue, count(*) AS "dead_letters!" FROM messaging.job
+        WHERE queue = ANY($1) AND dead_at IS NOT NULL
+        GROUP BY queue
+        "#,
+        queues as &[&str],
+    )
+    .fetch_all(pool)
+    .await
+    .map(|counts| {
+        counts
+            .into_iter()
+            .map(|c| (c.queue, c.dead_letters))
+            .collect()
+    })
     .map_err(AppError::internal)
 }
 
@@ -164,8 +188,17 @@ impl<G: Copy> Generations<G> {
         let newer = known.unwrap_or(self.newest_first.len());
         for (at, (_, queues)) in self.newest_first[..newer].iter().enumerate() {
             if caught_up(&self.pool, queues).await? {
-                let at = newest(&mut self.serving.lock().expect("not poisoned"), at);
-                return Ok(self.newest_first[at].0);
+                let (at, moved) = {
+                    let mut serving = self.serving.lock().expect("not poisoned");
+                    let before = *serving;
+                    let at = newest(&mut serving, at);
+                    (at, before != Some(at))
+                };
+                let (generation, queues) = self.newest_first[at];
+                if moved {
+                    self.report_dead_letters(queues).await;
+                }
+                return Ok(generation);
             }
         }
         match *self.serving.lock().expect("not poisoned") {
@@ -173,6 +206,29 @@ impl<G: Copy> Generations<G> {
             None => Err(AppError::unavailable(
                 "this read model is still being built: retry later",
             )),
+        }
+    }
+}
+
+impl<G> Generations<G> {
+    /// Dead letters don't hold a copy back from being served (ADR 0036), so a
+    /// copy missing their keys is reported here instead, once per generation
+    /// per process.
+    async fn report_dead_letters(&self, queues: &[&str]) {
+        match dead_letters_in(&self.pool, queues).await {
+            Ok(counts) => {
+                for (queue, dead_letters) in counts {
+                    tracing::error!(
+                        queue,
+                        dead_letters,
+                        "serving a projection with dead-lettered deliveries: its copy is missing or stale for their keys until they are rerun"
+                    );
+                }
+            }
+            Err(error) => tracing::warn!(
+                %error,
+                "couldn't count the dead letters of a projection now served"
+            ),
         }
     }
 }

@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing_subscriber::layer::SubscriberExt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ping {
@@ -403,3 +404,51 @@ pub const TEMPLATE: Template = Template::new("delivery", |pool| {
             .expect("migrate messaging");
     })
 });
+
+/// The error events logged on this thread from [`capture`](Self::capture) until
+/// the guard drops, each as `<message> <field>=<value>…`. A test runs on one
+/// thread, so another test's logging never shows here.
+#[derive(Clone, Default)]
+pub struct LoggedErrors(Arc<Mutex<Vec<String>>>);
+
+impl LoggedErrors {
+    pub fn capture() -> (Self, tracing::subscriber::DefaultGuard) {
+        let errors = Self::default();
+        let subscriber = tracing_subscriber::registry().with(errors.clone());
+        (errors, tracing::subscriber::set_default(subscriber))
+    }
+
+    pub fn lines(&self) -> Vec<String> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LoggedErrors {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if *event.metadata().level() != tracing::Level::ERROR {
+            return;
+        }
+        let mut line = Line::default();
+        event.record(&mut line);
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("{}{}", line.message, line.fields));
+    }
+}
+
+#[derive(Default)]
+struct Line {
+    message: String,
+    fields: String,
+}
+
+impl tracing::field::Visit for Line {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{value:?}");
+        } else {
+            self.fields += &format!(" {}={value:?}", field.name());
+        }
+    }
+}

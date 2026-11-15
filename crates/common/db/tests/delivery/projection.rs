@@ -1,9 +1,9 @@
-use crate::support::{Messaging, PingEvent, PingTopic, drop, ping, pong, run};
-use app_db::{Generations, Project, Projecting, caught_up, conn};
+use crate::support::{LoggedErrors, Messaging, PingEvent, PingTopic, drop, ping, pong, run};
+use app_db::{Generations, Project, Projecting, caught_up, conn, dead_letters_in};
 use app_domain::seed_time;
 use app_error::{AppError, AppResult};
 use app_events::TopicEnvelope;
-use app_persistence::{Handlers, PendingEvent, Transactions, Tx};
+use app_persistence::{Handlers, MAX_ATTEMPTS, PendingEvent, Transactions, Tx};
 use async_trait::async_trait;
 use chrono::TimeDelta;
 use sqlx::PgPool;
@@ -270,4 +270,77 @@ async fn an_event_relayed_after_registration_does_not_hold_a_projection_back(poo
     assert_eq!(worker.relay().await.unwrap(), 1);
 
     assert!(caught_up(&messaging.pool, &[COPY]).await.unwrap());
+}
+
+fn recording(messaging: &Messaging, queue: &'static str) -> Handlers {
+    Handlers::new().on_from_earliest::<PingTopic>(queue, messaging.recorder(queue))
+}
+
+/// `COPY` backfilled with alice's and bob's pings, alice's dead-lettered.
+async fn a_copy_with_a_dead_letter(messaging: &Messaging) {
+    messaging
+        .publish(vec![ping("alice", 1), ping("bob", 1)])
+        .await
+        .unwrap();
+    messaging
+        .register(&recording(messaging, COPY))
+        .await
+        .unwrap();
+    messaging.fails("alice", 1, MAX_ATTEMPTS.unsigned_abs());
+    let worker = messaging.worker_of(recording(messaging, COPY));
+    for _ in 0..MAX_ATTEMPTS {
+        run(&worker).await;
+        messaging.later(TimeDelta::hours(1));
+    }
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_projection_with_a_dead_lettered_backfill_delivery_is_served_and_reports_it(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    a_copy_with_a_dead_letter(&messaging).await;
+    let generations = Generations::new(messaging.pool.clone()).then(1, &[COPY]);
+
+    assert_eq!(generations.serving().await.unwrap(), 1);
+    assert_eq!(
+        dead_letters_in(&messaging.pool, &[COPY]).await.unwrap(),
+        [(COPY.to_owned(), 1)]
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn another_queues_dead_letters_are_not_reported_for_a_projection(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    a_copy_with_a_dead_letter(&messaging).await;
+
+    messaging
+        .register(&recording(&messaging, COPY_V2))
+        .await
+        .unwrap();
+    run(&messaging.worker_of(recording(&messaging, COPY_V2))).await;
+
+    assert_eq!(
+        dead_letters_in(&messaging.pool, &[COPY_V2]).await.unwrap(),
+        []
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn serving_a_projection_with_dead_letters_is_logged_as_an_error_once(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    a_copy_with_a_dead_letter(&messaging).await;
+    let generations = Generations::new(messaging.pool.clone()).then(1, &[COPY]);
+    let (errors, _capturing) = LoggedErrors::capture();
+
+    generations.serving().await.unwrap();
+    generations.serving().await.unwrap();
+
+    assert_eq!(
+        errors.lines(),
+        [
+            "serving a projection with dead-lettered deliveries: its copy is missing or stale \
+             for their keys until they are rerun queue=\"tests.copy\" dead_letters=1"
+        ]
+    );
 }
