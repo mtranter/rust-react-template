@@ -26,6 +26,8 @@ pub enum ErrorCode {
     IdempotencyKeyReused,
     /// The request first sent with this `Idempotency-Key` is still running.
     IdempotencyKeyInFlight,
+    /// Not ready to answer yet, such as a read model still being built: retry later.
+    Unavailable,
     InternalError,
 }
 
@@ -84,6 +86,9 @@ pub enum ApiError {
     PreconditionRequired(Json<ErrorBody>),
     #[oai(status = 500)]
     Internal(Json<ErrorBody>),
+    /// Not ready to answer yet: retry later.
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorBody>),
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -126,6 +131,9 @@ impl From<AppError> for ApiError {
                 ErrorCode::PreconditionFailed,
                 message,
             ))),
+            AppError::Unavailable(_) => {
+                ApiError::Unavailable(Json(ErrorBody::new(ErrorCode::Unavailable, message)))
+            }
             AppError::Internal(source) => {
                 tracing::error!(error = %source, "internal server error");
                 ApiError::Internal(Json(ErrorBody::new(ErrorCode::InternalError, message)))
@@ -151,6 +159,7 @@ pub async fn render_error(err: poem::Error) -> Response {
         StatusCode::UNSUPPORTED_MEDIA_TYPE => ErrorCode::UnsupportedMediaType,
         StatusCode::PRECONDITION_REQUIRED => ErrorCode::PreconditionRequired,
         StatusCode::PRECONDITION_FAILED => ErrorCode::PreconditionFailed,
+        StatusCode::SERVICE_UNAVAILABLE => ErrorCode::Unavailable,
         s if s.is_client_error() => ErrorCode::MalformedRequest,
         _ => ErrorCode::InternalError,
     };

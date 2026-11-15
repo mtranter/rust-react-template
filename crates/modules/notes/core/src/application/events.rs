@@ -3,7 +3,7 @@ use crate::domain::{ItemId, Note, NoteEvent};
 use notes_api::events::v1::{self, NoteTopic};
 
 /// Where the domain's events meet the published contract.
-pub(super) fn pending(note: &Note, version: Version, event: NoteEvent) -> PendingEvent {
+pub(crate) fn pending(note: &Note, version: Version, event: NoteEvent) -> PendingEvent {
     let event = match event {
         NoteEvent::Created => v1::NoteEvent::Created,
         NoteEvent::Edited => v1::NoteEvent::Edited,
@@ -36,5 +36,6 @@ fn state(note: &Note) -> v1::Note {
                 text: item.text().to_string(),
             })
             .collect(),
+        created_at: Some(note.created_at()),
     }
 }

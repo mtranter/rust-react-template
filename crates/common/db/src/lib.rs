@@ -5,6 +5,7 @@
 mod errors;
 mod idempotency;
 mod listing;
+mod projection;
 mod publishing;
 mod subscriptions;
 mod topics;
@@ -14,6 +15,7 @@ mod worker;
 pub use errors::map_db_error;
 pub use idempotency::PgIdempotencyRecords;
 pub use listing::push_list_clauses;
+pub use projection::{Generations, Project, Projecting, caught_up};
 pub use publishing::PgEventPublisher;
 pub use subscriptions::{SubscriptionError, register_subscriptions};
 pub use topics::register_topics;

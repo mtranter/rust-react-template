@@ -74,6 +74,7 @@ pub type WidgetsPage = Page<WidgetJson>;
 pub struct Widgets {
     api: TestApi,
     worker: Worker,
+    seeded_through: i64,
 }
 
 impl Widgets {
@@ -86,14 +87,19 @@ impl Widgets {
         });
         // Widgets handles no events or jobs; the worker reads what it published.
         let worker = ctx.worker(Handlers::new());
-        Self { api, worker }
+        let seeded_through = worker.outbox_end().await.expect("read the outbox");
+        Self {
+            api,
+            worker,
+            seeded_through,
+        }
     }
 
     /// Every `E` widgets has announced to other modules, oldest first, with the
     /// version of the widget each announces.
     pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker
-            .published::<E>()
+            .published_after::<E>(self.seeded_through)
             .await
             .expect("read the outbox")
             .into_iter()
@@ -158,5 +164,15 @@ pub const TEMPLATE: Template = Template::new("widgets", |pool| {
             .await
             .expect("migrate widgets");
         seed::standard(&pool).await.expect("seed widgets");
+        // As in an environment seeded before this build: its subscriptions
+        // receive none of the seeds' events, but an `earliest` one's backfill does.
+        app_db::Worker::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+            Default::default(),
+        )
+        .relay()
+        .await
+        .expect("relay the seeds' events");
     })
 });

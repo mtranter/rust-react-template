@@ -23,8 +23,6 @@ use std::time::Duration;
 /// longer may run twice at once; one whose worker dies runs again after it.
 const LEASE: TimeDelta = TimeDelta::minutes(5);
 const RELAY_BATCH: i64 = 100;
-/// Each its own transaction, so a backfill never holds anything for long.
-const BACKFILL_CHUNK: i64 = 1000;
 /// Each its own transaction, so a compaction never holds the outbox for long.
 const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
@@ -35,6 +33,7 @@ pub struct Worker {
     clock: Arc<dyn Clock>,
     handlers: Arc<Handlers>,
     compact_every: TimeDelta,
+    backfill_chunk: i64,
     /// By the worker's clock; in memory only, so a restarted worker compacts
     /// at its first poll.
     last_compacted: Mutex<Option<DateTime<Utc>>>,
@@ -67,6 +66,7 @@ impl Worker {
             clock,
             handlers: Arc::new(handlers),
             compact_every: Self::COMPACT_EVERY,
+            backfill_chunk: Self::BACKFILL_CHUNK,
             last_compacted: Mutex::new(None),
         }
     }
@@ -78,6 +78,20 @@ impl Worker {
     pub fn compacting_every(self, every: TimeDelta) -> Self {
         Self {
             compact_every: every,
+            ..self
+        }
+    }
+
+    /// How many events a worker copies per transaction of a backfill unless
+    /// told otherwise: each chunk is its own transaction, so a backfill never
+    /// holds anything for long.
+    pub const BACKFILL_CHUNK: i64 = 1000;
+
+    /// How many events each transaction of [`backfill`](Self::backfill) copies.
+    pub fn backfilling_in_chunks_of(self, events: i64) -> Self {
+        assert!(events > 0, "a backfill chunk copies at least one event");
+        Self {
+            backfill_chunk: events,
             ..self
         }
     }
@@ -246,7 +260,9 @@ impl Worker {
         Ok(seqs.len())
     }
 
-    /// Copies the next chunk of one unfinished backfill into its queue, as jobs
+    /// Copies the next chunk (1000 events unless
+    /// [`backfilling_in_chunks_of`](Self::backfilling_in_chunks_of) says
+    /// otherwise) of one unfinished backfill into its queue, as jobs
     /// due now, and moves its cursor past them in the same transaction, so a
     /// worker that dies loses nothing and the next one carries on. Returns how
     /// many events it copied; 0 once no backfill has any left to copy. Any
@@ -260,7 +276,7 @@ impl Worker {
     /// events back until its earlier ones are copied.
     pub async fn backfill(&self) -> AppResult<u64> {
         loop {
-            match self.backfill_chunk().await? {
+            match self.copy_chunk().await? {
                 Some(0) => continue,
                 Some(copied) => return Ok(copied),
                 None => return Ok(0),
@@ -269,7 +285,7 @@ impl Worker {
     }
 
     /// `None` when no backfill is left unfinished; `Some(0)` when one finished.
-    async fn backfill_chunk(&self) -> AppResult<Option<u64>> {
+    async fn copy_chunk(&self) -> AppResult<Option<u64>> {
         let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
         let Some(backfill) = sqlx::query!(
             r#"
@@ -314,7 +330,7 @@ impl Worker {
                 backfill.event_type,
                 backfill.after_seq,
                 backfill.through_batch,
-                BACKFILL_CHUNK,
+                self.backfill_chunk,
                 backfill.queue,
                 now,
                 MAX_ATTEMPTS,
@@ -419,8 +435,8 @@ impl Worker {
     /// Claims and runs the job due first, if any, of the subscriptions this
     /// worker serves, and of those only one whose key has no earlier version
     /// still to run in its queue: running, backing off, waiting for a worker
-    /// that can decode it, or not yet copied by its queue's backfill. A job's row lasts until the transaction handling it
-    /// commits, so a key's next version waits for that. The claim counts as an
+    /// that can decode it, or not yet copied by its queue's backfill. A job's
+    /// row lasts until the transaction handling it commits, so a key's next version waits for that. The claim counts as an
     /// attempt, so a job that kills its worker is dead-lettered too, eventually.
     /// It looks up each subscription's first due job by index, so jobs no
     /// running worker serves cost nothing; it briefly locks one per
@@ -535,14 +551,30 @@ impl Worker {
 
     /// Every `E` published so far, oldest first: for tests and diagnostics.
     pub async fn published<E: Event>(&self) -> AppResult<Vec<EnvelopeOf<E>>> {
+        self.published_after::<E>(0).await
+    }
+
+    /// Where the outbox ends now: pass it to
+    /// [`published_after`](Self::published_after) to leave out what was
+    /// published before, such as a test's seeds.
+    pub async fn outbox_end(&self) -> AppResult<i64> {
+        sqlx::query_scalar!(r#"SELECT coalesce(max(seq), 0) AS "end!" FROM messaging.outbox"#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::internal)
+    }
+
+    /// Every `E` published since the outbox ended at `end`, oldest first.
+    pub async fn published_after<E: Event>(&self, end: i64) -> AppResult<Vec<EnvelopeOf<E>>> {
         let payloads = sqlx::query_scalar!(
             r#"
             SELECT payload FROM messaging.outbox
-            WHERE topic = $1 AND event_type = $2
+            WHERE topic = $1 AND event_type = $2 AND seq > $3
             ORDER BY seq
             "#,
             <E::Topic as Topic>::NAME,
             E::TYPE,
+            end,
         )
         .fetch_all(&self.pool)
         .await

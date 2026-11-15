@@ -4,13 +4,14 @@
 // Seeding wires a pool to a repository, like `di.rs`.
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{Expected, Transactions, UserRepository};
+use crate::application::{EventPublisher, Expected, Transactions, UserRepository, pending};
 use crate::db::PgUserRepository;
-use crate::domain::{RegisterUser, User, UserId};
-use app_db::PgTransactions;
-use app_domain::seed_time;
+use crate::domain::{RegisterUser, User, UserEvent, UserId};
+use app_db::{PgEventPublisher, PgTransactions};
+use app_domain::{FixedClock, seed_time};
 use app_error::AppResult;
 use sqlx::PgPool;
+use std::sync::Arc;
 use users_api::{seed, v1};
 
 pub const USER_ID_ALICE: UserId = UserId::from_uuid(seed::USER_ID_ALICE);
@@ -42,14 +43,18 @@ pub fn users() -> Vec<User> {
 }
 
 /// Saves only what's missing, so a deployed environment can re-run it on every
-/// release without failing or undoing edits to seeded entities. Saves through the
-/// repository, not the service, so seeding publishes no events.
+/// release without failing or undoing edits to seeded entities. Announces each
+/// user it saves as registered, as of then, so a copy kept from the topic has
+/// them too; the worker welcomes them like any new user.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
     let repo = PgUserRepository::new(pool.clone());
     let mut tx = PgTransactions::new(pool.clone()).begin().await?;
     for user in users() {
         if repo.get(user.id()).await?.is_none() {
-            repo.save(&mut tx, &user, Expected::New).await?;
+            let version = repo.save(&mut tx, &user, Expected::New).await?;
+            PgEventPublisher::new(Arc::new(FixedClock::new(user.created_at())))
+                .publish(&mut tx, pending(&user, version, UserEvent::Registered))
+                .await?;
         }
     }
     tx.commit().await

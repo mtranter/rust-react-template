@@ -28,9 +28,13 @@ ADR 0035: `migrate` records a `messaging.backfill` row bounded by the last commi
 - [x] Registering an `earliest` subscription inserts no jobs; a worker's `backfill` copies them.
 - [x] Every existing `earliest` delivery test passes unchanged: version order per key, backfilled before live, other keys not held up, exactly once while registering concurrently with the relay.
 - [x] ADR 0035 written; ADR 0033, `crates/AGENTS.md` and the glossary point at it.
-- [ ] Tests for a backfill spanning several chunks, a worker dying mid-backfill, and two workers backfilling at once (needs a configurable chunk size).
+- [x] Tests for a backfill spanning several chunks, a worker dying mid-backfill, and two workers backfilling at once (needs a configurable chunk size).
 - [x] `make check` passes.
 
 ## Notes
 
-Follow-ups, not in this ticket: a `Projection` helper and a `make new-projection` scaffold for read modules; a readiness check on `completed_at`; rebuilding a copy through a `_v2` queue; moving `note-search` onto a projection as the reference.
+Follow-ups, not in this ticket: a `Projection` helper and a `make new-projection` scaffold for read modules; a readiness check on `completed_at`; rebuilding a copy through a `_v2` queue; moving `note-search` onto a projection as the reference. All in ticket 0012.
+
+## Resolution
+
+The chunk size is `Worker::backfilling_in_chunks_of` (default 1000), and `tests/delivery/earliest.rs` covers several chunks, a worker stopping midway with another carrying on, and two workers copying two backfills at once.

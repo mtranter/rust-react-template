@@ -10,5 +10,7 @@ mod service;
 pub use app_persistence::{
     EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
+#[cfg(feature = "seed")]
+pub(crate) use events::pending;
 pub use repository::{NoteRepository, NoteSortKey};
 pub use service::NoteService;

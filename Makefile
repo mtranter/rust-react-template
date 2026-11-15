@@ -49,7 +49,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # ---------------------------------------------------------------------------
 # Phony targets
 # ---------------------------------------------------------------------------
-.PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
+.PHONY: help setup dev generate watch-api migrate seed prepare new-module new-projection typecheck lint-frontend check build \
         check-backend check-frontend check-changed check-spec screens \
         build-backend-dev build-frontend db-up db-down db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
@@ -87,11 +87,16 @@ seed: migrate ## Load every module's standard seed data (skips what already exis
 
 prepare: _require-cargo-bin migrate ## Refresh the checked-in .sqlx offline query cache (needs migrated DB)
 	./scripts/migrate-schema.sh crates/module-template/core widgets
+	./scripts/migrate-schema.sh crates/projection-template/core widget_index
 	SQLX_OFFLINE=false DATABASE_URL=$(DATABASE_URL) $(CARGO_BIN) sqlx prepare --workspace -- --all-targets
 
 new-module: _require-cargo-bin db-wait ## Scaffold a write module and register it: make new-module NAME=widgets [ENTITY=widget]
 	@test -n "$(NAME)" || { echo "usage: make new-module NAME=<module> [ENTITY=<aggregate>]"; exit 1; }
 	./scripts/new-module.sh $(NAME) $(ENTITY)
+
+new-projection: _require-cargo-bin db-wait ## Scaffold a read module keeping a copy of a module's roots: make new-projection NAME=note-index FROM=notes [TOPIC=NoteTopic]
+	@test -n "$(NAME)" -a -n "$(FROM)" || { echo "usage: make new-projection NAME=<module> FROM=<provider> [TOPIC=<topic>]"; exit 1; }
+	./scripts/new-projection.sh $(NAME) $(FROM) $(TOPIC)
 
 generate: frontend/src/api ## Dump spec + run FE codegen
 

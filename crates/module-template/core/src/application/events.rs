@@ -3,7 +3,7 @@ use crate::domain::{Widget, WidgetEvent};
 use widgets_api::events::v1::{self, WidgetTopic};
 
 /// Where the domain's events meet the published contract.
-pub(super) fn pending(widget: &Widget, version: Version, event: WidgetEvent) -> PendingEvent {
+pub(crate) fn pending(widget: &Widget, version: Version, event: WidgetEvent) -> PendingEvent {
     let event = match event {
         WidgetEvent::Created => v1::WidgetEvent::Created,
         WidgetEvent::Renamed => v1::WidgetEvent::Renamed,

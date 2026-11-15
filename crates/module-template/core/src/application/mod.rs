@@ -6,5 +6,7 @@ mod service;
 pub use app_persistence::{
     EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
+#[cfg(feature = "seed")]
+pub(crate) use events::pending;
 pub use repository::{WidgetRepository, WidgetSortKey};
 pub use service::WidgetService;

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO note_search.note (id, author_id, title, created_at)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO UPDATE\n            SET author_id = EXCLUDED.author_id, title = EXCLUDED.title,\n                created_at = EXCLUDED.created_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "624be7bdca4ae3fac21f247ece7238535679c6090e67581da66d92f2877937d3"
+}

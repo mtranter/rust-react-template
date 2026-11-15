@@ -104,6 +104,7 @@ pub fn announced(note: &Note) -> EventPayload<notes_events::Note, NoContext> {
                 text: item.text().to_string(),
             })
             .collect(),
+        created_at: Some(note.created_at()),
     })
 }
 
@@ -126,6 +127,7 @@ pub struct Notes {
     ctx: Context,
     clock: Arc<FixedClock>,
     worker: Worker,
+    seeded_through: i64,
 }
 
 impl Notes {
@@ -137,6 +139,7 @@ impl Notes {
             .await
             .expect("register notes' subscriptions");
         let worker = ctx.worker(handlers);
+        let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let api = TestApi::new(NotesEndpoints, ctx.idempotency(), |app| {
             app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
         });
@@ -145,6 +148,7 @@ impl Notes {
             ctx,
             clock,
             worker,
+            seeded_through,
         }
     }
 
@@ -188,7 +192,7 @@ impl Notes {
     /// version of the note each announces.
     pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker
-            .published::<E>()
+            .published_after::<E>(self.seeded_through)
             .await
             .expect("read the outbox")
             .into_iter()
@@ -402,5 +406,15 @@ pub const TEMPLATE: Template = Template::new("notes", |pool| {
             .await
             .expect("migrate notes");
         seed::standard(&pool).await.expect("seed notes");
+        // As in an environment seeded before this build: its subscriptions
+        // receive none of the seeds' events, but an `earliest` one's backfill does.
+        app_db::Worker::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+            Default::default(),
+        )
+        .relay()
+        .await
+        .expect("relay the seeds' events");
     })
 });

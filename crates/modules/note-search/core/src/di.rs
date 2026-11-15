@@ -2,11 +2,15 @@
 #![allow(clippy::disallowed_types)]
 
 use crate::application::NoteSearchService;
-use crate::db::PgNoteFinder;
+use crate::db::{AuthorRows, COPY_AUTHORS, COPY_NOTES, NoteRows, PgNoteFinder, migrations};
+use app_db::Projecting;
 use app_module::{Context, Module};
+use app_persistence::Handlers;
 use app_web::Provide;
+use notes_api::events::v1::NoteTopic;
 use sqlx::PgPool;
 use std::sync::Arc;
+use users_api::events::v1::UserTopic;
 
 pub struct NoteSearchProvider(PgPool);
 
@@ -22,8 +26,18 @@ impl Provide for NoteSearchProvider {
     }
 }
 
-/// No migrations and no seed: this read module owns no data, only reads the
-/// views its providers publish (ADR 0010).
+/// What the worker runs for note-search: the projections keeping its copy of
+/// every note and author, from the earliest each topic holds.
+pub fn handlers(_ctx: &Context) -> Handlers {
+    Handlers::new()
+        .project::<NoteTopic>(COPY_NOTES, NoteRows)
+        .project::<UserTopic>(COPY_AUTHORS, AuthorRows)
+}
+
+/// No seed: everything it holds is a copy, filled from the providers' events
+/// (ADR 0036).
 pub fn module() -> Module {
     Module::new(provider)
+        .with_handlers(handlers)
+        .with_migrations(migrations::migrations())
 }

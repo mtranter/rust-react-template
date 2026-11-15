@@ -252,3 +252,131 @@ async fn registering_copies_nothing_and_a_worker_copies_the_backfill(pool: PgPoo
     assert_eq!(copied, 2);
     assert_eq!(queued().await, 2);
 }
+
+/// Every job of `queue` still to run, `<key> v<version>`, in the order copied.
+async fn queued(messaging: &Messaging, queue: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT key || ' v' || version FROM messaging.job WHERE queue = $1 ORDER BY id",
+    )
+    .bind(queue)
+    .fetch_all(&messaging.pool)
+    .await
+    .unwrap()
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_backfill_spanning_several_chunks_is_copied_a_chunk_at_a_time_in_version_order(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    history(
+        &messaging,
+        vec![
+            ping("alice", 1),
+            ping("bob", 1),
+            pong("alice", 2),
+            ping("bob", 2),
+            ping("alice", 3),
+        ],
+    )
+    .await;
+    let handlers = copying(&messaging);
+    messaging.register(&handlers).await.unwrap();
+    let worker = messaging
+        .worker_of(copying(&messaging))
+        .backfilling_in_chunks_of(2);
+
+    let mut chunks = Vec::new();
+    loop {
+        match worker.backfill().await.unwrap() {
+            0 => break,
+            copied => chunks.push(copied),
+        }
+    }
+    run(&worker).await;
+
+    assert_eq!(chunks, [2, 2, 1]);
+    assert_eq!(
+        copied_of(&messaging, "alice"),
+        [
+            "tests.copy: pinged alice v1",
+            "tests.copy: ponged alice v2",
+            "tests.copy: pinged alice v3",
+        ]
+    );
+    assert_eq!(
+        copied_of(&messaging, "bob"),
+        ["tests.copy: pinged bob v1", "tests.copy: pinged bob v2"]
+    );
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_worker_stopping_mid_backfill_leaves_the_rest_to_another_and_nothing_is_copied_twice(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    history(
+        &messaging,
+        vec![ping("alice", 1), ping("alice", 2), ping("bob", 1)],
+    )
+    .await;
+    let handlers = copying(&messaging);
+    messaging.register(&handlers).await.unwrap();
+    let stopping = messaging.worker_of(handlers).backfilling_in_chunks_of(2);
+    assert_eq!(stopping.backfill().await.unwrap(), 2);
+    drop(stopping);
+    messaging.publish(vec![ping("alice", 3)]).await.unwrap();
+
+    run(&messaging
+        .worker_of(copying(&messaging))
+        .backfilling_in_chunks_of(2))
+    .await;
+
+    assert_eq!(
+        copied_of(&messaging, "alice"),
+        [
+            "tests.copy: pinged alice v1",
+            "tests.copy: pinged alice v2",
+            "tests.copy: pinged alice v3",
+        ]
+    );
+    assert_eq!(copied_of(&messaging, "bob"), ["tests.copy: pinged bob v1"]);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn workers_copying_backfills_at_once_copy_each_event_once(pool: PgPool) {
+    const COPY_TOO: &str = "tests.copy_too";
+    let messaging = Messaging::new(pool).await;
+    let events: Vec<_> = ["alice", "bob", "carol"]
+        .iter()
+        .flat_map(|key| (1..=10).map(move |version| ping(key, version)))
+        .collect();
+    history(&messaging, events).await;
+    let both = || {
+        copying(&messaging).on_from_earliest::<PingTopic>(COPY_TOO, messaging.recorder(COPY_TOO))
+    };
+    messaging.register(&both()).await.unwrap();
+    let first = messaging.worker_of(both()).backfilling_in_chunks_of(1);
+    let second = messaging.worker_of(both()).backfilling_in_chunks_of(1);
+    let (by_first, by_second) = tokio::join!(copy_all(&first), copy_all(&second));
+
+    assert_eq!(by_first + by_second, 60);
+    for queue in [COPY, COPY_TOO] {
+        let mut jobs = queued(&messaging, queue).await;
+        assert_eq!(jobs.len(), 30, "{queue}");
+        jobs.sort();
+        jobs.dedup();
+        assert_eq!(jobs.len(), 30, "{queue} copied an event twice");
+    }
+}
+
+/// Copies backfill chunks until none is left; how many events it copied.
+async fn copy_all(worker: &app_db::Worker) -> u64 {
+    let mut copied = 0;
+    loop {
+        match worker.backfill().await.unwrap() {
+            0 => return copied,
+            n => copied += n,
+        }
+    }
+}

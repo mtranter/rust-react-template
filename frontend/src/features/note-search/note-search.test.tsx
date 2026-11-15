@@ -119,6 +119,23 @@ test("says so when nothing matches", async () => {
   expect(await screen.findByText("No notes match.")).toBeInTheDocument();
 });
 
+test("says search is catching up while the server is still building it", async () => {
+  server.use(
+    http.get("*/api/note-search", () =>
+      HttpResponse.json(
+        { code: "unavailable", message: "this read model is still being built: retry later" },
+        { status: 503 },
+      ),
+    ),
+  );
+
+  renderSearch();
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Search is still catching up with existing notes.",
+  );
+});
+
 test("sorts by author on the server when the Author header is clicked", async () => {
   const requested: string[][] = [];
   server.use(

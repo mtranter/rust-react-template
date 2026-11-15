@@ -1,19 +1,36 @@
+use super::{COPY_AUTHORS, COPY_NOTES};
 use crate::application::{ListQuery, Listed, NoteCriteria, NoteFinder, NoteSortKey, NoteSummary};
-use app_db::push_list_clauses;
+use app_db::{Generations, push_list_clauses};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
-/// Reads only the published views declared in `Cargo.toml`'s
-/// `[package.metadata.module] reads` (ADR 0010).
+/// One generation of the module's copy: the tables its queues fill.
+#[derive(Clone, Copy)]
+struct Tables {
+    notes: &'static str,
+    authors: &'static str,
+}
+
+/// Reads this module's own copy, from the newest generation of its tables
+/// that has caught up (ADR 0036).
 pub struct PgNoteFinder {
     pool: PgPool,
+    generations: Generations<Tables>,
 }
 
 impl PgNoteFinder {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        // A rebuilt copy goes first, with its own queues, until the old one retires.
+        let generations = Generations::new(pool.clone()).then(
+            Tables {
+                notes: "note_search.note",
+                authors: "note_search.author",
+            },
+            &[COPY_NOTES, COPY_AUTHORS],
+        );
+        Self { pool, generations }
     }
 }
 
@@ -47,8 +64,11 @@ impl From<SummaryRow> for NoteSummary {
 }
 
 /// A left join: a note whose author id no user has is still a note.
-fn push_matching(sql: &mut QueryBuilder<Postgres>, criteria: &NoteCriteria) {
-    sql.push(" FROM notes_api.note_v1 n LEFT JOIN users_api.user_v1 u ON u.id = n.author_id");
+fn push_matching(sql: &mut QueryBuilder<Postgres>, tables: Tables, criteria: &NoteCriteria) {
+    sql.push(format_args!(
+        " FROM {} n LEFT JOIN {} u ON u.id = n.author_id",
+        tables.notes, tables.authors
+    ));
     if let Some(text) = &criteria.text {
         let pattern = format!("%{}%", escape_like(text));
         sql.push(" WHERE n.title ILIKE ")
@@ -72,10 +92,11 @@ impl NoteFinder for PgNoteFinder {
         criteria: &NoteCriteria,
         query: &ListQuery<NoteSortKey>,
     ) -> AppResult<Listed<NoteSummary>> {
+        let tables = self.generations.serving().await?;
         let mut sql = QueryBuilder::new(
             "SELECT n.id, n.title, n.author_id, u.display_name AS author_name, n.created_at",
         );
-        push_matching(&mut sql, criteria);
+        push_matching(&mut sql, tables, criteria);
         push_list_clauses(&mut sql, query, sort_column, "n.created_at DESC, n.id");
         let rows: Vec<SummaryRow> = sql
             .build_query_as()
@@ -86,7 +107,7 @@ impl NoteFinder for PgNoteFinder {
         let total = match query.page {
             Some(_) => {
                 let mut count = QueryBuilder::new("SELECT COUNT(*)");
-                push_matching(&mut count, criteria);
+                push_matching(&mut count, tables, criteria);
                 let total: i64 = count
                     .build_query_scalar()
                     .fetch_one(&self.pool)

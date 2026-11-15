@@ -284,4 +284,17 @@ export const scenarios: Scenario[] = [
     handlers: [searching(summaries)],
     shows: (page) => page.getByText("No notes match."),
   },
+  {
+    name: "search-catching-up",
+    route: "/search?q=alice",
+    handlers: [
+      http.get("*/api/note-search", () =>
+        HttpResponse.json(
+          { code: "unavailable", message: "this read model is still being built: retry later" },
+          { status: 503 },
+        ),
+      ),
+    ],
+    shows: (page) => page.getByRole("alert"),
+  },
 ];

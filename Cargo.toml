@@ -7,6 +7,9 @@ members = [
     # What `make new-module` copies, `core` and `api`: compiled, linted and
     # tested like a module, but registered with no server.
     "crates/module-template/*",
+    # What `make new-projection` copies: a read module projecting the module
+    # template's topic, compiled and tested but registered with no server.
+    "crates/projection-template/*",
     "crates/server",
 ]
 

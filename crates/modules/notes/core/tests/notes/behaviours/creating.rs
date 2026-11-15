@@ -46,6 +46,7 @@ async fn creating_a_note_announces_it(pool: PgPool) {
                 body: "hi".into(),
                 archived_at: None,
                 items: vec![],
+                created_at: Some(notes.now()),
             })
         )]
     );

@@ -11,6 +11,7 @@ import {
   useListParams,
 } from "@/components/data-table";
 import { Input } from "@/components/ui/input";
+import { isUnavailable } from "@/lib/api-errors";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 const column = createDataTableColumnHelper<NoteSummaryResponse>();
@@ -78,7 +79,9 @@ export function NoteSearch({
       </div>
       {found.isError ? (
         <p role="alert" className="text-destructive">
-          Failed to search notes.
+          {isUnavailable(found.error)
+            ? "Search is still catching up with existing notes. Try again shortly."
+            : "Failed to search notes."}
         </p>
       ) : (
         <DataTable
