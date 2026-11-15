@@ -28,6 +28,8 @@ const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
 /// `messaging.retire` (migration 0008) takes it too, as 491327873401.
 pub(crate) const RELAY_LOCK: i64 = 0x72_656c_6179;
+const UNFINISHED: &str =
+    "no attempt finished: its worker stopped or outran the lease on the last one";
 
 pub struct Worker {
     pool: PgPool,
@@ -439,8 +441,10 @@ impl Worker {
     /// worker serves, and of those only one whose key has no earlier version
     /// still to run in its queue: running, backing off, waiting for a worker
     /// that can decode it, or not yet copied by its queue's backfill. A job's
-    /// row lasts until the transaction handling it commits, so a key's next version waits for that. The claim counts as an
-    /// attempt, so a job that kills its worker is dead-lettered too, eventually.
+    /// row lasts until the transaction handling it commits, so a key's next
+    /// version waits for that. The claim counts as an attempt, so a job whose
+    /// worker died (or whose handler outran the lease) on its last attempt is
+    /// dead-lettered when next claimed, without running its handler again.
     /// It looks up each subscription's first due job by index, so jobs no
     /// running worker serves cost nothing; it briefly locks one per
     /// subscription, which other workers skip.
@@ -497,7 +501,9 @@ impl Worker {
             return Ok(false);
         };
 
-        if let Err(err) = self.complete(&job).await {
+        if job.attempts > job.max_attempts {
+            self.abandon(&job).await?;
+        } else if let Err(err) = self.complete(&job).await {
             self.fail(&job, &err).await?;
         }
         Ok(true)
@@ -545,6 +551,30 @@ impl Worker {
             error,
             now + backoff(job.attempts),
             dead.then_some(now),
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+        Ok(())
+    }
+
+    /// A slow handler's eventual `complete` still deletes the dead letter.
+    async fn abandon(&self, job: &Claimed) -> AppResult<()> {
+        tracing::error!(
+            queue = job.queue,
+            attempts = job.max_attempts,
+            error = UNFINISHED,
+            "job dead-lettered"
+        );
+        sqlx::query!(
+            r#"
+            UPDATE messaging.job
+            SET dead_at = $2, attempts = max_attempts, last_error = concat_ws(': ', $3::text, last_error)
+            WHERE id = $1
+            "#,
+            job.id,
+            self.clock.now(),
+            UNFINISHED,
         )
         .execute(&self.pool)
         .await

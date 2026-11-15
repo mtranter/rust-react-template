@@ -7,7 +7,7 @@ It works because commit order is version order per key. Every write to an Aggreg
 - **One relay at a time.** The relay takes `pg_try_advisory_xact_lock`, reads a batch in outbox order, and in one transaction marks it dispatched and fans it out into one job per Subscription, each carrying its key and version. So a key's v3 job exists, ran or was filtered out before its v4 job does. Workers still claim jobs in parallel, with `FOR UPDATE SKIP LOCKED`.
 - **A claim waits for earlier versions of the same key in the same queue** that aren't dead. A job's row lasts until the transaction handling it commits its deletion, so while v3 runs or backs off, v4 can't be claimed.
 
-A failing handler rolls back, backs off (10 s, doubling, at most an hour) and is retried; after 5 attempts it is a Dead Letter, kept in `messaging.job` with its last error until someone reruns it. A claim is a five-minute lease, so a delivery whose Worker died runs again.
+A failing handler rolls back, backs off (10 s, doubling, at most an hour) and is retried; after 5 attempts it is a Dead Letter, kept in `messaging.job` with its last error until someone reruns it. A claim is a five-minute lease, so a delivery whose Worker died runs again. The claim counts as an attempt, so one whose Worker dies (or whose handler outruns the lease) on every attempt is dead-lettered at the claim after its last, without running again (ticket 0016).
 
 ## Considered options
 

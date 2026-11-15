@@ -1,9 +1,10 @@
 use crate::support::{Messaging, PingTopic, Pinged, ping, pong, run};
-use app_persistence::Handlers;
+use app_persistence::{Handlers, MAX_ATTEMPTS};
 use chrono::TimeDelta;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 const QUEUE: &[&str] = &["tests.first"];
 
@@ -56,6 +57,71 @@ async fn a_dead_lettered_version_no_longer_holds_up_its_key(pool: PgPool) {
         ]
     );
     assert_eq!(worker.dead_letters().await.unwrap().len(), 1);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_version_that_fails_every_attempt_is_dead_lettered_after_its_last(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    messaging.migrate(QUEUE).await;
+    let worker = messaging.worker(QUEUE);
+    messaging.fails("alice", 1, u32::MAX);
+    messaging.ping("alice").await;
+
+    for _ in 1..MAX_ATTEMPTS {
+        run(&worker).await;
+        messaging.later(TimeDelta::hours(1));
+    }
+    assert!(worker.dead_letters().await.unwrap().is_empty());
+
+    run(&worker).await;
+
+    let attempts: Vec<_> = worker
+        .dead_letters()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|dead| dead.attempts)
+        .collect();
+    assert_eq!(attempts, [MAX_ATTEMPTS]);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn a_version_that_kills_its_worker_on_every_attempt_is_dead_lettered(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    messaging.migrate(QUEUE).await;
+    let worker = messaging.worker(QUEUE);
+    messaging.hangs("alice", 1);
+    messaging
+        .publish(vec![ping("alice", 1), ping("alice", 2)])
+        .await
+        .unwrap();
+
+    for _ in 0..MAX_ATTEMPTS {
+        messaging.run_until_a_handler_hangs(&worker).await;
+        messaging.later(TimeDelta::minutes(6));
+    }
+    tokio::time::timeout(Duration::from_secs(10), run(&worker))
+        .await
+        .expect("the version that kills its worker isn't run again");
+
+    assert_eq!(messaging.log.handled(), ["tests.first: pinged alice v2"]);
+    let dead: Vec<_> = worker
+        .dead_letters()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|dead| (dead.attempts, dead.last_error))
+        .collect();
+    assert_eq!(
+        dead,
+        [(
+            MAX_ATTEMPTS,
+            Some(
+                "no attempt finished: its worker stopped or outran the lease on the last one"
+                    .into()
+            )
+        )]
+    );
 }
 
 #[app_test_db::test(crate::support::TEMPLATE)]

@@ -8,8 +8,10 @@ use async_trait::async_trait;
 use chrono::TimeDelta;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ping {
@@ -88,14 +90,32 @@ impl Log {
 #[derive(Clone, Default)]
 struct Faults(Arc<Mutex<HashMap<(String, i64), u32>>>);
 
+/// Which `(key, version)`s never finish handling, and how many times one began.
+#[derive(Clone, Default)]
+struct Hangs {
+    keys: Arc<Mutex<HashSet<(String, i64)>>>,
+    begun: Arc<AtomicUsize>,
+}
+
 pub struct Recorder {
     queue: &'static str,
     log: Log,
     faults: Faults,
+    hangs: Hangs,
 }
 
 impl Recorder {
-    fn record(&self, event: &str, key: &str, version: i64) -> AppResult<()> {
+    async fn record(&self, event: &str, key: &str, version: i64) -> AppResult<()> {
+        let hangs = self
+            .hangs
+            .keys
+            .lock()
+            .unwrap()
+            .contains(&(key.into(), version));
+        if hangs {
+            self.hangs.begun.fetch_add(1, Ordering::SeqCst);
+            std::future::pending::<()>().await;
+        }
         if let Some(left) = self
             .faults
             .0
@@ -117,6 +137,7 @@ impl Recorder {
 impl Handle<Pinged> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Pinged>) -> AppResult<()> {
         self.record("pinged", &event.partition_key, event.entity_version)
+            .await
     }
 }
 
@@ -124,6 +145,7 @@ impl Handle<Pinged> for Recorder {
 impl Handle<Poked> for Recorder {
     async fn handle(&self, _: &mut Tx, event: EnvelopeOf<Poked>) -> AppResult<()> {
         self.record("poked", &event.partition_key, event.entity_version)
+            .await
     }
 }
 
@@ -135,7 +157,7 @@ impl Handle<PingTopic> for Recorder {
             PingEvent::Ponged => "ponged",
             PingEvent::Dropped => "dropped",
         };
-        self.record(what, &event.key, event.version)
+        self.record(what, &event.key, event.version).await
     }
 }
 
@@ -145,6 +167,7 @@ pub struct Messaging {
     clock: Arc<FixedClock>,
     pub log: Log,
     faults: Faults,
+    hangs: Hangs,
 }
 
 impl Messaging {
@@ -154,6 +177,7 @@ impl Messaging {
             clock: Arc::new(FixedClock::new(seed_time(0))),
             log: Log::default(),
             faults: Faults::default(),
+            hangs: Hangs::default(),
         }
     }
 
@@ -162,6 +186,7 @@ impl Messaging {
             queue,
             log: self.log.clone(),
             faults: self.faults.clone(),
+            hangs: self.hangs.clone(),
         }
     }
 
@@ -172,6 +197,30 @@ impl Messaging {
             .lock()
             .unwrap()
             .insert((key.into(), version), times);
+    }
+
+    /// Handling `key` at `version` never returns, in any queue.
+    pub fn hangs(&self, key: &str, version: i64) {
+        self.hangs
+            .keys
+            .lock()
+            .unwrap()
+            .insert((key.into(), version));
+    }
+
+    /// Runs `worker` until one of its handlers hangs, then drops it
+    /// mid-handler, as a worker that is killed or stopped would be.
+    pub async fn run_until_a_handler_hangs(&self, worker: &Worker) {
+        let begun = self.hangs.begun.load(Ordering::SeqCst);
+        let hung = async {
+            while self.hangs.begun.load(Ordering::SeqCst) == begun {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        tokio::select! {
+            _ = worker.run_until_idle() => panic!("the worker went idle without a handler hanging"),
+            () = hung => {}
+        }
     }
 
     pub fn later(&self, by: TimeDelta) {
