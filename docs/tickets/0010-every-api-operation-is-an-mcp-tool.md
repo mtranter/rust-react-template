@@ -1,7 +1,7 @@
 ---
 id: 0010
 name: Every API operation is also an MCP tool, generated from the spec
-status: ready-for-agent
+status: done
 priority: P1
 size: L
 blocked_by: []
@@ -195,3 +195,9 @@ Flagrent already serves MCP (`../flagrent/crates/common/web/src/mcp/`). There, e
 - The app issuing tokens or acting as an OAuth authorization server, Dynamic Client Registration, and scopes (flagrent's `mcp-auth` ticket 03).
 - Sessions shared across instances.
 - Anonymous MCP sessions, even for operations REST serves anonymously.
+
+## Resolution
+
+Built as proposed, and recorded as ADR 0034. `app_web::mcp` generates one tool per operation of the API type from poem-openapi's meta (`OpenApiTools<S: Surface>`), sends each call in-process through the endpoint `/api` is served by, binds sessions to the token subject that opened them (`SubjectSessions`), and answers Protected Resource Metadata when `APP_JWT_ISSUER` is set (`APP_PUBLIC_URL` overrides the derived origin). The server's `Surface` is `crates/server/src/tools.rs`, with an empty `REST_ONLY`. Idempotency moved from the app to the API endpoint so that tool calls go through it too. The 14 operation ids are listed in the composed-app test, and `make new-module` adds a new module's ids there.
+
+Left as it was: `get_me`'s description still carries a note for developers about route order. Rewording it changes the generated client.

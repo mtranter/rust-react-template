@@ -7,7 +7,8 @@ use app_domain::{Clock, FixedClock, seed_time};
 use app_events::Event;
 use app_module::Context;
 use app_test_db::Template;
-use app_web::testing::{Call, Page, Refused, TestApi};
+use app_web::mcp::Discovery;
+use app_web::testing::{Call, McpSession, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
 use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::json;
@@ -26,6 +27,8 @@ pub enum Refusal {
     Conflict,
     PreconditionRequired,
     Stale,
+    /// The idempotency key was sent before with another request.
+    KeyReused,
 }
 
 impl From<Refused> for Refusal {
@@ -38,6 +41,7 @@ impl From<Refused> for Refusal {
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
+            "idempotency_key_reused" => Refusal::KeyReused,
             other => panic!("unexpected error code {other}"),
         }
     }
@@ -100,6 +104,7 @@ impl App {
         let api = TestApi::over(server::build_app(
             &ctx,
             verifier.clone(),
+            Discovery::default(),
             "http://localhost",
         ));
         Self {
@@ -166,15 +171,91 @@ impl App {
 
     /// Signed in with a real token, which the server verifies.
     pub fn as_user(&self, user: impl Display) -> Session<'_> {
-        let token = self
-            .verifier
-            .issue(user.to_string(), 60)
-            .expect("issue token");
+        let token = self.token_of(&user);
         Session {
             app: self,
             user: user.to_string(),
             token,
         }
+    }
+
+    fn token_of(&self, user: impl Display) -> String {
+        self.verifier
+            .issue(user.to_string(), 60)
+            .expect("issue token")
+    }
+
+    /// An AI agent acting as `user` over MCP, with a real token.
+    pub async fn as_agent(&self, user: impl Display) -> Agent<'_> {
+        let token = self.token_of(&user);
+        let session = self
+            .api
+            .mcp_session::<Refusal>(Some(&token))
+            .await
+            .expect("an agent with a token opens a session");
+        Agent {
+            session,
+            user: user.to_string(),
+        }
+    }
+
+    /// An agent opening an MCP session without a token.
+    pub async fn agent_signed_out(&self) -> Outcome<()> {
+        self.api.mcp_session::<Refusal>(None).await.map(|_| ())
+    }
+}
+
+/// An AI agent's MCP session: each verb a tool call.
+pub struct Agent<'a> {
+    session: McpSession<'a>,
+    user: String,
+}
+
+impl Agent<'_> {
+    pub async fn me(&self) -> Outcome<UserJson> {
+        self.session.call("get_me", json!({})).await
+    }
+
+    pub async fn note(&self, id: impl Display) -> Outcome<NoteJson> {
+        self.session
+            .call("get_note", json!({ "id": id.to_string() }))
+            .await
+    }
+
+    /// As the agent's user, like [`Session::write_note`]; retried as one
+    /// change when `key` is given.
+    pub async fn write_note(
+        &self,
+        title: &str,
+        body: &str,
+        key: Option<&str>,
+    ) -> Outcome<NoteJson> {
+        let mut arguments = json!({
+            "body": { "authorId": self.user, "title": title, "body": body },
+        });
+        if let Some(key) = key {
+            arguments["idempotency_key"] = key.into();
+        }
+        self.session.call("create_note", arguments).await
+    }
+
+    pub async fn edit_note(
+        &self,
+        note: &NoteJson,
+        expected_version: i64,
+        title: &str,
+        body: &str,
+    ) -> Outcome<NoteJson> {
+        self.session
+            .call(
+                "edit_note",
+                json!({
+                    "id": note.id(),
+                    "expected_version": expected_version.to_string(),
+                    "body": { "title": title, "body": body },
+                }),
+            )
+            .await
     }
 }
 

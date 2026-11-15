@@ -11,7 +11,7 @@
 //! bearer token's subject, or one shared scope for callers without a valid
 //! token), so one caller's key never replays another's answer.
 
-use crate::JwtVerifier;
+use crate::auth::verified_caller;
 use crate::error::{ApiError, ErrorBody, ErrorCode, render_error};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
@@ -212,18 +212,7 @@ fn is_unsafe(method: &Method) -> bool {
 /// the empty scope, where the operation refuses it if it needs one; a refusal
 /// is never kept.
 async fn caller_of(req: &Request) -> String {
-    let token = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split_once(' '))
-        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-        .map(|(_, token)| token.trim());
-    let (Some(token), Some(verifier)) = (token, req.data::<JwtVerifier>()) else {
-        return String::new();
-    };
-    verifier
-        .verify(token)
+    verified_caller(req)
         .await
         .map(|claims| claims.sub)
         .unwrap_or_default()

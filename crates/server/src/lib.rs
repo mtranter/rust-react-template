@@ -7,10 +7,12 @@ pub mod config;
 mod modules;
 mod shutdown;
 pub mod telemetry;
+mod tools;
 
 pub use app::build_app;
 pub use modules::{Endpoints, modules};
 pub use shutdown::shutdown_signal;
+pub use tools::Tools;
 
 use app_db::{ModuleMigrations, SubscriptionError, Worker};
 use app_error::AppResult;

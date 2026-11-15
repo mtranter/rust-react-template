@@ -42,7 +42,7 @@ pub struct UsersEndpoints;
 #[OpenApi(prefix_path = "/users", tag = "ApiTag::Users")]
 impl UsersEndpoints {
     /// Register a new user.
-    #[oai(path = "/", method = "post")]
+    #[oai(path = "/", method = "post", operation_id = "register_user")]
     async fn create(
         &self,
         users: Data<&UserService>,
@@ -67,7 +67,7 @@ impl UsersEndpoints {
     /// a subsequent change must send back in `If-Match`.
     ///
     /// Declared before `/:id` so the static segment wins in routing.
-    #[oai(path = "/me", method = "get")]
+    #[oai(path = "/me", method = "get", operation_id = "get_me")]
     async fn me(&self, users: Data<&UserService>, auth: JwtAuth) -> ApiResult<UserResult> {
         let user = users.0.get(caller_id(&auth)?).await?;
         Ok(tagged(user))
@@ -76,7 +76,7 @@ impl UsersEndpoints {
     /// Change the currently-authenticated user's display name. Requires `If-Match`
     /// with the version the client last read; a stale value is refused with `412`
     /// and changes nothing (e.g. a change already made in another tab).
-    #[oai(path = "/me", method = "patch")]
+    #[oai(path = "/me", method = "patch", operation_id = "rename_me")]
     async fn change_display_name(
         &self,
         users: Data<&UserService>,
@@ -101,7 +101,7 @@ impl UsersEndpoints {
     /// Delete the currently-authenticated user's account. Requires `If-Match`
     /// with the version the client last read, like a change. Their notes are
     /// archived shortly after, not in this request.
-    #[oai(path = "/me", method = "delete")]
+    #[oai(path = "/me", method = "delete", operation_id = "delete_me")]
     async fn delete(
         &self,
         users: Data<&UserService>,
@@ -114,7 +114,7 @@ impl UsersEndpoints {
     }
 
     /// Fetch a user by id.
-    #[oai(path = "/:id", method = "get")]
+    #[oai(path = "/:id", method = "get", operation_id = "get_user")]
     async fn get(&self, users: Data<&UserService>, id: Path<String>) -> ApiResult<UserResult> {
         let id: UserId =
             id.0.parse()
@@ -125,7 +125,7 @@ impl UsersEndpoints {
 
     /// List users, paginated. Most-recent first unless `sort` says otherwise:
     /// repeat it to sort by several keys, `-` prefix for descending.
-    #[oai(path = "/", method = "get")]
+    #[oai(path = "/", method = "get", operation_id = "list_users")]
     async fn list(
         &self,
         users: Data<&UserService>,

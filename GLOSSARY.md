@@ -116,6 +116,10 @@ The TypeScript produced from the Spec: the types and data-access layer the front
 A client-chosen value sent as the `Idempotency-Key` header on an unsafe request (POST, PUT, PATCH, DELETE), so that a retry with the same key and the same request runs at most once and gets the first successful answer replayed. Scoped to its caller (ADR 0032).
 _Avoid_: Request id (which only correlates logs and responses)
 
+**Tool**:
+An operation of the Spec as an AI agent calls it over MCP, at `/mcp`: named by the operation's id, described by its summary, and answered by sending the operation's own request in-process (ADR 0034). Every operation is one unless deliberately kept REST-only.
+_Avoid_: Endpoint, command (for a tool)
+
 ## Testing
 
 **Integration Test**:

@@ -1,43 +1,76 @@
-use crate::{API_BASE, build_service, modules};
+use crate::{API_BASE, Tools, build_service, modules};
 use app_db::Pool;
 use app_module::Context;
+use app_web::mcp::{self, Discovery};
 use app_web::{JwtVerifier, RequestIdMiddleware, health_routes, render_error};
 use poem::{
-    Endpoint, EndpointExt, IntoResponse, Response, Route, get, handler,
+    Endpoint, EndpointExt, IntoResponse, Response, Route,
+    endpoint::BoxEndpoint,
+    get, handler,
     http::StatusCode,
     middleware::{Cors, Tracing},
     web::{Data, Json},
 };
+use poem_openapi::OpenApiService;
 use serde_json::json;
+use std::sync::Arc;
 
-pub fn build_app(ctx: &Context, verifier: JwtVerifier, cors_origin: &str) -> impl Endpoint + use<> {
+pub fn build_app(
+    ctx: &Context,
+    verifier: JwtVerifier,
+    discovery: Discovery,
+    cors_origin: &str,
+) -> impl Endpoint + use<> {
     let service = build_service();
     let ui = service.swagger_ui();
     let spec = service.spec_endpoint();
+    let api = Arc::new(api(ctx, service, verifier.clone()));
 
     let app = Route::new()
-        .nest(API_BASE, service)
+        .nest_no_strip(API_BASE, api.clone())
         .at(format!("{API_BASE}/spec.json"), spec)
         .nest("/docs", ui)
-        .nest("/health", health_routes(get(readiness)));
+        .nest("/health", health_routes(get(readiness)))
+        .at(mcp::PATH, mcp::endpoint::<Tools>(api, discovery.clone()))
+        .at(mcp::METADATA_PATH, discovery.metadata())
+        .at(
+            format!("{}{}", mcp::METADATA_PATH, mcp::PATH),
+            discovery.metadata(),
+        );
 
-    // Errors become `ErrorBody` responses innermost, so CORS, the access log and
-    // the idempotency records see them; the request id is outermost, so the
-    // access log and every refusal carry it.
-    let app = mount_frontend(app)
+    // Errors become `ErrorBody` responses innermost, so CORS and the access
+    // log see them; the request id is outermost, so the access log and every
+    // refusal carry it.
+    mount_frontend(app)
         .catch_all_error(render_error)
-        .with(ctx.idempotency())
         .with(Cors::new().allow_origin(cors_origin))
         .with(Tracing)
         .with(RequestIdMiddleware)
-        .boxed();
-
-    modules()
-        .iter()
-        .fold(app, |app, module| module.provide(ctx, app))
         // For the readiness probe.
         .data(ctx.pool())
+        // For MCP's sessions.
         .data(verifier)
+}
+
+/// The REST API as `/api` serves it, and as every MCP tool call reaches it
+/// in-process: with its error rendering, idempotency and each module's data.
+/// Idempotency is inside the error rendering's catch, so its records keep the
+/// answer a client got.
+fn api(
+    ctx: &Context,
+    service: OpenApiService<app_web::Idempotent<crate::Endpoints>, ()>,
+    verifier: JwtVerifier,
+) -> BoxEndpoint<'static> {
+    let api = Route::new()
+        .nest(API_BASE, service)
+        .catch_all_error(render_error)
+        .with(ctx.idempotency())
+        .boxed();
+    modules()
+        .iter()
+        .fold(api, |api, module| module.provide(ctx, api))
+        .data(verifier)
+        .boxed()
 }
 
 /// 503, not 500, so orchestrators stop routing here without treating it as a crash.

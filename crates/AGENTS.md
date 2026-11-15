@@ -14,6 +14,7 @@ Rules for the Rust backend, a modular monolith: each module is a crate that owns
 | Listing, searching or sorting by another module's columns | `note-search`, a read module over `users_api.user_v1` and `notes_api.note_v1` |
 | Retries with an `Idempotency-Key` | `notes`' `behaviours/retrying.rs` and its driver's `with_idempotency_key(..)` |
 | A cross-module journey | `crates/server/tests/journeys/` |
+| MCP tools for an operation | nothing to write: see `app_web::mcp` and `crates/server/src/tools.rs` |
 
 ## Commands
 
@@ -95,12 +96,14 @@ Split pure (`app-domain`, `app-error`, `app-events`, `app-persistence`, `app-tes
 - **One error shape** (ADR 0022): every failure is an `ErrorBody` (`code`, `message`, optional `fields: [{path, message}]`, `requestId`). Handlers return `ApiError`, and `render_error` (applied with `catch_all_error`) renders framework failures the same way. Clients branch on `code` (`validation_error` vs `malformed_request` etc.), never on `message`. `RequestIdMiddleware` is outermost, so every response carries `x-request-id`, and the body echoes it.
 - **`Idempotency-Key`** (ADR 0032) is shared middleware (`app_web::Idempotency`, built by `Context::idempotency()`): any POST, PUT, PATCH or DELETE gets it with no code. The first request with a key runs; its 2xx answer is replayed for 24 hours to a retry with the same key and request (method, target, `If-Match`, body); the same key with another request is `idempotency_key_reused` (422), one still running `idempotency_key_in_flight` (409); a failure keeps nothing. Keys are the caller's (the bearer token's subject, else one anonymous scope). `server::build_service` wraps the `Endpoints` in `app_web::Idempotent`, which documents the header and refusals on every unsafe operation.
 - Request/response types expose ids, timestamps and versions as `string`. Past 12 modules, nest sub-tuples in the `Endpoints` tuple (std's `Default` cap; poem-openapi's is 16).
+- **Every operation is an MCP tool** (ADR 0034), served at `/mcp` by `app_web::mcp` with no code per operation: listed from the spec, each call sent in-process through the same endpoint `/api` is served by, so auth, `If-Match` (the tool's `expected_version`), `Idempotency-Key` (its `idempotency_key`), validation and the `ErrorBody` behave as over REST. So every operation declares `operation_id` (snake_case, verb first, unique: `edit_note`), the tool's name and a public contract, and a summary written for an agent as much as for a person; `composed_app.rs` fails on one missing either and lists every tool, so the surface shows in a diff. Keep an operation off MCP only through `REST_ONLY` in `crates/server/src/tools.rs`, with its reason; one whose body isn't JSON must be listed there. Every `/mcp` request needs a valid bearer token of the subject who opened its session. A new refusal status needs its line in the instructions there (a composed test fails otherwise).
 - **Auth** (ADR 0025): one JWT Bearer scheme (`app_web::JwtAuth`) guarding one route. Don't build a user store or token issuance unless asked.
 - **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); MSRV 1.94, set by `sqlx` 0.9.
 
 ### Running and deploying
 
 - **Migrations run explicitly** (`make migrate`, a pre-start task in a deployment), never on server startup (ADR 0021). Each module migrates its own schema. A migration file applied anywhere is immutable, its comments included (sqlx checksums it). `SQLX_OFFLINE=true` is the default; regenerate `.sqlx` with `make prepare`.
+- **MCP sessions live in the process that opened them** (ADR 0034): behind several server instances, the load balancer routes by the `Mcp-Session-Id` header. `APP_PUBLIC_URL` sets the URL MCP clients are told to sign in for; unset, each request's `Host` and `X-Forwarded-*` say.
 - **One image, three processes**: `server`, `worker` (its own deployment, scaled by replicas sharing the queue) and the one-off `migrate` (and `seed`, built with `SEED=true`, which refuses `APP_ENV=prod`). A server built without `embed-frontend` answers `/` with a page pointing at Vite.
 
 ## Tests (ADR 0004, 0029, 0031)

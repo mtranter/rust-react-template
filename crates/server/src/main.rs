@@ -1,6 +1,7 @@
 use app_domain::SystemClock;
 use app_module::Context;
-use app_web::JwtVerifier;
+use app_web::mcp::Discovery;
+use app_web::{JwtVerifier, PublicUrl};
 use poem::{Server, listener::TcpListener};
 use server::{build_app, config::AppConfig, shutdown_signal, telemetry};
 use std::sync::Arc;
@@ -14,7 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
     let ctx = Context::new(pool, Arc::new(SystemClock));
     let verifier = build_verifier(&config).await?;
-    let app = build_app(&ctx, verifier, &config.cors_origin);
+    let discovery = Discovery::new(
+        PublicUrl::new(config.public_url.clone()),
+        config.jwt_issuer.clone(),
+    );
+    let app = build_app(&ctx, verifier, discovery, &config.cors_origin);
 
     Server::new(TcpListener::bind(config.bind_addr()))
         .run_with_graceful_shutdown(app, shutdown_signal(), None)

@@ -37,6 +37,9 @@ note-search = { path = "crates/modules/note-search/core" }
 # poem 3.1.x <-> poem-openapi 5.1.x are released in lockstep; bump together.
 poem = "3.1"
 poem-openapi = { version = "5.1", features = ["swagger-ui"] }
+# MCP's protocol and streamable HTTP transport, on poem 3.1 (MSRV 1.85).
+poem-mcpserver = { version = "0.3", features = ["streamable-http"] }
+percent-encoding = "2"
 
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 

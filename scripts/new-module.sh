@@ -85,6 +85,10 @@ ENDPOINTS=$ident::${plural_type}Endpoints MODULE=$ident::module\(\) perl -0 -i -
   s{(pub type Endpoints = \(.*?)(,?\s*\);)}{$1, $ENV{ENDPOINTS}$2}s;
   s{(pub fn modules\(\) -> Vec<Module> \{\s*vec!\[.*?)(,?\s*\]\s*\n\})}{$1, $ENV{MODULE}$2}s;
 ' crates/server/src/modules.rs
+# Its operations are tools at once; the composed-app test lists every tool.
+TOOLS=$(sed -nE 's/.*operation_id = "([^"]+)".*/    "\1",/p' "$dir/src/web/handlers.rs") perl -0 -i -pe '
+  s{(const TOOLS: &\[&str\] = &\[.*?\n)(\];)}{$1$ENV{TOOLS}\n$2}s;
+' crates/server/tests/composed_app.rs
 cargo fmt --all
 
 # `sqlx prepare` checks every crate's queries against the dev database, the
@@ -98,7 +102,8 @@ SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 cat <<EOF
 
 Created $dir and $root/api (module number $number) and registered it in crates/server/src/modules.rs,
-crates/server/Cargo.toml, Cargo.toml and deny.toml.
+crates/server/Cargo.toml, Cargo.toml and deny.toml. Its operations are MCP tools, listed in
+crates/server/tests/composed_app.rs.
 
   make test-backend   its tests, and the composed-app test, pass as generated
   make generate       adds its operations to the frontend client

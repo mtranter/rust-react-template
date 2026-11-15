@@ -34,7 +34,7 @@ pub struct WidgetsEndpoints;
 #[OpenApi(prefix_path = "/widgets", tag = "ApiTag::Widgets")]
 impl WidgetsEndpoints {
     /// Create a widget.
-    #[oai(path = "/", method = "post")]
+    #[oai(path = "/", method = "post", operation_id = "create_widget")]
     async fn create(
         &self,
         widgets: Data<&WidgetService>,
@@ -46,7 +46,7 @@ impl WidgetsEndpoints {
 
     /// Fetch a widget by id. The response carries its version in the `ETag`
     /// header (and body) — the token a later rename must send back in `If-Match`.
-    #[oai(path = "/:id", method = "get")]
+    #[oai(path = "/:id", method = "get", operation_id = "get_widget")]
     async fn get(
         &self,
         widgets: Data<&WidgetService>,
@@ -58,7 +58,7 @@ impl WidgetsEndpoints {
 
     /// Rename a widget. Requires `If-Match` with the version the client last
     /// read; a stale value is refused with `412` and changes nothing.
-    #[oai(path = "/:id", method = "patch")]
+    #[oai(path = "/:id", method = "patch", operation_id = "rename_widget")]
     async fn rename(
         &self,
         widgets: Data<&WidgetService>,
@@ -82,7 +82,7 @@ impl WidgetsEndpoints {
 
     /// List widgets, paginated. Most-recent first unless `sort` says otherwise:
     /// repeat it to sort by several keys, `-` prefix for descending.
-    #[oai(path = "/", method = "get")]
+    #[oai(path = "/", method = "get", operation_id = "list_widgets")]
     async fn list(
         &self,
         widgets: Data<&WidgetService>,

@@ -45,7 +45,7 @@ pub struct NotesEndpoints;
 #[OpenApi(prefix_path = "/notes", tag = "ApiTag::Notes")]
 impl NotesEndpoints {
     /// Create a note.
-    #[oai(path = "/", method = "post")]
+    #[oai(path = "/", method = "post", operation_id = "create_note")]
     async fn create(
         &self,
         notes: Data<&NoteService>,
@@ -69,7 +69,7 @@ impl NotesEndpoints {
 
     /// Fetch a note by id. The response carries its version in the `ETag` header
     /// (and body) — the token a subsequent edit must send back in `If-Match`.
-    #[oai(path = "/:id", method = "get")]
+    #[oai(path = "/:id", method = "get", operation_id = "get_note")]
     async fn get(&self, notes: Data<&NoteService>, id: Path<String>) -> ApiResult<NoteResult> {
         let note = notes.0.get(note_id(&id.0)?).await?;
         Ok(tagged(note))
@@ -78,7 +78,7 @@ impl NotesEndpoints {
     /// Edit a note's title and body. Requires `If-Match` with the version the
     /// client last read; a stale value is refused with `412` and changes nothing.
     /// An archived note is refused with `409`.
-    #[oai(path = "/:id", method = "patch")]
+    #[oai(path = "/:id", method = "patch", operation_id = "edit_note")]
     async fn edit(
         &self,
         notes: Data<&NoteService>,
@@ -103,7 +103,7 @@ impl NotesEndpoints {
 
     /// Delete a note. Requires `If-Match` with the version the client last read,
     /// like an edit. An archived note is refused with `409`.
-    #[oai(path = "/:id", method = "delete")]
+    #[oai(path = "/:id", method = "delete", operation_id = "delete_note")]
     async fn delete(
         &self,
         notes: Data<&NoteService>,
@@ -117,7 +117,7 @@ impl NotesEndpoints {
 
     /// Add an item to a note's checklist. Requires `If-Match` with the note's
     /// version, like an edit, and answers with the note at its new version.
-    #[oai(path = "/:id/items", method = "post")]
+    #[oai(path = "/:id/items", method = "post", operation_id = "add_note_item")]
     async fn add_item(
         &self,
         notes: Data<&NoteService>,
@@ -135,7 +135,11 @@ impl NotesEndpoints {
 
     /// Remove an item from a note's checklist. Requires `If-Match` with the
     /// note's version, and answers with the note at its new version.
-    #[oai(path = "/:id/items/:item_id", method = "delete")]
+    #[oai(
+        path = "/:id/items/:item_id",
+        method = "delete",
+        operation_id = "remove_note_item"
+    )]
     async fn remove_item(
         &self,
         notes: Data<&NoteService>,
@@ -153,7 +157,7 @@ impl NotesEndpoints {
 
     /// List notes, paginated. Most-recent first unless `sort` says otherwise:
     /// repeat it to sort by several keys, `-` prefix for descending.
-    #[oai(path = "/", method = "get")]
+    #[oai(path = "/", method = "get", operation_id = "list_notes")]
     async fn list(
         &self,
         notes: Data<&NoteService>,

@@ -160,7 +160,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "register_user"
       },
       "get": {
         "tags": [
@@ -295,7 +296,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_users"
       }
     },
     "/users/me": {
@@ -410,7 +412,8 @@
           {
             "JwtAuth": []
           }
-        ]
+        ],
+        "operationId": "get_me"
       },
       "patch": {
         "tags": [
@@ -565,7 +568,8 @@
           {
             "JwtAuth": []
           }
-        ]
+        ],
+        "operationId": "rename_me"
       },
       "delete": {
         "tags": [
@@ -694,7 +698,8 @@
           {
             "JwtAuth": []
           }
-        ]
+        ],
+        "operationId": "delete_me"
       }
     },
     "/users/{id}": {
@@ -815,7 +820,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get_user"
       }
     },
     "/notes": {
@@ -957,7 +963,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "create_note"
       },
       "get": {
         "tags": [
@@ -1092,7 +1099,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_notes"
       }
     },
     "/notes/{id}": {
@@ -1213,7 +1221,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get_note"
       },
       "patch": {
         "tags": [
@@ -1373,7 +1382,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "edit_note"
       },
       "delete": {
         "tags": [
@@ -1507,7 +1517,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "delete_note"
       }
     },
     "/notes/{id}/items": {
@@ -1669,7 +1680,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "add_note_item"
       }
     },
     "/notes/{id}/items/{item_id}": {
@@ -1831,7 +1843,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "remove_note_item"
       }
     },
     "/note-search": {
@@ -1978,7 +1991,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "search_notes"
       }
     }
   },

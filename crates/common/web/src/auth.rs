@@ -6,7 +6,7 @@ use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{
     Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
 };
-use poem::Request;
+use poem::{Request, http::header};
 use poem_openapi::{SecurityScheme, auth::Bearer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -218,6 +218,22 @@ enum AuthError {
 #[derive(SecurityScheme)]
 #[oai(ty = "bearer", checker = "jwt_checker")]
 pub struct JwtAuth(pub Claims);
+
+/// The token of `req`'s `Authorization: Bearer` header, if it has one.
+pub(crate) fn bearer_token(req: &Request) -> Option<&str> {
+    req.headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+        .map(|(_, token)| token.trim())
+}
+
+/// The claims of `req`'s bearer token, if it has a valid one.
+pub(crate) async fn verified_caller(req: &Request) -> Option<Claims> {
+    let (token, verifier) = (bearer_token(req)?, req.data::<JwtVerifier>()?);
+    verifier.verify(token).await.ok()
+}
 
 async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Claims> {
     let verifier = req.data::<JwtVerifier>()?;

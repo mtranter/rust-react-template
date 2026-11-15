@@ -32,6 +32,10 @@ pub struct AppConfig {
     pub jwt_issuer: Option<String>,
     /// Unset disables audience checking.
     pub jwt_audience: Option<String>,
+    /// Where clients reach the server, which the URLs it advertises to MCP
+    /// clients start with. Unset, each request's `Host` and `X-Forwarded-*`
+    /// headers say.
+    pub public_url: Option<String>,
     /// How long the `worker` bin waits between polls once nothing is due.
     pub worker_poll_ms: u64,
     /// How often, in seconds, each `worker` compacts the outbox (ADR 0033),
@@ -51,6 +55,7 @@ impl Default for AppConfig {
             jwt_secret: DEV_JWT_SECRET.to_string(),
             jwt_issuer: None,
             jwt_audience: None,
+            public_url: None,
             worker_poll_ms: 1000,
             outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
         }

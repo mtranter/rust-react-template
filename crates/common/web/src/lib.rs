@@ -4,9 +4,11 @@ mod error;
 mod health;
 mod idempotency;
 mod listing;
+pub mod mcp;
 mod provide;
+mod public_url;
 mod request_id;
-#[cfg(feature = "test")]
+#[cfg(any(test, feature = "test"))]
 pub mod testing;
 
 pub use auth::{Claims, JwtAuth, JwtVerifier};
@@ -16,4 +18,5 @@ pub use health::health_routes;
 pub use idempotency::{IDEMPOTENCY_KEY, Idempotency, IdempotencyEndpoint, Idempotent};
 pub use listing::{ListResult, SortParam, paged, sorts};
 pub use provide::{Accept, Provide};
+pub use public_url::PublicUrl;
 pub use request_id::{RequestId, RequestIdMiddleware};

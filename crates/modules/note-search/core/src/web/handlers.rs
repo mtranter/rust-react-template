@@ -19,7 +19,7 @@ impl NoteSearchEndpoints {
     /// case-insensitively anywhere in a note's title or its author's name; omit
     /// it to list every note. Most-recent first unless `sort` says otherwise:
     /// repeat it to sort by several keys, `-` prefix for descending.
-    #[oai(path = "/", method = "get")]
+    #[oai(path = "/", method = "get", operation_id = "search_notes")]
     async fn search(
         &self,
         search: Data<&NoteSearchService>,

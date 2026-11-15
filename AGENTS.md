@@ -14,6 +14,8 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 
 **Spec → client** (ADR 0006, 0023). The spec is generated from the poem-openapi handlers: never hand-write it. `frontend/src/api/` is generated from the checked-in `frontend/openapi.json`: never hand-edit it. After any backend API change, `make generate` and commit `openapi.json`; a change that breaks the frontend surfaces as a TypeScript error, and `make check-spec` fails while the snapshot is stale.
 
+**Spec → client → tools** (ADR 0034). Every operation is also an MCP tool at `/mcp`, generated from the same spec: its `operation_id` is the tool's name and its summary the tool's description, so write both for an agent as much as for a person. There is no tool code to write; `crates/AGENTS.md` says how to keep an operation off MCP.
+
 **One artifact** (ADR 0005). Production is one binary serving the API and the embedded SPA, with no separate static host. CI (`.github/workflows/ci.yml`) and `make check` run the same steps: a step added to one is added to the other. Lefthook runs rustfmt, clippy, biome and tsc before each commit.
 
 ### Commands
