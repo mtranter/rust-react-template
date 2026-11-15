@@ -128,6 +128,24 @@ async fn retiring_a_subscription_dead_letters_what_it_hadnt_run_and_relays_it_no
 }
 
 #[app_test_db::test(crate::support::TEMPLATE)]
+async fn no_relay_runs_while_a_retirement_is_uncommitted_and_the_next_relays_nothing_to_the_retired_queue(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+    messaging.migrate(NEW).await;
+    let relay = messaging.worker_on(messaging.pool.clone());
+    messaging.ping("alice").await;
+    let retiring = messaging.retiring("tests.second").await;
+
+    let while_retiring = relay.relay().await.expect("relay");
+    retiring.commit().await.expect("commit the retirement");
+    let after = relay.relay().await.expect("relay");
+
+    assert_eq!((while_retiring, after), (0, 1));
+    assert_eq!(messaging.jobs().await, [Job::untouched("tests.first")]);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
 async fn a_retired_queue_cannot_be_registered_again(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     messaging.migrate(NEW).await;

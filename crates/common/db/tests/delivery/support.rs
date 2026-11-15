@@ -223,19 +223,23 @@ impl Messaging {
 
     /// The migration ADR 0014 documents.
     pub async fn retire(&self, queue: &str) {
-        sqlx::query("UPDATE messaging.subscription SET retired_at = now() WHERE queue = $1")
+        sqlx::query("SELECT messaging.retire($1)")
             .bind(queue)
             .execute(&self.pool)
             .await
             .expect("retire the subscription");
-        sqlx::query(
-            "UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired' \
-             WHERE queue = $1 AND dead_at IS NULL",
-        )
-        .bind(queue)
-        .execute(&self.pool)
-        .await
-        .expect("dead-letter its jobs");
+    }
+
+    /// [`retire`](Self::retire) in a transaction left open: it takes effect
+    /// once the caller commits it.
+    pub async fn retiring(&self, queue: &str) -> sqlx::Transaction<'static, sqlx::Postgres> {
+        let mut tx = self.pool.begin().await.expect("begin");
+        sqlx::query("SELECT messaging.retire($1)")
+            .bind(queue)
+            .execute(&mut *tx)
+            .await
+            .expect("retire the subscription");
+        tx
     }
 
     /// Compaction fails until [`mend_compaction`](Self::mend_compaction),

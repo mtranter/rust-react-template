@@ -15,11 +15,11 @@ A Worker claims only what it can decode: each job records its Event type, and a 
 - A Subscription receives every Event relayed after its registration commits, and no history: one added to a running system starts empty.
 - A queue is bound to one Topic forever: registering it under another fails `migrate`, so moving Topic means a new queue name.
 - A retired queue's name is never reused: registering one fails `migrate`, so a rollback or an old `migrate` can't revive it.
-- Retiring a Subscription is a migration, never a side effect of deploying code without its handler. It stops relaying to the queue and dead-letters what it hadn't run, where it stays visible:
+- Retiring a Subscription is a migration, never a side effect of deploying code without its handler. One function call stops relaying to the queue, completes its unfinished backfill (ADR 0035) and dead-letters what it hadn't run, where it stays visible:
 
   ```sql
-  UPDATE messaging.subscription SET retired_at = now() WHERE queue = 'notes.archive_deleted_authors_notes';
-  UPDATE messaging.job SET dead_at = now(), last_error = 'subscription retired'
-  WHERE queue = 'notes.archive_deleted_authors_notes' AND dead_at IS NULL;
+  SELECT messaging.retire('notes.archive_deleted_authors_notes');
   ```
+
+  It takes the relay's advisory lock first, so a relay in flight commits its jobs before they are dead-lettered and none starts until the retirement commits; and it marks the backfill complete before dead-lettering, which waits for a chunk being copied and makes a worker that read the backfill earlier skip it. Two plain `UPDATE`s, the recipe until ticket 0015, raced both and could leave live jobs in the retired queue, which an older build still serving it would run. The function guarantees only that serialisation: a job a worker had already claimed is dead-lettered too, but if its handler then fails, `Worker::fail` makes it live again (ticket 0021).
 - The release that brought the claim filter wasn't protected by it: the build it replaced claimed any queue.

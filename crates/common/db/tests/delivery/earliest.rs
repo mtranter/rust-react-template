@@ -1,10 +1,11 @@
-use crate::support::{Messaging, PingTopic, Pinged, ping, pong, run};
+use crate::support::{Job, Messaging, PingTopic, Pinged, ping, pong, run};
 use app_events::PublishedTopic;
 use app_persistence::Handlers;
 use chrono::TimeDelta;
 use sqlx::PgPool;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 
 const OLD: &[&str] = &["tests.first"];
 const COPY: &str = "tests.copy";
@@ -379,4 +380,65 @@ async fn copy_all(worker: &app_db::Worker) -> u64 {
             n => copied += n,
         }
     }
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn retiring_waits_for_a_chunk_being_copied_and_dead_letters_it(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    history(&messaging, vec![ping("alice", 1)]).await;
+    messaging.register(&copying(&messaging)).await.unwrap();
+    let mut copying_a_chunk = messaging.pool.begin().await.unwrap();
+    sqlx::query(
+        "SELECT 1 FROM messaging.backfill WHERE queue = $1 AND event_type = 'tests.pinged' \
+         FOR UPDATE",
+    )
+    .bind(COPY)
+    .execute(&mut *copying_a_chunk)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO messaging.job \
+             (queue, event_type, key, version, payload, outbox_seq, run_at, max_attempts, \
+              created_at) \
+         SELECT $1, event_type, key, version, payload, seq, now(), 5, now() \
+         FROM messaging.outbox",
+    )
+    .bind(COPY)
+    .execute(&mut *copying_a_chunk)
+    .await
+    .unwrap();
+
+    let retire = messaging.retire(COPY);
+    tokio::pin!(retire);
+    let waited = tokio::time::timeout(Duration::from_millis(200), &mut retire).await;
+    assert!(waited.is_err(), "retiring didn't wait for the chunk");
+    copying_a_chunk.commit().await.unwrap();
+    retire.await;
+
+    assert_eq!(messaging.jobs().await, [Job::retired(COPY)]);
+}
+
+#[app_test_db::test(crate::support::TEMPLATE)]
+async fn retiring_completes_the_backfill_and_copies_nothing_more(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    history(&messaging, vec![ping("alice", 1), ping("bob", 1)]).await;
+    messaging.register(&copying(&messaging)).await.unwrap();
+    messaging.retire(COPY).await;
+    let completed: bool = sqlx::query_scalar(
+        "SELECT bool_and(completed_at IS NOT NULL) FROM messaging.backfill WHERE queue = $1",
+    )
+    .bind(COPY)
+    .fetch_one(&messaging.pool)
+    .await
+    .unwrap();
+
+    let copied = messaging
+        .worker_of(copying(&messaging))
+        .backfill()
+        .await
+        .unwrap();
+
+    assert!(completed, "retiring left its backfill unfinished");
+    assert_eq!(copied, 0);
+    assert_eq!(messaging.jobs().await, []);
 }

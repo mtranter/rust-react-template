@@ -26,6 +26,7 @@ const RELAY_BATCH: i64 = 100;
 /// Each its own transaction, so a compaction never holds the outbox for long.
 const COMPACT_BATCH: i64 = 1000;
 /// The advisory lock only one relay holds at a time: `"relay"` in ASCII.
+/// `messaging.retire` (migration 0008) takes it too, as 491327873401.
 pub(crate) const RELAY_LOCK: i64 = 0x72_656c_6179;
 
 pub struct Worker {
