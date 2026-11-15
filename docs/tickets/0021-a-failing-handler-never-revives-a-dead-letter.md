@@ -1,7 +1,7 @@
 ---
 id: 0021
 name: A handler that fails after its job was dead-lettered leaves it dead
-status: ready-for-agent
+status: done
 priority: P2
 size: S
 blocked_by: []
@@ -51,7 +51,11 @@ Do **not** make `complete`'s `DELETE` conditional on `dead_at`: a job dead-lette
 
 ## Acceptance criteria
 
-- [ ] A test in `crates/common/db/tests/delivery/`: a handler that, while running, has its subscription retired with `messaging.retire` from another connection, then returns an error, leaves its job dead with `last_error = 'subscription retired'`, and no later run (after `later(..)` past the backoff) claims it again. A test-local `Handle` holding a `PgPool` can retire inside `handle`.
-- [ ] A handler that fails with attempts left still schedules a retry, and one on its last attempt is still dead-lettered; the existing retry and dead-letter tests pass unchanged.
-- [ ] A handler that succeeds after its job was dead-lettered still removes the job (`complete` unchanged).
-- [ ] `make check` passes.
+- [x] A test in `crates/common/db/tests/delivery/`: a handler that, while running, has its subscription retired with `messaging.retire` from another connection, then returns an error, leaves its job dead with `last_error = 'subscription retired'`, and no later run (after `later(..)` past the backoff) claims it again. A test-local `Handle` holding a `PgPool` can retire inside `handle`.
+- [x] A handler that fails with attempts left still schedules a retry, and one on its last attempt is still dead-lettered; the existing retry and dead-letter tests pass unchanged.
+- [x] A handler that succeeds after its job was dead-lettered still removes the job (`complete` unchanged).
+- [x] `make check` passes.
+
+## Resolution
+
+`Worker::fail`'s `UPDATE` now also requires `dead_at IS NULL` and reads `rows_affected()`: with no row changed, it leaves the dead letter (and its `last_error`) as it is and warns "job failed after it was dead-lettered; left dead"; otherwise it logs the retry or dead-lettering after the update. `complete` is unchanged. Tests in `crates/common/db/tests/delivery/effects.rs`: `a_delivery_that_fails_after_its_subscription_was_retired_stays_dead` and `a_delivery_that_succeeds_after_its_subscription_was_retired_is_removed`. ADR 0013 and 0014 updated.

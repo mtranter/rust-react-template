@@ -538,11 +538,34 @@ impl Worker {
         tx.commit().await
     }
 
+    /// A job dead-lettered while its handler ran (retired, or abandoned as
+    /// unfinished) stays dead with the reason it was given, rather than
+    /// being revived to retry.
     async fn fail(&self, job: &Claimed, err: &AppError) -> AppResult<()> {
         let now = self.clock.now();
         let error = describe(err);
         let dead = job.attempts >= job.max_attempts;
-        if dead {
+        let recorded = sqlx::query!(
+            r#"
+            UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4
+            WHERE id = $1 AND dead_at IS NULL
+            "#,
+            job.id,
+            error,
+            now + backoff(job.attempts),
+            dead.then_some(now),
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::internal)?
+        .rows_affected();
+        if recorded == 0 {
+            tracing::warn!(
+                queue = job.queue,
+                error,
+                "job failed after it was dead-lettered; left dead"
+            );
+        } else if dead {
             tracing::error!(
                 queue = job.queue,
                 attempts = job.attempts,
@@ -557,19 +580,6 @@ impl Worker {
                 "job failed; will retry"
             );
         }
-        sqlx::query!(
-            r#"
-            UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4
-            WHERE id = $1
-            "#,
-            job.id,
-            error,
-            now + backoff(job.attempts),
-            dead.then_some(now),
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::internal)?;
         Ok(())
     }
 
