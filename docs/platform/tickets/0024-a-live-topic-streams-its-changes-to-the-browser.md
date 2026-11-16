@@ -1,7 +1,7 @@
 ---
 id: 0024
 name: A topic a module declares live streams its changes to every browser following it, from any instance
-status: ready-for-agent
+status: wontfix
 priority: P1
 size: L
 blocked_by: []
@@ -67,3 +67,12 @@ Make it generic, as MCP is (ADR 0034): a module declares a topic **live**, and e
 
 - Not a durable feed. A missed doorbell costs a refetch, never data: the API is the truth (ADR 0039).
 - Health (separate ticket): the bus becomes the first integration check, reported on `/health/status` and never failing readiness, since the bus is best effort.
+
+## Resolution
+
+Rejected, 2026-11-16, before any work began. The intent stands: the common work of pushing updates to the browser should be abstracted once, not rebuilt per screen. But a Topic is a backend integration construct, the contract between Modules, and not the right unit for what a screen should hear. Streaming every change to a live Topic is too blunt: a screen's needs (which changes, for whom, refetching what) don't line up with a Topic's events, and making Topics a frontend contract would tie the two together.
+
+So SSE is built case by case: a module that needs one builds its stream over the bus (ADR 0039, `crates/AGENTS.md`), with its own channel and its own messages. Where nothing streams, a stale screen is caught by the ETag version check: a save over someone else's change is refused with `412`, and the user reloads. That is weaker UX (a refusal rather than a live view), and accepted for now as the simpler long-term choice.
+
+The bus stays in the platform for those cases, with no consumer in the template until one needs it.
+

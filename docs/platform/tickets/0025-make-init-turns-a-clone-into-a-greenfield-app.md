@@ -106,5 +106,4 @@ What `init` must **not** do is delete the example modules. They are still what a
 
 ## Notes
 
-- **Order with 0024.** If 0024 (live topics) lands first, `notes` declares its topic live. Once `notes` moves to `crates/reference/`, no registered module broadcasts, so a fresh app needs no Valkey until one of its own modules does (ADR 0039). The live journey moves with the platform journeys.
 - **Health stays.** The health routes are in `app-web` and the server, which `init` doesn't touch.
