@@ -1,6 +1,6 @@
 # Rust + React template
 
-A clone-and-go template: a Rust modular-monolith backend whose OpenAPI Spec drives a type-safe React frontend. Terms here have one meaning across the codebase; if code or conversation drifts from them, the drift is the bug. This file is a glossary only: decisions and their reasons live in `docs/adr/`.
+A clone-and-go template: a Rust modular-monolith backend whose OpenAPI Spec drives a type-safe React frontend. Terms here have one meaning across the codebase; if code or conversation drifts from them, the drift is the bug. This file is a glossary only: decisions and their reasons live in `docs/platform/adr/`. The business domain's terms, once there is one, live in the root `GLOSSARY.md`.
 
 ## Architecture
 
@@ -78,6 +78,9 @@ _Avoid_: Cache, replica
 
 **Read Model**:
 A shape assembled for reading, such as a note with its author's name, rather than an Aggregate. It is never saved and protects no invariants.
+
+**Enrichment**:
+Adding another Module's columns to a page a Module has already read from its own tables, with one batch call to the provider's Module API for that page's ids. For showing only: sorting, filtering, searching or paging by those columns needs a Projection.
 
 ## Events
 

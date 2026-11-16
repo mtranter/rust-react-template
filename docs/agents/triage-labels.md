@@ -1,6 +1,6 @@
 # Triage Labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the `status:` values used in this repo's tickets (`docs/tickets/`, see `issue-tracker.md`).
+The skills speak in terms of five canonical triage roles. This file maps those roles to the `status:` values used in this repo's tickets (`docs/platform/tickets/` and `docs/tickets/`, see `issue-tracker.md`).
 
 | Label in mattpocock/skills | `status:` in our tickets | Meaning                                  |
 | -------------------------- | ------------------------ | ---------------------------------------- |

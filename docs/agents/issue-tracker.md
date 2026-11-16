@@ -1,10 +1,10 @@
 # Issue tracker: Local Markdown
 
-Tickets for this repo live as markdown files in `docs/tickets/`, one per ticket, committed with the code.
+Tickets for this repo live as markdown files, one per ticket, committed with the code, in two series that mirror the ADRs (`domain.md`): work on how the platform works in `docs/platform/tickets/`, work on the business domain in `docs/tickets/`. Each series is numbered on its own.
 
 ## Conventions
 
-- One file per ticket: `docs/tickets/NNNN-<slug>.md`, numbered on from the highest existing number (four digits, never reused).
+- One file per ticket: `NNNN-<slug>.md` in its series' folder, numbered on from the highest existing number in that folder (four digits, never reused).
 - Each file opens with YAML front matter:
 
   ```yaml
@@ -26,8 +26,8 @@ Tickets for this repo live as markdown files in `docs/tickets/`, one per ticket,
 
 ## When a skill says "publish to the issue tracker"
 
-Create the next-numbered file under `docs/tickets/` with the front matter above.
+Create the next-numbered file in the series the work belongs to (`docs/platform/tickets/` or `docs/tickets/`) with the front matter above.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the ticket number directly (`0007` is `docs/tickets/0007-*.md`).
+Read the file at the referenced path. The user will normally pass the path or the ticket number directly (`0007` is `docs/tickets/0007-*.md`, platform `0007` is `docs/platform/tickets/0007-*.md`).

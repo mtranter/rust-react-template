@@ -2,13 +2,13 @@
 
 A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openapi) whose OpenAPI spec drives a type-safe Vite + React + TypeScript frontend. Keep design decisions minimal; this is a template, not a product.
 
-**Where the rules live.** This file is repo-wide. Before changing anything under `crates/`, read `crates/AGENTS.md` (backend architecture, modules, tests); before changing anything under `frontend/`, read `frontend/AGENTS.md` (features, forms, screens, UI). A change spanning both, such as a new module with a UI, follows both. Terms are defined in `GLOSSARY.md`; decisions, with the options weighed and their consequences, are recorded in `docs/adr/` (cited as ADR n). Each area's `AGENTS.md` names the reference code to copy rather than work from prose. If an `AGENTS.md` and the code disagree, the code wins: fix the `AGENTS.md` in the same change.
+**Where the rules live.** This file is repo-wide. Before changing anything under `crates/`, read `crates/AGENTS.md` (backend architecture, modules, tests); before changing anything under `frontend/`, read `frontend/AGENTS.md` (features, forms, screens, UI). A change spanning both, such as a new module with a UI, follows both. The platform's terms are defined in `docs/platform/glossary.md` and its decisions, with the options weighed and their consequences, in `docs/platform/adr/` (cited as ADR n); the business domain's, once there is one, in `GLOSSARY.md` and `docs/adr/`. Each area's `AGENTS.md` names the reference code to copy rather than work from prose. If an `AGENTS.md` and the code disagree, the code wins: fix the `AGENTS.md` in the same change.
 
 ## Agent skills
 
-- **Issue tracker.** Tickets are markdown files in `docs/tickets/`. See `docs/agents/issue-tracker.md`.
+- **Issue tracker.** Tickets are markdown files: the platform's in `docs/platform/tickets/`, the business domain's in `docs/tickets/`. See `docs/agents/issue-tracker.md`.
 - **Triage labels.** The five default triage roles, recorded as each ticket's `status`. See `docs/agents/triage-labels.md`.
-- **Domain docs.** Single-context: one `GLOSSARY.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
+- **Domain docs.** Two vocabularies: the platform's in `docs/platform/`, the business domain's at the root. See `docs/agents/domain.md`.
 
 ## Architecture and conventions
 
