@@ -1,11 +1,13 @@
 //! Layering (later wins): defaults → optional `config.toml` → `APP_*` env vars →
 //! `DATABASE_URL` (its conventional name, not `APP_DATABASE_URL`).
 
+use app_bus::{Bus, NoBus, RedisBus};
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -41,6 +43,15 @@ pub struct AppConfig {
     /// How often, in seconds, each `worker` compacts the outbox (ADR 0033),
     /// each on its own schedule.
     pub outbox_compact_every: u64,
+    /// The Redis or Valkey that server instances and workers broadcast to
+    /// each other over (ADR 0039): `rediss://user:password@host:6379` for
+    /// TLS, as ElastiCache Serverless for Valkey requires. Required once any
+    /// module broadcasts.
+    pub redis_url: Option<String>,
+    /// The CA certificate (PEM) a `rediss://` Redis's certificate is checked
+    /// against, in place of the public roots, for one signed by a private
+    /// CA. Unset (or empty), the public roots, which ElastiCache's are under.
+    pub redis_ca: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -58,6 +69,8 @@ impl Default for AppConfig {
             public_url: None,
             worker_poll_ms: 1000,
             outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
+            redis_url: None,
+            redis_ca: None,
         }
     }
 }
@@ -89,6 +102,24 @@ impl AppConfig {
             )));
         }
         Ok(())
+    }
+
+    /// A `RedisBus` when `APP_REDIS_URL` is set. Unset, nothing is broadcast,
+    /// which a server or worker refuses when `required`: a module that
+    /// broadcasts would otherwise work nowhere and say so nowhere.
+    pub fn bus(&self, required: bool) -> Result<Arc<dyn Bus>, Box<figment::Error>> {
+        match self.redis_url.clone().filter(|url| !url.is_empty()) {
+            Some(url) => Ok(Arc::new(RedisBus::new(
+                url,
+                self.redis_ca.clone().filter(|ca| !ca.is_empty()),
+            ))),
+            None if required => Err(Box::new(figment::Error::from(
+                "refusing to start without APP_REDIS_URL: a module broadcasts between \
+                 instances over the Redis or Valkey they share"
+                    .to_string(),
+            ))),
+            None => Ok(Arc::new(NoBus)),
+        }
     }
 
     pub fn bind_addr(&self) -> String {
@@ -137,5 +168,35 @@ mod tests {
             ..prod()
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn a_server_whose_modules_broadcast_refuses_to_start_without_the_bus() {
+        let error = AppConfig::default().bus(true).err().expect("refused");
+        assert!(error.to_string().contains("APP_REDIS_URL"));
+    }
+
+    #[test]
+    fn an_empty_bus_url_counts_as_none() {
+        let config = AppConfig {
+            redis_url: Some(String::new()),
+            ..AppConfig::default()
+        };
+        assert!(config.bus(true).is_err());
+    }
+
+    #[test]
+    fn a_server_whose_modules_dont_broadcast_needs_no_bus() {
+        assert!(AppConfig::default().bus(false).is_ok());
+    }
+
+    #[test]
+    fn a_configured_bus_is_used_whether_or_not_it_is_required() {
+        let config = AppConfig {
+            redis_url: Some("redis://localhost:6379".to_string()),
+            ..AppConfig::default()
+        };
+        assert!(config.bus(true).is_ok());
+        assert!(config.bus(false).is_ok());
     }
 }

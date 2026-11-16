@@ -30,6 +30,11 @@ pub fn build_service() -> OpenApiService<Idempotent<Endpoints>, ()> {
     OpenApiService::new(Idempotent::<Endpoints>::default(), API_TITLE, API_VERSION).server(API_BASE)
 }
 
+/// Whether any module broadcasts, so the server and worker need the bus.
+pub fn uses_bus() -> bool {
+    modules().iter().any(|module| module.uses_bus())
+}
+
 pub fn module_migrations() -> Vec<ModuleMigrations> {
     modules().iter().filter_map(|m| m.migrations()).collect()
 }

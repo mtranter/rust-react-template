@@ -42,6 +42,7 @@ name = "journeys"
 path = "tests/journeys.rs"
 
 [dependencies]
+app-bus.workspace = true
 app-db.workspace = true
 app-domain.workspace = true
 app-error.workspace = true

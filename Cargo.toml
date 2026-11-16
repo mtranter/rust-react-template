@@ -19,6 +19,7 @@ publish = false
 
 [workspace.dependencies]
 app-domain = { path = "crates/common/domain" }
+app-bus = { path = "crates/common/bus" }
 app-error = { path = "crates/common/error" }
 app-events = { path = "crates/common/events" }
 app-persistence = { path = "crates/common/persistence" }
@@ -55,6 +56,18 @@ sqlx = { version = "0.9", default-features = false, features = [
 ] }
 
 async-trait = "0.1"
+futures-util = "0.3"
+# `app-bus`'s adapter (ADR 0039): Redis/Valkey pub/sub, over TLS with
+# `rediss://`. rustls with webpki roots; no native certs or OpenSSL.
+redis = { version = "1", default-features = false, features = [
+    "tokio-rustls-comp",
+    "tls-rustls-webpki-roots",
+    "connection-manager",
+] }
+# A Valkey per test that needs one (ADR 0039), on a port Docker picks.
+testcontainers = "0.28"
+# A throwaway CA and certificate for a test's Valkey reached over TLS.
+rcgen = "0.14"
 thiserror = "2"
 figment = { version = "0.10", features = ["env", "toml"] }
 tracing = "0.1"

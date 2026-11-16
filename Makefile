@@ -13,6 +13,11 @@ endif
 DATABASE_URL ?= postgres://app:app@localhost:5432/app
 export DATABASE_URL
 
+# The bus (ADR 0039): docker compose's Valkey, which `make dev` starts. Tests
+# start their own (`app_bus::testing::Valkey`).
+APP_REDIS_URL ?= redis://localhost:6379
+export APP_REDIS_URL
+
 # Backend tests (`#[app_test_db::test]`) use the same docker-compose server: each
 # test binary migrates and seeds a `_test_template_*` database once, and each
 # test gets a `_test_*` copy of it, created and dropped from the database named
@@ -54,7 +59,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
         check-backend check-frontend check-changed check-spec screens \
-        build-backend-dev build-frontend db-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
+        build-backend-dev build-frontend db-up redis-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
 help: ## Show this help
@@ -72,6 +77,9 @@ _require-cargo-bin:
 
 db-up: ## Start local Postgres (docker compose)
 	docker compose up -d postgres
+
+redis-up: ## Start local Valkey (docker compose), the bus `make dev` broadcasts over
+	docker compose up -d --wait redis
 
 db-wait: db-up ## Wait until Postgres is healthy
 	@echo "waiting for postgres..."; \
@@ -106,7 +114,7 @@ spec: frontend/openapi.json ## Just (re)generate the OpenAPI snapshot
 watch-api: _require-cargo-bin ## Watch backend sources and regenerate the client on change
 	$(CARGO_BIN) cargo-watch -w crates -s 'make generate'
 
-dev: _require-cargo-bin seed generate ## Run backend (:8080), the worker and Vite (:5173) in parallel
+dev: _require-cargo-bin seed generate redis-up ## Run backend (:8080), the worker and Vite (:5173) in parallel
 	$(MAKE) -j3 _dev-backend _dev-worker _dev-frontend
 
 _dev-backend:

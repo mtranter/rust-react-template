@@ -110,6 +110,10 @@ Where a Unit of Work records its Events, so they are delivered if and only if it
 **Worker**:
 The process that delivers Events to their Subscribers, each delivery in its own Unit of Work, in order per key, retrying a failure and setting it aside as a **Dead Letter** once its attempts run out.
 
+**Bus**:
+The broadcast between the app's instances (ADR 0039), so a stream held by one hears what happened on another. Best effort, unlike the Outbox: a message sent while an instance can't hear it is lost to it, and it is told only of a **Gap**, its cue to recheck the truth the database holds. Carries named **Channels**; a **Hub** fans one instance's subscription out to the streams it holds.
+_Avoid_: Event bus, message queue (it delivers no Events and queues nothing)
+
 ## HTTP
 
 **Spec**:

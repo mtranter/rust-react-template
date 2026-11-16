@@ -13,6 +13,8 @@ allow-wildcard-paths = true
 deny = [
     { crate = "sqlx", wrappers = ["app-db", "app-test-db", "server", "widgets", "users", "notes", "note-search"] },
     { crate = "poem", wrappers = ["poem-openapi", "poem-mcpserver", "app-web", "app-module", "server", "widgets", "users", "notes", "note-search"] },
+    # Only the bus reaches Redis (ADR 0039); tests get their Valkey from `app_bus::testing`.
+    { crate = "redis", wrappers = ["app-bus"] },
 ]
 
 
@@ -29,6 +31,7 @@ allow = [
     "MPL-2.0",
     "CC0-1.0",
     "CDLA-Permissive-2.0", # webpki-roots (via sqlx-core): permissive data license
+    "BSL-1.0", # xxhash-rust (via redis): the Boost license, permissive like MIT
 ]
 confidence-threshold = 0.9
 
@@ -49,6 +52,10 @@ ignore = [
     "RUSTSEC-2026-0387",
     # unsafe-libyaml (via poem -> serde_yaml): unmaintained, no successor on the poem 3.1 stack.
     "RUSTSEC-2024-0449",
+    # astral-tokio-tar (via testcontainers, dev-only): unmaintained, with no
+    # testcontainers release off it yet. Tests only pull and run a Valkey image;
+    # nothing builds or unpacks a tar from outside.
+    "RUSTSEC-2026-0440",
 ]
 
 [sources]

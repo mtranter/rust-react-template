@@ -3,6 +3,7 @@
 //! derives the request data, migrations, seeds and worker handlers from that
 //! list, so none of them can be registered without the others.
 
+use app_bus::{Bus, NoBus};
 use app_db::{ModuleMigrations, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool};
 use app_domain::Clock;
 use app_error::AppResult;
@@ -16,16 +17,33 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 /// What every module is built from, made once by the server (or a test driver)
-/// and passed to each provider, so they all share one pool and one clock.
+/// and passed to each provider, so they all share one pool, clock and bus.
 #[derive(Clone)]
 pub struct Context {
     pool: Pool,
     clock: Arc<dyn Clock>,
+    bus: Arc<dyn Bus>,
 }
 
 impl Context {
     pub fn new(pool: Pool, clock: Arc<dyn Clock>) -> Self {
-        Self { pool, clock }
+        Self {
+            pool,
+            clock,
+            bus: Arc::new(NoBus),
+        }
+    }
+
+    /// What server instances and workers broadcast to each other over (ADR
+    /// 0039), shared by every module. Without one (a migration, a test that
+    /// opens no stream, an app no module of which broadcasts) nothing is
+    /// broadcast.
+    pub fn with_bus(self, bus: Arc<dyn Bus>) -> Self {
+        Self { bus, ..self }
+    }
+
+    pub fn bus(&self) -> Arc<dyn Bus> {
+        self.bus.clone()
     }
 
     pub fn pool(&self) -> Pool {
@@ -72,6 +90,7 @@ pub struct Module {
     topics: Vec<PublishedTopic>,
     migrations: Option<ModuleMigrations>,
     seed: Option<Seed>,
+    broadcasts: bool,
 }
 
 impl Module {
@@ -84,6 +103,7 @@ impl Module {
             topics: Vec::new(),
             migrations: None,
             seed: None,
+            broadcasts: false,
         }
     }
 
@@ -103,6 +123,15 @@ impl Module {
     pub fn publishes<T: Topic>(mut self) -> Self {
         self.topics.push(PublishedTopic::of::<T>());
         self
+    }
+
+    /// The module publishes or follows channels on the app's bus, so the
+    /// server and worker refuse to start without one (ADR 0039).
+    pub fn broadcasts(self) -> Self {
+        Self {
+            broadcasts: true,
+            ..self
+        }
     }
 
     pub fn with_migrations(self, migrations: ModuleMigrations) -> Self {
@@ -126,6 +155,10 @@ impl Module {
 
     pub fn migrations(&self) -> Option<ModuleMigrations> {
         self.migrations
+    }
+
+    pub fn uses_bus(&self) -> bool {
+        self.broadcasts
     }
 
     pub fn topics(&self) -> &[PublishedTopic] {
