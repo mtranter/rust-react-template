@@ -16,11 +16,11 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 
 **Spec → client → tools** (ADR 0034). Every operation is also an MCP tool at `/mcp`, generated from the same spec: its `operation_id` is the tool's name and its summary the tool's description, so write both for an agent as much as for a person. There is no tool code to write; `crates/AGENTS.md` says how to keep an operation off MCP.
 
-**One artifact** (ADR 0005). Production is one binary serving the API and the embedded SPA, with no separate static host. CI (`.github/workflows/ci.yml`) and `make check` run the same steps: a step added to one is added to the other. Lefthook runs rustfmt, clippy, biome and tsc before each commit.
+**One artifact** (ADR 0005). Production is one binary serving the API and the embedded SPA, with no separate static host. CI (`.github/workflows/ci.yml`) and `make check` run the same steps: a step added to one is added to the other.
 
 ### Commands
 
-- `make setup` — once after cloning; installs the repo-local Rust tools (ADR 0027), including the sccache that every checkout and worktree on the machine then compiles through (ADR 0037). `lefthook` is installed separately (`brew install lefthook && lefthook install`).
+- `make setup` — once after cloning; installs the repo-local Rust tools (ADR 0027), including the sccache that every checkout and worktree on the machine then compiles through (ADR 0037).
 - `make dev` — migrate, seed, generate the client, then backend `:8080`, the `worker` and Vite `:5173` (which proxies `/api`).
 - `make check` — every step CI runs, `check-backend` then `check-frontend`. **Run it before calling work done.** Run `pnpm install` in `frontend/` once first.
 - `make check-changed` — only the halves of `make check` that the branch's changes since `main` can break, and of the backend's tests only the changed crates' and their direct dependents' (a module's change runs its own tests and `server`'s journeys; a change to `common` or the lockfile runs all). `scripts/check-changed.sh` says how it decides; a path it doesn't know runs everything. It counts as `make check` for calling work done.

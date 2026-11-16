@@ -9,4 +9,3 @@ The Rust tools the build runs (`cargo-deny`, `cargo-watch`, `sqlx-cli`) are pinn
 ## Consequences
 
 - Bumping a tool is an edit to `[workspace.metadata.bin]` and `make setup`.
-- `lefthook`, a Go binary, is the exception, installed separately.

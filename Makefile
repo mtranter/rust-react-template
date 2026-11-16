@@ -65,7 +65,6 @@ setup: ## Install repo-local Rust CLI tools (run once after cloning)
 	@command -v cargo-bin >/dev/null 2>&1 || $(CARGO) install --locked cargo-run-bin
 	$(CARGO_BIN) --install
 	@echo "rust tools installed into ./.bin"
-	@command -v lefthook >/dev/null 2>&1 || echo "note: lefthook not found — 'brew install lefthook' (or 'pnpm add -g lefthook'), then 'lefthook install'"
 
 # Fail with a clear pointer instead of a cryptic error when the bootstrap is missing.
 _require-cargo-bin:
