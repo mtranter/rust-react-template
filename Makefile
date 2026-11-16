@@ -21,6 +21,9 @@ export DATABASE_URL
 # (unmigrated) database.
 TEST_DATABASE_URL ?= postgres://app:app@localhost:5432/postgres
 
+# The packages test-backend runs; check-changed narrows it to what a change can break.
+BACKEND_TESTS ?= --workspace
+
 CARGO ?= cargo
 
 # Repo-local Rust CLI tools (cargo-deny, cargo-watch, sqlx-cli) are declared in
@@ -144,7 +147,7 @@ check-modules: ## Every module is registered with the server, cargo-deny and the
 test: test-backend test-frontend ## Backend + frontend tests
 
 test-backend: db-wait ## Backend tests (each a copy of its binary's migrated, seeded template DB on docker-compose Postgres)
-	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) test --workspace
+	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) test $(BACKEND_TESTS)
 
 test-frontend: frontend/src/api ## Frontend Vitest (MSW-mocked network; no backend needed)
 	cd frontend && pnpm run test

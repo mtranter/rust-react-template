@@ -20,10 +20,10 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 
 ### Commands
 
-- `make setup` — once after cloning; installs the repo-local Rust tools (ADR 0027). `lefthook` is installed separately (`brew install lefthook && lefthook install`).
+- `make setup` — once after cloning; installs the repo-local Rust tools (ADR 0027), including the sccache that every checkout and worktree on the machine then compiles through (ADR 0037). `lefthook` is installed separately (`brew install lefthook && lefthook install`).
 - `make dev` — migrate, seed, generate the client, then backend `:8080`, the `worker` and Vite `:5173` (which proxies `/api`).
 - `make check` — every step CI runs, `check-backend` then `check-frontend`. **Run it before calling work done.** Run `pnpm install` in `frontend/` once first.
-- `make check-changed` — only the halves of `make check` that the branch's changes since `main` can break (`scripts/check-changed.sh` says how it decides; a path it doesn't know runs both). It counts as `make check` for calling work done.
+- `make check-changed` — only the halves of `make check` that the branch's changes since `main` can break, and of the backend's tests only the changed crates' and their direct dependents' (a module's change runs its own tests and `server`'s journeys; a change to `common` or the lockfile runs all). `scripts/check-changed.sh` says how it decides; a path it doesn't know runs everything. It counts as `make check` for calling work done.
 - `make generate` — dump spec → `frontend/openapi.json` → `frontend/src/api/`; `make spec` regenerates only the snapshot (DB-free).
 - `make build`, and tests: `make test` (both), `make test-backend`, `make test-frontend`. Single tests and the rest are in each area's `AGENTS.md`; `make help` lists every target.
 

@@ -85,11 +85,21 @@ assert-json-diff = "2.0"
 [workspace.metadata.bin]
 cargo-deny = { version = "^0.20" }
 cargo-watch = { version = "8.5.3" }
+# Compiler cache behind scripts/rustc-wrapper.sh; shared by every checkout on a machine.
+sccache = { version = "^0.19" }
 # Must match the sqlx lib's 0.9 line; rustls avoids native-tls/openssl.
 sqlx-cli = { version = "^0.9", bins = ["sqlx"], default-features = false, features = [
     "rustls",
     "postgres",
 ] }
+
+# Full debug info dominates incremental test builds (link time), measured at
+# 8s → 3s after a module edit; line tables still give backtraces file:line.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 lto = "thin"
