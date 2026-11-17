@@ -13,6 +13,12 @@ endif
 DATABASE_URL ?= postgres://app:app@localhost:5432/app
 export DATABASE_URL
 
+# `query!` compiles against the checked-in .sqlx cache, as in CI, so a fresh
+# clone's empty database doesn't fail the build; `prepare` and `new-module`
+# turn it off to refresh the cache.
+SQLX_OFFLINE ?= true
+export SQLX_OFFLINE
+
 # The bus (ADR 0039): docker compose's Valkey, which `make dev` starts. Tests
 # start their own (`app_bus::testing::Valkey`).
 APP_REDIS_URL ?= redis://localhost:6379
@@ -100,8 +106,18 @@ seed: migrate ## Load every module's standard seed data (skips what already exis
 	$(CARGO) run -p server --bin seed --features seed
 
 prepare: _require-cargo-bin migrate ## Refresh the checked-in .sqlx offline query cache (needs migrated DB)
-	./scripts/migrate-schema.sh crates/module-template/core widgets
+	./scripts/migrate-unregistered.sh
 	SQLX_OFFLINE=false DATABASE_URL=$(DATABASE_URL) $(CARGO_BIN) sqlx prepare --workspace -- --all-targets
+
+# --- template only: `make init` removes this block ---
+init: ## Once, first, in a fresh clone of the template: make it an app. make init NAME=crm TITLE="Acme CRM"
+	@test -n "$(NAME)" -a -n "$(TITLE)" || { echo 'usage: make init NAME=<name> TITLE="<display name>"'; exit 1; }
+	./scripts/init.sh "$(NAME)" "$(TITLE)"
+
+check-init: ## Run `make init` on a scratch copy of this tree, then check what it made (part of check)
+	./scripts/check-init.sh
+.PHONY: init check-init
+# --- end template only ---
 
 new-module: _require-cargo-bin db-wait ## Scaffold a write module and register it: make new-module NAME=widgets [ENTITY=widget]
 	@test -n "$(NAME)" || { echo "usage: make new-module NAME=<module> [ENTITY=<aggregate>]"; exit 1; }
@@ -180,7 +196,7 @@ build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
 
 # Every step CI runs, backend and frontend. A step added here is added to CI,
 # and the reverse.
-check: check-backend check-frontend ## CI mirror (run before calling work done)
+check: check-backend check-frontend check-init ## CI mirror (run before calling work done)
 
 check-backend: fmt clippy deny check-sql check-deps check-modules check-spec build-backend-dev test-backend ## The backend half of check
 

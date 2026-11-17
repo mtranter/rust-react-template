@@ -106,7 +106,7 @@ function listing(items: NoteResponse[]) {
 
 const notesPage = [usersListing, listing(notes)];
 
-// The server's message: `MAX_TITLE_LEN` in crates/modules/notes/core/src/domain/note.rs.
+// The server's message: `MAX_TITLE_LEN` in crates/reference/notes/core/src/domain/note.rs.
 const titleTooLong = "title must be at most 200 characters";
 
 /** Chooses Bob as the author and types `title` into the New note form. */

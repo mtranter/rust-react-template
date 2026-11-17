@@ -2,11 +2,17 @@
 resolver = "3"
 members = [
     "crates/common/*",
-    # Every module's `core` and `api` crates, so a new module needs no entry here.
-    "crates/modules/*/*",
+    # Every module's `core` and `api` crates, in `crates/modules/` and the
+    # reference modules in `crates/reference/` (see crates/AGENTS.md), so a new
+    # module needs no entry here. Cargo reads a glob matching nothing as a path,
+    # so `crates/modules/*/*` would fail while there are no modules.
+    "crates/*/*/core",
+    "crates/*/*/api",
     # What `make new-module` copies, `core` and `api`: compiled, linted and
     # tested like a module, but registered with no server.
     "crates/module-template/*",
+    # The journeys over the reference modules, whether or not the server registers them.
+    "crates/reference/journeys",
     "crates/server",
 ]
 
@@ -29,11 +35,12 @@ app-test-support = { path = "crates/common/test-support" }
 app-test-db = { path = "crates/common/test-db" }
 app-test-db-macros = { path = "crates/common/test-db-macros" }
 app-module = { path = "crates/common/module" }
-users-api = { path = "crates/modules/users/api" }
-users = { path = "crates/modules/users/core" }
-notes-api = { path = "crates/modules/notes/api" }
-notes = { path = "crates/modules/notes/core" }
-note-search = { path = "crates/modules/note-search/core" }
+server = { path = "crates/server" }
+users-api = { path = "crates/reference/users/api" }
+users = { path = "crates/reference/users/core" }
+notes-api = { path = "crates/reference/notes/api" }
+notes = { path = "crates/reference/notes/core" }
+note-search = { path = "crates/reference/note-search/core" }
 
 # poem 3.1.x <-> poem-openapi 5.1.x are released in lockstep; bump together.
 poem = "3.1"

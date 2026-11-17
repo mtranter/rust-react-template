@@ -7,11 +7,12 @@ wildcards = "deny"
 # Workspace path deps resolve to `*`; only external `*` pins should be denied.
 allow-wildcard-paths = true
 # Keeps pure crates (pure `common` crates, every `<module>-api`) framework-free.
-# Each module core crate ends each list (`make new-module` appends it); never an
-# `-api` crate. `make check-modules` fails on one missing. `widgets` is the module
+# Each module core crate ends each list (`make new-module` appends it), the
+# reference modules' whether or not the server registers them; never an `-api`
+# crate. `make check-modules` fails on one missing. `widgets` is the module
 # template (crates/module-template/core).
 deny = [
-    { crate = "sqlx", wrappers = ["app-db", "app-test-db", "server", "widgets", "users", "notes", "note-search"] },
+    { crate = "sqlx", wrappers = ["app-db", "app-test-db", "server", "reference-journeys", "widgets", "users", "notes", "note-search"] },
     { crate = "poem", wrappers = ["poem-openapi", "poem-mcpserver", "app-web", "app-module", "server", "widgets", "users", "notes", "note-search"] },
     # Only the bus reaches Redis (ADR 0039); tests get their Valkey from `app_bus::testing`.
     { crate = "redis", wrappers = ["app-bus"] },

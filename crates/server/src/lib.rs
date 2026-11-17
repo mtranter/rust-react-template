@@ -1,6 +1,7 @@
 //! Shared by the server, `worker`, `dump-spec`, `migrate`, `seed` and the
 //! composed-app tests, so each sees the same modules and the dumped spec is
-//! byte-for-byte the one served.
+//! byte-for-byte the one served. Each function takes the [`Composition`] it
+//! serves: [`Registered`] everywhere but tests composing modules of their own.
 
 mod app;
 pub mod config;
@@ -10,51 +11,71 @@ pub mod telemetry;
 mod tools;
 
 pub use app::build_app;
-pub use modules::{Endpoints, modules};
+pub use modules::Registered;
 pub use shutdown::shutdown_signal;
 pub use tools::Tools;
 
 use app_db::{ModuleMigrations, SubscriptionError, Worker};
 use app_error::AppResult;
-use app_module::Context;
+use app_module::{Context, Module};
 use app_persistence::Handlers;
 use app_web::Idempotent;
-use poem_openapi::OpenApiService;
+use poem_openapi::{OpenApi, OpenApiService};
+
+/// Modules served as one app: the API's operations and the modules behind them.
+pub trait Composition: Send + Sync + 'static {
+    /// One type for both the spec and its value (`Endpoints::default()`).
+    type Endpoints: OpenApi + Default + Send + Sync + 'static;
+
+    /// In dependency order: migrations and seeds run in it, so a module comes
+    /// after the modules whose data or published views it uses.
+    fn modules() -> Vec<Module>;
+}
 
 pub const API_TITLE: &str = "rust-vite-template API";
 pub const API_VERSION: &str = "0.1.0";
 /// Also the generated client's `baseUrl`.
 pub const API_BASE: &str = "/api";
 
-pub fn build_service() -> OpenApiService<Idempotent<Endpoints>, ()> {
-    OpenApiService::new(Idempotent::<Endpoints>::default(), API_TITLE, API_VERSION).server(API_BASE)
+pub fn build_service<C: Composition>() -> OpenApiService<Idempotent<C::Endpoints>, ()> {
+    OpenApiService::new(
+        Idempotent::<C::Endpoints>::default(),
+        API_TITLE,
+        API_VERSION,
+    )
+    .server(API_BASE)
+}
+
+/// The spec as `dump-spec` writes it and `/api/spec.json` serves it.
+pub fn spec<C: Composition>() -> String {
+    app_web::with_error_shape(build_service::<C>().spec())
 }
 
 /// Whether any module broadcasts, so the server and worker need the bus.
-pub fn uses_bus() -> bool {
-    modules().iter().any(|module| module.uses_bus())
+pub fn uses_bus<C: Composition>() -> bool {
+    C::modules().iter().any(|module| module.uses_bus())
 }
 
-pub fn module_migrations() -> Vec<ModuleMigrations> {
-    modules().iter().filter_map(|m| m.migrations()).collect()
+pub fn module_migrations<C: Composition>() -> Vec<ModuleMigrations> {
+    C::modules().iter().filter_map(|m| m.migrations()).collect()
 }
 
 /// Every module's subscriptions. Panics if two modules claim one queue name.
-pub fn handlers(ctx: &Context) -> Handlers {
-    modules().iter().fold(Handlers::new(), |all, module| {
+pub fn handlers<C: Composition>(ctx: &Context) -> Handlers {
+    C::modules().iter().fold(Handlers::new(), |all, module| {
         all.merge(module.handlers(ctx))
     })
 }
 
 /// Runs every module's subscriptions.
-pub fn worker(ctx: &Context) -> Worker {
-    ctx.worker(handlers(ctx))
+pub fn worker<C: Composition>(ctx: &Context) -> Worker {
+    ctx.worker(handlers::<C>(ctx))
 }
 
 /// Registers every module's topics, as `migrate` does after migrating, so
 /// every worker compacts each by its retention.
-pub async fn register_topics(ctx: &Context) -> AppResult<()> {
-    let topics: Vec<_> = modules()
+pub async fn register_topics<C: Composition>(ctx: &Context) -> AppResult<()> {
+    let topics: Vec<_> = C::modules()
         .iter()
         .flat_map(|module| module.topics().to_vec())
         .collect();
@@ -62,6 +83,8 @@ pub async fn register_topics(ctx: &Context) -> AppResult<()> {
 }
 
 /// Registers every module's subscriptions, as `migrate` does after migrating.
-pub async fn register_subscriptions(ctx: &Context) -> Result<(), SubscriptionError> {
-    app_db::register_subscriptions(&ctx.pool(), ctx.clock().as_ref(), &handlers(ctx)).await
+pub async fn register_subscriptions<C: Composition>(
+    ctx: &Context,
+) -> Result<(), SubscriptionError> {
+    app_db::register_subscriptions(&ctx.pool(), ctx.clock().as_ref(), &handlers::<C>(ctx)).await
 }

@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Every module core crate (`crates/modules/*/core`) must be registered everywhere
 # the server and CI look for it — a missing entry compiles and passes the
-# module's own tests, then fails only in a deployed environment:
+# module's own tests, then fails only in a deployed environment. A reference
+# module (`crates/reference/*/core`) is registered with the server everywhere or
+# nowhere (`make init` unregisters them):
 #
 #   crates/server/src/modules.rs   its `Endpoints` in the tuple, its `module(..)` in the list
 #   crates/server/Cargo.toml       a dependency, and `<module>/seed` in the `seed` feature
 #                                  if it has a seed (a module that owns no data has none)
-#   deny.toml                      both the `sqlx` and `poem` wrappers lists
+#   deny.toml                      both the `sqlx` and `poem` wrappers lists, registered or not
 #
 # It also checks that a module with a seed declares the number its seed ids are
 # built from (`pub const MODULE: u32 = N;` in its `-api` crate's `src/seed.rs` if
 # it has one, else its core's; ADR 0028), and that the numbers are unique.
 set -euo pipefail
+shopt -s nullglob
 cd "$(dirname "$0")/.."
 
 registry=crates/server/src/modules.rs
@@ -23,25 +26,34 @@ fail() {
   failed=1
 }
 
-numbers=()
-for module in crates/modules/*/core; do
+# The registrations of the module at $1 the server has, one per line, each
+# with what to say if it's missing.
+registrations() {
+  local module=$1 name ident endpoints
   name=$(sed -nE 's/^name = "([^"]+)"/\1/p' "$module/Cargo.toml" | head -1)
   ident=${name//-/_}
-
   endpoints=$(grep -oE '\b[A-Za-z]+Endpoints\b' "$module/src/lib.rs" | head -1 || true)
   if [ -z "$endpoints" ]; then
-    fail "$module/src/lib.rs: exports no \`...Endpoints\`"
-  elif ! grep -qE "\b$ident::$endpoints\b" "$registry"; then
-    fail "$registry: \`$ident::$endpoints\` is missing from \`Endpoints\`"
+    echo "0 $module/src/lib.rs: exports no \`...Endpoints\`"
+  else
+    grep -qE "\b$ident::$endpoints\b" "$registry" && echo 1 || echo "0 $registry: \`$ident::$endpoints\` is missing from \`Endpoints\`"
   fi
-  grep -qE "\b$ident::module\(" "$registry" ||
-    fail "$registry: \`$ident::module(..)\` is missing from \`modules()\`"
-
-  grep -qE "^$name(\.workspace = true| = )" "$server" ||
-    fail "$server: \`$name\` is missing from [dependencies]"
+  grep -qE "\b$ident::module\(" "$registry" && echo 1 || echo "0 $registry: \`$ident::module(..)\` is missing from \`modules()\`"
+  sed -n '/^\[dependencies\]/,/^\[/p' "$server" | grep -qE "^$name(\.workspace = true| = )" &&
+    echo 1 || echo "0 $server: \`$name\` is missing from [dependencies]"
   if [ -f "$module/src/seed.rs" ]; then
-    grep -qE "^seed = \[.*\"$name/seed\"" "$server" ||
-      fail "$server: \`\"$name/seed\"\` is missing from the \`seed\` feature"
+    grep -qE "^seed = \[.*\"$name/seed\"" "$server" && echo 1 ||
+      echo "0 $server: \`\"$name/seed\"\` is missing from the \`seed\` feature"
+  fi
+}
+
+numbers=()
+for module in crates/modules/*/core crates/reference/*/core; do
+  name=$(sed -nE 's/^name = "([^"]+)"/\1/p' "$module/Cargo.toml" | head -1)
+
+  found=$(registrations "$module")
+  if [[ $module == crates/modules/* ]] || grep -q '^1' <<<"$found"; then
+    while IFS= read -r missing; do fail "${missing#0 }"; done < <(grep '^0' <<<"$found" || true)
   fi
 
   for crate in sqlx poem; do

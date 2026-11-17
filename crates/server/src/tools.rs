@@ -1,14 +1,16 @@
 //! What AI agents get over MCP (ADR 0034): every operation of the API as a
 //! tool, but those listed in `REST_ONLY`.
 
-use crate::{API_BASE, API_TITLE, API_VERSION, Endpoints};
+use crate::{API_BASE, API_TITLE, API_VERSION, Composition};
 use app_web::Idempotent;
 use app_web::mcp::{RestOnly, Surface};
+use std::marker::PhantomData;
 
-pub struct Tools;
+/// The tools of `C`'s operations.
+pub struct Tools<C>(PhantomData<C>);
 
-impl Surface for Tools {
-    type Api = Idempotent<Endpoints>;
+impl<C: Composition> Surface for Tools<C> {
+    type Api = Idempotent<C::Endpoints>;
     const BASE: &'static str = API_BASE;
     const NAME: &'static str = API_TITLE;
     const VERSION: &'static str = API_VERSION;

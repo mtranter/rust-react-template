@@ -2,5 +2,5 @@
 //! and services arrive as request data.
 
 fn main() {
-    print!("{}", server::build_service().spec());
+    print!("{}", server::spec::<server::Registered>());
 }

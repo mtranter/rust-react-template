@@ -13,7 +13,7 @@ use uuid::Uuid;
 ///
 /// Versioned as a whole: events and their contexts only gain fields, each
 /// `#[serde(default)]`, and a new event is additive on the wire; removing one,
-/// or changing the entity incompatibly, is a new topic (`users.user.v2`),
+/// or changing the entity incompatibly, is a new topic (`widgets.widget.v2`),
 /// published beside the old one until its consumers have moved.
 pub trait Topic: Send + Sync + 'static {
     /// `<module>.<root>.v<n>`.

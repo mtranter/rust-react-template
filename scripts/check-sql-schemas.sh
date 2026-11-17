@@ -4,15 +4,16 @@
 # other modules' published views it lists in its Cargo.toml:
 #
 #   [package.metadata.module]
-#   reads = ["users_api.user_v1"]
+#   reads = ["widgets_api.widget_v1"]
 #
 # A grep, not a SQL parser: it knows every module's schema name, so it flags any
 # `<schema>.<object>` text in those files, including a Rust expression that
 # happens to look like one (rename the variable).
 set -euo pipefail
+shopt -s nullglob
 cd "$(dirname "$0")/.."
 
-modules=(crates/modules/*/core crates/module-template/core)
+modules=(crates/modules/*/core crates/reference/*/core crates/module-template/core)
 
 schema_of() {
   local file="$1/src/db/migrations.rs"

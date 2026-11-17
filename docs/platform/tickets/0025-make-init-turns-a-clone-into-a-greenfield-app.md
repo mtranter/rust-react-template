@@ -1,7 +1,7 @@
 ---
 id: 0025
 name: `make init` turns a fresh clone of the template into a greenfield app with its own name, domain docs and no example features on its surface
-status: ready-for-agent
+status: done
 priority: P1
 size: L
 blocked_by: []
@@ -107,3 +107,16 @@ What `init` must **not** do is delete the example modules. They are still what a
 ## Notes
 
 - **Health stays.** The health routes are in `app-web` and the server, which `init` doesn't touch.
+
+## Resolution
+
+- **An empty app works.** `Endpoints = ()` dumps a valid spec, and the composed-app tests and MCP pass with no tools. One gap: poem-openapi drops schemas no operation names, so the client lost `ErrorBody`/`ErrorCode`, which `frontend/src/lib/` is built on. `app_web::with_error_shape` adds them back to a spec that lacks them. `server::spec::<C>()` is what `dump-spec` writes and `/api/spec.json` serves.
+- **Compositions.** `server::Composition` (an `Endpoints` type and `modules()`) is what each server function takes: `server::Registered` (in `modules.rs`) for the server, `worker`, `migrate`, `seed` and `dump-spec`, and `Tools<C>` for MCP.
+- **The reference modules move in the template, not at `init`.** They live in `crates/reference/{users,notes,note-search}` and are registered in the template. `init` only unregisters them, so every doc names one stable path in both states. The journeys moved with them, into `crates/reference/journeys` (package `reference-journeys`). Its lib is the `Reference` composition, and its tests are all four journeys. The two product-facing journeys aren't deleted: they run over the reference modules, not the app's, and go with `crates/reference/` at retirement. That also keeps everything that names the reference modules inside `crates/reference/`, as the acceptance grep requires.
+- **Workspace members** are `crates/*/*/core` and `crates/*/*/api`. Cargo reads a glob matching nothing as a path, so `crates/modules/*/*` failed while an app has no modules yet.
+- **Scripts.** `check-modules` requires a reference module to be registered everywhere or nowhere. `check-module-deps`, `check-sql-schemas` and `check-changed` treat reference modules as modules. `new-module` handles the empty `Endpoints`, `modules()`, `seed` and `TOOLS` that `init` leaves. `scripts/migrate-unregistered.sh` (used by `make prepare` and `new-module`) migrates the module template's and reference modules' schemas, so `sqlx prepare` can check their queries once `make migrate` no longer does.
+- **Fixed while proving it:** the Makefile now defaults `SQLX_OFFLINE=true`, as CI does; without a `.env`, a fresh clone's `make check` compiled `query!` against its empty database. `tsconfig.app.json` now types jest-dom's matchers for Vitest; they were only typed through tests that imported `vitest.setup.ts`.
+- **`make check-init`** (`scripts/check-init.sh`; in `make check` and the CI `init` job, not in `make check-changed`) copies the working tree to `target/init-check/app` as a one-commit clone and checks that `init` refuses without NAME/TITLE, with a bad NAME, on a dirty tree, and a second time. It then runs `init` (which ends in the app's `make check`) and checks the commit, the new files, the unchanged `docs/platform/`, the empty spec, the title, that no `make init` is left, and the reference-name grep. Last, it runs `make new-module NAME=contacts` and its tests. It uses its own `init_check` database, never the dev one.
+- **Open questions:** `KEEP=users` isn't offered (the default). The frontend reference is linked at the pinned commit on GitHub, or given as `git show <sha>:<path>` for any other remote.
+- **One module isn't a tuple.** poem-openapi has no `OpenApi` for a 1-tuple, so `new-module` registers an app's first module bare (`type Endpoints = contacts::ContactsEndpoints;`) and makes it a pair with the second.
+- `make dev` isn't automated. By hand, the initialised app migrated, seeded and served: `/health/ready` answered `ok`, and `/api/spec.json` served no paths and the error shape.

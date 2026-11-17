@@ -3,13 +3,13 @@ use app_module::Context;
 use app_web::mcp::Discovery;
 use app_web::{JwtVerifier, PublicUrl};
 use poem::{Server, listener::TcpListener};
-use server::{build_app, config::AppConfig, shutdown_signal, telemetry};
+use server::{Registered, build_app, config::AppConfig, shutdown_signal, telemetry};
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::load()?;
-    let bus = config.bus(server::uses_bus())?;
+    let bus = config.bus(server::uses_bus::<Registered>())?;
     telemetry::init(config.env);
     tracing::info!(addr = %config.bind_addr(), env = ?config.env, "starting server");
 
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         PublicUrl::new(config.public_url.clone()),
         config.jwt_issuer.clone(),
     );
-    let app = build_app(&ctx, verifier, discovery, &config.cors_origin);
+    let app = build_app::<Registered>(&ctx, verifier, discovery, &config.cors_origin);
 
     Server::new(TcpListener::bind(config.bind_addr()))
         .run_with_graceful_shutdown(app, shutdown_signal(), None)

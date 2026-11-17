@@ -2,6 +2,7 @@
 //! after `migrate`, as a one-off task inside the environment's network.
 
 use server::config::{AppConfig, Environment};
+use server::{Composition, Registered};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
-    for module in server::modules() {
+    for module in Registered::modules() {
         module.seed(pool.clone()).await?;
     }
 

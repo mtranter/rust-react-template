@@ -173,3 +173,43 @@ pub async fn render_error(err: poem::Error) -> Response {
     resp.set_status(status);
     resp
 }
+
+/// `spec`, an OpenAPI document as JSON, with [`ErrorBody`]'s schemas. poem-openapi
+/// leaves out a schema no operation names, so an app with no operations yet
+/// would generate a client without the error shape its frontend is built on.
+/// A spec that has it is returned as it is.
+pub fn with_error_shape(spec: String) -> String {
+    let mut document: serde_json::Value =
+        serde_json::from_str(&spec).expect("poem-openapi writes JSON");
+    let schemas = &mut document["components"]["schemas"];
+    if schemas.get("ErrorBody").is_some() {
+        return spec;
+    }
+    let mut registry = poem_openapi::registry::Registry::new();
+    <ErrorBody as poem_openapi::types::Type>::register(&mut registry);
+    for (name, schema) in registry.schemas {
+        schemas[name] = serde_json::to_value(schema).expect("a schema is JSON");
+    }
+    serde_json::to_string_pretty(&document).expect("a spec is JSON")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poem_openapi::{OpenApi, OpenApiService};
+
+    struct NoOperations;
+
+    #[OpenApi]
+    impl NoOperations {}
+
+    #[test]
+    fn a_spec_without_operations_still_has_the_error_shape() {
+        let spec = OpenApiService::new(NoOperations, "app", "1").spec();
+        let document: serde_json::Value = serde_json::from_str(&with_error_shape(spec)).unwrap();
+        let schemas = &document["components"]["schemas"];
+        for name in ["ErrorBody", "ErrorCode", "FieldError"] {
+            assert!(schemas.get(name).is_some(), "{name} is missing");
+        }
+    }
+}

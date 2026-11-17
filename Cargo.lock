@@ -3034,6 +3034,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "reference-journeys"
+version = "0.1.0"
+dependencies = [
+ "app-db",
+ "app-domain",
+ "app-events",
+ "app-module",
+ "app-test-db",
+ "app-web",
+ "chrono",
+ "note-search",
+ "notes",
+ "notes-api",
+ "serde_json",
+ "server",
+ "sqlx",
+ "users",
+ "users-api",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3541,7 +3562,6 @@ dependencies = [
  "app-db",
  "app-domain",
  "app-error",
- "app-events",
  "app-module",
  "app-persistence",
  "app-test-db",
@@ -3550,7 +3570,6 @@ dependencies = [
  "figment",
  "note-search",
  "notes",
- "notes-api",
  "poem",
  "poem-openapi",
  "rust-embed",
@@ -3562,7 +3581,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "users",
- "users-api",
 ]
 
 [[package]]

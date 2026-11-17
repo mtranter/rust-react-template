@@ -1,5 +1,5 @@
 // ADR 0024: features never import each other, and code outside a feature imports
-// it only through its `index.ts` (`@/features/notes`, never a file inside it).
+// it only through its `index.ts` (`@/features/<feature>`, never a file inside it).
 // Nothing in `src/` imports `screens/`, so none of the screenshot entry reaches the bundle.
 // A script because Biome 1.9's `noRestrictedImports` matches exact names only.
 import { readFileSync, readdirSync } from "node:fs";

@@ -10,6 +10,7 @@ use app_web::testing::{Refused, TestApi};
 use app_web::{JwtVerifier, PublicUrl};
 use poem::test::TestClient;
 use serde_json::Value;
+use server::{Composition, Registered};
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -18,10 +19,10 @@ use std::sync::Arc;
 /// service and database, and matching nothing, so it ends in a not-found.
 const TEMPLATE: Template = Template::new("composed_app", |pool| {
     Box::pin(async move {
-        app_db::run_migrations(&pool, &server::module_migrations())
+        app_db::run_migrations(&pool, &server::module_migrations::<Registered>())
             .await
             .expect("migrate every module");
-        for module in server::modules() {
+        for module in Registered::modules() {
             module.seed(pool.clone()).await.expect("seed every module");
         }
     })
@@ -38,21 +39,22 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
     );
     let ctx = Context::new(pool, Arc::new(SystemClock));
     // A read module serving its own copy answers once the worker has caught it up.
-    server::register_subscriptions(&ctx)
+    server::register_subscriptions::<Registered>(&ctx)
         .await
         .expect("register every module's subscriptions");
-    server::worker(&ctx)
+    server::worker::<Registered>(&ctx)
         .run_until_idle()
         .await
         .expect("the worker reaches the database");
-    let client = TestClient::new(server::build_app(
+    let client = TestClient::new(server::build_app::<Registered>(
         &ctx,
         verifier,
         Discovery::default(),
         "http://localhost",
     ));
 
-    let spec: Value = serde_json::from_str(&server::build_service().spec()).expect("spec is JSON");
+    let spec: Value =
+        serde_json::from_str(&server::build_service::<Registered>().spec()).expect("spec is JSON");
     let mut unread: BTreeSet<&str> = spec["tags"]
         .as_array()
         .expect("spec lists its tags")
@@ -132,7 +134,7 @@ async fn one_mcp_endpoint_offers_a_tool_per_operation(pool: PgPool) {
     let verifier = JwtVerifier::new("test-secret");
     let token = verifier.issue(NIL_ID, 60).expect("issue token");
     let ctx = Context::new(pool, Arc::new(SystemClock));
-    let api = TestApi::over(server::build_app(
+    let api = TestApi::over(server::build_app::<Registered>(
         &ctx,
         verifier,
         Discovery::default(),
@@ -146,7 +148,7 @@ async fn one_mcp_endpoint_offers_a_tool_per_operation(pool: PgPool) {
     expected.sort();
     assert_eq!(offered, expected);
     assert_eq!(
-        app_web::mcp::problems::<server::Tools>(),
+        app_web::mcp::problems::<server::Tools<Registered>>(),
         Vec::<String>::new()
     );
 }
@@ -184,7 +186,9 @@ fn the_instructions_say_what_every_refusal_status_means() {
         .collect();
     let untranslated: Vec<_> = statuses
         .iter()
-        .filter(|status| !server::Tools::INSTRUCTIONS.contains(&format!("`{status}`")))
+        .filter(|status| {
+            !server::Tools::<Registered>::INSTRUCTIONS.contains(&format!("`{status}`"))
+        })
         .collect();
     assert!(
         untranslated.is_empty(),
@@ -199,7 +203,7 @@ async fn with_an_issuer_mcp_clients_are_told_where_to_sign_in(pool: PgPool) {
         PublicUrl::new(Some("https://app.example".into())),
         Some("https://issuer.example".into()),
     );
-    let client = TestClient::new(server::build_app(
+    let client = TestClient::new(server::build_app::<Registered>(
         &ctx,
         JwtVerifier::new("test-secret"),
         discovery,
@@ -227,7 +231,8 @@ async fn with_an_issuer_mcp_clients_are_told_where_to_sign_in(pool: PgPool) {
 
 /// Every operation of the spec the server serves.
 fn operations() -> impl Iterator<Item = (String, String, Value)> {
-    let spec: Value = serde_json::from_str(&server::build_service().spec()).expect("spec is JSON");
+    let spec: Value =
+        serde_json::from_str(&server::build_service::<Registered>().spec()).expect("spec is JSON");
     spec["paths"]
         .as_object()
         .expect("spec lists its paths")

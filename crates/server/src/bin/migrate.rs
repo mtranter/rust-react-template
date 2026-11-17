@@ -4,6 +4,7 @@
 
 use app_domain::SystemClock;
 use app_module::Context;
+use server::Registered;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -12,10 +13,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server::telemetry::init(config.env);
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
-    app_db::run_migrations(&pool, &server::module_migrations()).await?;
+    app_db::run_migrations(&pool, &server::module_migrations::<Registered>()).await?;
     let ctx = Context::new(pool, Arc::new(SystemClock));
-    server::register_topics(&ctx).await?;
-    server::register_subscriptions(&ctx).await?;
+    server::register_topics::<Registered>(&ctx).await?;
+    server::register_subscriptions::<Registered>(&ctx).await?;
 
     tracing::info!("migrations complete");
     Ok(())

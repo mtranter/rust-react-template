@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-# Listed below, so `tests/driver.rs` is the journeys' driver rather than a target.
+# Listed below, so a journeys' `tests/driver.rs` is a module of theirs rather than a target.
 autotests = false
 
 [lib]
@@ -36,10 +36,6 @@ required-features = ["seed"]
 [[test]]
 name = "composed_app"
 path = "tests/composed_app.rs"
-
-[[test]]
-name = "journeys"
-path = "tests/journeys.rs"
 
 [dependencies]
 app-bus.workspace = true
@@ -74,13 +70,9 @@ seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
 app-test-db.workspace = true
-app-events.workspace = true
 # Enables `seed` for the composed-app tests and journeys.
 server = { path = ".", features = ["seed"] }
 app-web = { workspace = true, features = ["test"] }
-# The seeded ids the journeys name.
-users-api = { workspace = true, features = ["seed"] }
-notes-api = { workspace = true, features = ["seed"] }
 poem = { workspace = true, features = ["test"] }
 serde_json.workspace = true
 sqlx.workspace = true

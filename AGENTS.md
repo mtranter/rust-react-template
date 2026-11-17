@@ -20,10 +20,11 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 
 ### Commands
 
+- `make init NAME=<name> TITLE="<display name>"` — once, first, in a fresh clone of the template, to start an app from it: the app's name and domain docs, the reference modules registered with no server, the UI down to a shell, in one commit that also removes `make init`. It runs `make setup` and ends in `make check`. In the template, `make check-init` (part of `make check` and CI, not of `make check-changed`) runs it on a scratch copy: run it after changing what `scripts/init.sh` edits.
 - `make setup` — once after cloning; installs the repo-local Rust tools (ADR 0027), including the sccache that every checkout and worktree on the machine then compiles through (ADR 0037).
 - `make dev` — migrate, seed, generate the client, then backend `:8080`, the `worker` and Vite `:5173` (which proxies `/api`).
 - `make check` — every step CI runs, `check-backend` then `check-frontend`. **Run it before calling work done.** Run `pnpm install` in `frontend/` once first.
-- `make check-changed` — only the halves of `make check` that the branch's changes since `main` can break, and of the backend's tests only the changed crates' and their direct dependents' (a module's change runs its own tests and `server`'s journeys; a change to `common` or the lockfile runs all). `scripts/check-changed.sh` says how it decides; a path it doesn't know runs everything. It counts as `make check` for calling work done.
+- `make check-changed` — only the halves of `make check` that the branch's changes since `main` can break, and of the backend's tests only the changed crates' and their direct dependents' (a module's change runs its own tests and the journeys of what composes it; a change to `common` or the lockfile runs all). `scripts/check-changed.sh` says how it decides; a path it doesn't know runs everything. It counts as `make check` for calling work done.
 - `make generate` — dump spec → `frontend/openapi.json` → `frontend/src/api/`; `make spec` regenerates only the snapshot (DB-free).
 - `make build`, and tests: `make test` (both), `make test-backend`, `make test-frontend`. Single tests and the rest are in each area's `AGENTS.md`; `make help` lists every target.
 

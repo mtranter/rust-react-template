@@ -5,10 +5,11 @@
 #
 # The backend lane tests only the crates a change can break: each changed
 # crate and the workspace crates depending on it directly. Modules' tests stub
-# what's across their boundaries, and `server` depends on every registered
-# module, so a module's change runs its own tests and the composed app's
-# journeys. A change to what every crate shares (common, the lockfile, the
-# .sqlx cache) tests the whole workspace.
+# what's across their boundaries, and the crates composing modules depend on
+# them (`server` on every registered module, `reference-journeys` on the
+# reference modules), so a module's change runs its own tests and the composed
+# app's. A change to what every crate shares (common, the lockfile, the .sqlx
+# cache) tests the whole workspace.
 set -euo pipefail
 
 base=${1:-main}
@@ -27,11 +28,12 @@ while IFS= read -r path; do
     # check-backend's check-spec proves it matches the backend that made it.
     frontend/openapi.json) backend=true frontend=true ;;
     frontend/*) frontend=true ;;
-    crates/modules/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
+    crates/reference/journeys/*) backend=true crates+=(crates/reference/journeys) ;;
+    crates/modules/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
     crates/module-template/*/*) backend=true crates+=("$(cut -d/ -f1-3 <<<"$path")") ;;
     crates/server/*) backend=true crates+=(crates/server) ;;
     crates/* | .sqlx/* | Cargo.toml | Cargo.lock | deny.toml | rust-toolchain.toml | .cargo/* | \
-      docker-compose.yml | scripts/check-*.sh | scripts/migrate-schema.sh | scripts/new-module.sh | \
+      docker-compose.yml | scripts/check-*.sh | scripts/migrate-*.sh | scripts/new-module.sh | \
       scripts/rustc-wrapper.sh)
       backend=true all_tests=true ;;
     *) backend=true frontend=true all_tests=true ;;
@@ -50,7 +52,9 @@ if ! $all_tests && [ ${#crates[@]} -gt 0 ]; then
     if [ ! -f "$crate/Cargo.toml" ]; then all_tests=true; break; fi
     package=$(package_of "$crate")
     packages+=("$package")
-    for manifest in crates/modules/*/*/Cargo.toml crates/module-template/*/Cargo.toml crates/server/Cargo.toml; do
+    for manifest in crates/modules/*/*/Cargo.toml crates/reference/*/*/Cargo.toml crates/reference/journeys/Cargo.toml \
+      crates/module-template/*/Cargo.toml crates/server/Cargo.toml; do
+      [ -f "$manifest" ] || continue
       grep -Eq "^$package(\.workspace| *=)" "$manifest" && packages+=("$(package_of "$(dirname "$manifest")")")
     done
   done < <(printf '%s\n' "${crates[@]}" | sort -u)

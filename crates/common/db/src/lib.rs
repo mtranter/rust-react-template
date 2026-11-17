@@ -1,4 +1,4 @@
-//! Repositories use **schema-qualified** table names (`FROM users.account`) so
+//! Repositories use **schema-qualified** table names (`FROM widgets.widget`) so
 //! compile-time `query!` checking works against the default search path while
 //! each module keeps its own schema.
 

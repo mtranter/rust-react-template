@@ -1,11 +1,11 @@
-use crate::{API_BASE, Tools, build_service, modules};
+use crate::{API_BASE, Composition, Tools, build_service, spec};
 use app_db::Pool;
 use app_module::Context;
 use app_web::mcp::{self, Discovery};
 use app_web::{JwtVerifier, RequestIdMiddleware, health_routes, render_error};
 use poem::{
     Endpoint, EndpointExt, IntoResponse, Response, Route,
-    endpoint::BoxEndpoint,
+    endpoint::{BoxEndpoint, make_sync},
     get, handler,
     http::StatusCode,
     middleware::{Cors, Tracing},
@@ -15,23 +15,28 @@ use poem_openapi::OpenApiService;
 use serde_json::json;
 use std::sync::Arc;
 
-pub fn build_app(
+pub fn build_app<C: Composition>(
     ctx: &Context,
     verifier: JwtVerifier,
     discovery: Discovery,
     cors_origin: &str,
-) -> impl Endpoint + use<> {
-    let service = build_service();
+) -> impl Endpoint + use<C> {
+    let service = build_service::<C>();
     let ui = service.swagger_ui();
-    let spec = service.spec_endpoint();
-    let api = Arc::new(api(ctx, service, verifier.clone()));
+    let spec = spec::<C>();
+    let api = Arc::new(api::<C>(ctx, service, verifier.clone()));
 
     let app = Route::new()
         .nest_no_strip(API_BASE, api.clone())
-        .at(format!("{API_BASE}/spec.json"), spec)
+        .at(
+            format!("{API_BASE}/spec.json"),
+            get(make_sync(move |_| {
+                spec.clone().with_content_type("application/json")
+            })),
+        )
         .nest("/docs", ui)
         .nest("/health", health_routes(get(readiness)))
-        .at(mcp::PATH, mcp::endpoint::<Tools>(api, discovery.clone()))
+        .at(mcp::PATH, mcp::endpoint::<Tools<C>>(api, discovery.clone()))
         .at(mcp::METADATA_PATH, discovery.metadata())
         .at(
             format!("{}{}", mcp::METADATA_PATH, mcp::PATH),
@@ -56,9 +61,9 @@ pub fn build_app(
 /// in-process: with its error rendering, idempotency and each module's data.
 /// Idempotency is inside the error rendering's catch, so its records keep the
 /// answer a client got.
-fn api(
+fn api<C: Composition>(
     ctx: &Context,
-    service: OpenApiService<app_web::Idempotent<crate::Endpoints>, ()>,
+    service: OpenApiService<app_web::Idempotent<C::Endpoints>, ()>,
     verifier: JwtVerifier,
 ) -> BoxEndpoint<'static> {
     let api = Route::new()
@@ -66,7 +71,7 @@ fn api(
         .catch_all_error(render_error)
         .with(ctx.idempotency())
         .boxed();
-    modules()
+    C::modules()
         .iter()
         .fold(api, |api, module| module.provide(ctx, api))
         .data(verifier)

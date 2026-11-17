@@ -1,6 +1,6 @@
 //! The only place in the journeys that knows the transport (ADR 0029). Unlike a
-//! module's driver it stubs nothing: it boots the composed app as `server` does,
-//! over every registered module, with the composed worker and real JWT auth.
+//! module's driver it stubs nothing: it boots the reference modules' composed
+//! app as `server` does, with the composed worker and real JWT auth.
 
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, seed_time};
@@ -11,7 +11,9 @@ use app_web::mcp::Discovery;
 use app_web::testing::{Call, McpSession, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
 use chrono::{DateTime, TimeDelta, Utc};
+use reference_journeys::Reference;
 use serde_json::json;
+use server::Composition;
 use sqlx::PgPool;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -94,16 +96,16 @@ impl App {
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let ctx = Context::new(pool, clock.clone());
-        server::register_topics(&ctx)
+        server::register_topics::<Reference>(&ctx)
             .await
             .expect("register every module's topics");
-        server::register_subscriptions(&ctx)
+        server::register_subscriptions::<Reference>(&ctx)
             .await
             .expect("register every module's subscriptions");
-        let worker = server::worker(&ctx);
+        let worker = server::worker::<Reference>(&ctx);
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
-        let api = TestApi::over(server::build_app(
+        let api = TestApi::over(server::build_app::<Reference>(
             &ctx,
             verifier.clone(),
             Discovery::default(),
@@ -311,10 +313,10 @@ impl Session<'_> {
 /// and seeded, as `migrate` and `seed` leave it.
 pub const TEMPLATE: Template = Template::new("journeys", |pool| {
     Box::pin(async move {
-        app_db::run_migrations(&pool, &server::module_migrations())
+        app_db::run_migrations(&pool, &server::module_migrations::<Reference>())
             .await
             .expect("migrate every module");
-        for module in server::modules() {
+        for module in Reference::modules() {
             module.seed(pool.clone()).await.expect("seed every module");
         }
         // As in an environment seeded before this build: its subscriptions

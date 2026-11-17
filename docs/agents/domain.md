@@ -8,7 +8,7 @@ How the engineering skills should consume this repo's domain documentation when 
 - **`GLOSSARY.md`** at the repo root, if there is one: the business domain's vocabulary.
 - **`docs/platform/adr/`**, and **`docs/adr/`** if there is one: read the ADRs that touch the area you're about to work in. Each states one decision, why, what was rejected and what follows from it. A later ADR may supersede part of an earlier one; it says so in its first lines.
 
-The rules an agent must follow live in `CLAUDE.md`/`AGENTS.md`, and the reference code (`notes`, `users`, `note-search`, `frontend/src/features/notes`) shows them applied. If the docs and the code disagree, the code wins: fix the doc in the same change.
+The rules an agent must follow live in `CLAUDE.md`/`AGENTS.md`, and the reference code (`crates/reference/`, and the feature `frontend/AGENTS.md` names) shows them applied. If the docs and the code disagree, the code wins: fix the doc in the same change.
 
 ## File structure
 

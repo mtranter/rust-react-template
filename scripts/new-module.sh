@@ -10,6 +10,7 @@
 # the new module's `query!`s compile offline only once `.sqlx` knows them, and
 # `sqlx prepare` checks them against its migrated schema.
 set -euo pipefail
+shopt -s nullglob
 cd "$(dirname "$0")/.."
 
 die() {
@@ -25,7 +26,9 @@ for word in "$name" "$entity"; do
 done
 [ "$entity" != "$name" ] || die "the entity must differ from the module name: pass it, e.g. \`$name $name-item\`"
 [ "$name" != widgets ] || die "\`widgets\` is the module template's own name: pick another"
-[ ! -e "crates/modules/$name" ] || die "crates/modules/$name already exists"
+for taken in "crates/modules/$name" "crates/reference/$name"; do
+  [ ! -e "$taken" ] || die "$taken already exists"
+done
 ! grep -qE "^$name = " Cargo.toml || die "the workspace already has a crate named \`$name\`"
 
 DATABASE_URL=${DATABASE_URL:-postgres://app:app@localhost:5432/app}
@@ -38,8 +41,10 @@ entity_upper=$(tr '[:lower:]' '[:upper:]' <<<"$entity_ident")
 plural_type=$(pascal "$name")
 entity_type=$(pascal "$entity")
 
-existing=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/modules/*/core/Cargo.toml | paste -sd '|' -)
-last=$(sed -nE 's/^pub const MODULE: u32 = ([0-9]+);/\1/p' crates/modules/*/*/src/seed.rs | sort -n | tail -1)
+cores=(crates/modules/*/core/Cargo.toml crates/reference/*/core/Cargo.toml)
+existing=$( ((${#cores[@]})) && sed -nE 's/^name = "([^"]+)"/\1/p' "${cores[@]}" | paste -sd '|' - || true)
+seeds=(crates/modules/*/*/src/seed.rs crates/reference/*/*/src/seed.rs)
+last=$( ((${#seeds[@]})) && sed -nE 's/^pub const MODULE: u32 = ([0-9]+);/\1/p' "${seeds[@]}" | sort -n | tail -1 || true)
 number=$((${last:-0} + 1))
 
 # The `.sqlx` refresh below compiles every crate against the dev database, so
@@ -68,32 +73,41 @@ while IFS= read -r -d '' source; do
     ' "$source" >"$root/$path"
 done < <(find "$template" -type f -print0)
 
+# Adds `line` after the last line of `file` matching `pattern`, else after the
+# first matching `fallback`.
 after_last() {
-  local file=$1 pattern=$2 line=$3 at
-  at=$(grep -nE "$pattern" "$file" | tail -1 | cut -d: -f1)
+  local file=$1 pattern=$2 line=$3 fallback=${4:-} at
+  at=$(grep -nE "$pattern" "$file" | tail -1 | cut -d: -f1 || true)
+  [ -n "$at" ] || [ -z "$fallback" ] || at=$(grep -nE "$fallback" "$file" | head -1 | cut -d: -f1 || true)
   [ -n "$at" ] || die "$file: nothing matches /$pattern/ to add \`$line\` after"
   awk -v at="$at" -v line="$line" '{ print } NR == at { print line }' "$file" >"$file.new"
   mv "$file.new" "$file"
 }
 
-after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/modules/' "$name-api = { path = \"$root/api\" }"
-after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/modules/' "$name = { path = \"$dir\" }"
-after_last crates/server/Cargo.toml "^($existing)\.workspace = true" "$name.workspace = true"
-NAME=$name perl -i -pe 's{^(seed = \[.*)\]}{$1, "$ENV{NAME}/seed"]}' crates/server/Cargo.toml
+after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|reference)/' "$name-api = { path = \"$root/api\" }"
+after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|reference)/' "$name = { path = \"$dir\" }"
+after_last crates/server/Cargo.toml "^(${existing:-$name})\.workspace = true" "$name.workspace = true" '^\[dependencies\]'
+NAME=$name perl -i -pe 's{^seed = \[\]}{seed = ["$ENV{NAME}/seed"]} or s{^(seed = \[.*)\]}{$1, "$ENV{NAME}/seed"]}' crates/server/Cargo.toml
 NAME=$name perl -i -pe 's{(\{ crate = "(?:sqlx|poem)", wrappers = \[[^\]]*)\]}{$1, "$ENV{NAME}"]}g' deny.toml
+# Each edit handles an empty list too, as `make init` leaves them. poem-openapi
+# has no `OpenApi` for a 1-tuple, so one module's `Endpoints` aren't in one.
 ENDPOINTS=$ident::${plural_type}Endpoints MODULE=$ident::module\(\) perl -0 -i -pe '
-  s{(pub type Endpoints = \(.*?)(,?\s*\);)}{$1, $ENV{ENDPOINTS}$2}s;
-  s{(pub fn modules\(\) -> Vec<Module> \{\s*vec!\[.*?)(,?\s*\]\s*\n\})}{$1, $ENV{MODULE}$2}s;
+  s{(type Endpoints = )\(\);}{$1$ENV{ENDPOINTS};}
+    or s{(type Endpoints = )([\w:]+);}{$1($2, $ENV{ENDPOINTS});}
+    or s{(type Endpoints = \(.*?)(,?\s*\);)}{$1, $ENV{ENDPOINTS}$2}s;
+  s{(fn modules\(\) -> Vec<Module> \{\s*vec!\[)\]}{$1$ENV{MODULE}]}
+    or s{(fn modules\(\) -> Vec<Module> \{\s*vec!\[.*?)(,?\s*\]\s*\n\s*\})}{$1, $ENV{MODULE}$2}s;
 ' crates/server/src/modules.rs
 # Its operations are tools at once; the composed-app test lists every tool.
 TOOLS=$(sed -nE 's/.*operation_id = "([^"]+)".*/    "\1",/p' "$dir/src/web/handlers.rs") perl -0 -i -pe '
-  s{(const TOOLS: &\[&str\] = &\[.*?\n)(\];)}{$1$ENV{TOOLS}\n$2}s;
+  s{(const TOOLS: &\[&str\] = &\[)\];}{$1\n$ENV{TOOLS}\n];}
+    or s{(const TOOLS: &\[&str\] = &\[.*?\n)(\];)}{$1$ENV{TOOLS}\n$2}s;
 ' crates/server/tests/composed_app.rs
 cargo fmt --all
 
 # `sqlx prepare` checks every crate's queries against the dev database, the
-# template's and the new module's included.
-./scripts/migrate-schema.sh crates/module-template/core widgets
+# template's, the reference modules' and the new module's included.
+./scripts/migrate-unregistered.sh
 ./scripts/migrate-schema.sh "$dir" "$ident"
 SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 
@@ -111,5 +125,5 @@ crates/server/tests/composed_app.rs.
 Then make it yours: reshape the \`$entity_type\` aggregate, keeping its migration, seed and
 tests in step, and run \`make prepare\` after changing any \`query!\`. To use another module,
 depend on its \`-api\` crate and pass the capability to \`$ident::module(..)\` in
-crates/server/src/modules.rs (see \`notes::module(users::directory)\`).
+crates/server/src/modules.rs, as crates/reference/journeys/src/lib.rs passes one.
 EOF

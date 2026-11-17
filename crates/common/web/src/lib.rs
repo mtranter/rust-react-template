@@ -13,7 +13,9 @@ pub mod testing;
 
 pub use auth::{Claims, JwtAuth, JwtVerifier};
 pub use concurrency::{WithETag, if_match_version};
-pub use error::{ApiError, ApiResult, ErrorBody, ErrorCode, FieldErrorBody, render_error};
+pub use error::{
+    ApiError, ApiResult, ErrorBody, ErrorCode, FieldErrorBody, render_error, with_error_shape,
+};
 pub use health::health_routes;
 pub use idempotency::{IDEMPOTENCY_KEY, Idempotency, IdempotencyEndpoint, Idempotent};
 pub use listing::{ListResult, SortParam, paged, sorts};

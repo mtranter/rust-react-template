@@ -115,3 +115,37 @@ jobs:
         run: cd frontend && pnpm run test
       - name: build
         run: cd frontend && pnpm run build
+
+  # --- template only: `make init` removes this job ---
+  # `make init` on a scratch copy, as a factory runs it on a fresh clone: it
+  # ends in `make check` there, and `check-init` then checks what that can't.
+  init:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target/init-check/target"
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-run-bin
+        run: cargo binstall -y cargo-run-bin
+      - name: Cache repo-local tools (.bin)
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: cargo-bin-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: start Postgres (docker compose)
+        run: docker compose up -d --wait postgres
+      - name: init a scratch copy, and check what it made
+        run: make check-init
