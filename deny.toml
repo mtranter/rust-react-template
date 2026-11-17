@@ -57,6 +57,10 @@ ignore = [
     # testcontainers release off it yet. Tests only pull and run a Valkey image;
     # nothing builds or unpacks a tar from outside.
     "RUSTSEC-2026-0440",
+    # chrono (direct, and sqlx's `chrono` feature): unmaintained, with no successor
+    # release; a maintenance warning, not a vulnerability. Moving to `time` or `jiff`
+    # is platform ticket 0030; revisit by 2027-03-31.
+    "RUSTSEC-2026-0543",
 ]
 
 [sources]
