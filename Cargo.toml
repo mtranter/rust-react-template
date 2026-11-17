@@ -35,6 +35,7 @@ app-test-support = { path = "crates/common/test-support" }
 app-test-db = { path = "crates/common/test-db" }
 app-test-db-macros = { path = "crates/common/test-db-macros" }
 app-module = { path = "crates/common/module" }
+app-authz = { path = "crates/common/authz" }
 server = { path = "crates/server" }
 users-api = { path = "crates/reference/users/api" }
 users = { path = "crates/reference/users/core" }
@@ -76,6 +77,13 @@ testcontainers = "0.28"
 # A throwaway CA and certificate for a test's Valkey reached over TLS.
 rcgen = "0.14"
 thiserror = "2"
+# Policy files (ADR 0040): serde_yaml is archived, and saphyr's marked tree
+# gives every node its line, which each refusal names.
+saphyr = "0.3"
+# The rule set in force, swapped whole when grants change (ADR 0040).
+arc-swap = "1"
+# A resource's closed `Action` enum and its names (`app_authz::Action`).
+strum = { version = "0.28", features = ["derive"] }
 figment = { version = "0.10", features = ["env", "toml"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }

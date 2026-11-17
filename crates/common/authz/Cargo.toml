@@ -1,0 +1,14 @@
+[package]
+name = "app-authz"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Pure (ADR 0040): no poem, no sqlx; `deny.toml` and `make check-deps` keep it so.
+[dependencies]
+arc-swap.workspace = true
+saphyr.workspace = true
+strum.workspace = true
+thiserror.workspace = true
