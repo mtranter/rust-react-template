@@ -140,7 +140,6 @@ impl Policies {
         gate_kind(&self.module)
     }
 
-    /// Each default grant, one per action.
     pub fn default_grants(&self) -> &[Grant] {
         &self.default_grants
     }
@@ -423,6 +422,12 @@ impl PoliciesBuilder {
                 return Err(file.refuse(*line, format!("derived roles `{name}` are not loaded")));
             };
             for d in &set.definitions {
+                if imported.iter().any(|(_, i)| i.name.0 == d.name.0) {
+                    return Err(file.refuse(
+                        *line,
+                        format!("derived role `{}` is imported twice", d.name.0),
+                    ));
+                }
                 if let Some(c) = &d.condition {
                     c.check_attrs(set_file, given.kind, given.attrs)?;
                 }

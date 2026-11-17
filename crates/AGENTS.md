@@ -100,7 +100,7 @@ Take `ListQuery<XSortKey>` and return `Listed<T>`; build the SQL with `QueryBuil
 
 ### Common crates (ADR 0003)
 
-Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only). Never merge them, and never add poem/sqlx to a pure crate (`make check-deps` fails a pure crate depending on any other workspace crate). Declare ids with `app_domain::uuid_newtype!`. Config and tracing live in `crates/server`, not `common`.
+Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only). Never merge them, and never add poem/sqlx to a pure crate (`make check-deps` fails a pure crate depending on any non-pure workspace crate). Declare ids with `app_domain::uuid_newtype!`. Config and tracing live in `crates/server`, not `common`.
 
 ### API surface
 

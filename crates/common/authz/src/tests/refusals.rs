@@ -103,6 +103,14 @@ fn each_refusal_names_the_file_and_line() {
             "derived roles `other` are not loaded",
         ),
         (
+            "a derived role imported twice",
+            In::Note,
+            "[notes_scopes]",
+            "[notes_scopes, notes_scopes]",
+            Some(5),
+            "derived role `author` is imported twice",
+        ),
+        (
             "an unknown scope",
             In::Defaults,
             "scope: author",

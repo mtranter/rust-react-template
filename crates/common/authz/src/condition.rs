@@ -44,7 +44,6 @@ pub enum Filter {
     In(String, Vec<Value>),
     All(Vec<Filter>),
     Any(Vec<Filter>),
-    /// None of them holds.
     None(Vec<Filter>),
 }
 
