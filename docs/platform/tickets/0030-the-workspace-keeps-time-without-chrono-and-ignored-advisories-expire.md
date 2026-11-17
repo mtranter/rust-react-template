@@ -1,12 +1,12 @@
 ---
 id: 0030
-name: The workspace keeps time without `chrono`, and every ignored advisory carries an expiry
+name: "The workspace keeps time without `chrono`, and every ignored advisory carries an expiry"
 status: needs-triage
 priority: P2
 size: M
 blocked_by: []
 blocks: []
-source: `make check` failing on RUSTSEC-2026-0543, 2026-11-17
+source: "`make check` failing on RUSTSEC-2026-0543, 2026-11-17"
 ---
 
 # The workspace keeps time without `chrono`, and every ignored advisory carries an expiry

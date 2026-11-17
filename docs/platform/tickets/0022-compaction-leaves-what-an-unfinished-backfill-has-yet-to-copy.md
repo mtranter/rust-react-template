@@ -1,12 +1,12 @@
 ---
 id: 0022
-name: Compaction leaves an event an unfinished backfill has yet to copy, so a projection is never served without a key its topic held at registration
+name: "Compaction leaves an event an unfinished backfill has yet to copy, so a projection is never served without a key its topic held at registration"
 status: done
 priority: P2
 size: S
 blocked_by: []
 blocks: []
-source: PR 3 review (Copilot, on `caught_up`: compaction removing an uncopied registration-time event)
+source: "PR 3 review (Copilot, on `caught_up`: compaction removing an uncopied registration-time event)"
 ---
 
 # Compaction leaves an event an unfinished backfill has yet to copy, so a projection is never served without a key its topic held at registration

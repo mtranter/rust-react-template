@@ -1,12 +1,12 @@
 ---
 id: 0023
-name: Retiring a subscription takes its locks in the order registering one does, so the two can't deadlock
+name: "Retiring a subscription takes its locks in the order registering one does, so the two can't deadlock"
 status: done
 priority: P2
 size: S
 blocked_by: []
 blocks: []
-source: PR 3 review (Copilot, on migration 0008: concurrent retirement and `earliest` registration can deadlock)
+source: "PR 3 review (Copilot, on migration 0008: concurrent retirement and `earliest` registration can deadlock)"
 ---
 
 # Retiring a subscription takes its locks in the order registering one does, so the two can't deadlock

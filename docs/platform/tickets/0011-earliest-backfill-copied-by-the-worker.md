@@ -1,7 +1,7 @@
 ---
 id: 0011
 name: An `earliest` subscription's backfill is copied by the worker in chunks, not by `migrate` in one transaction
-status: in-progress
+status: to-check
 priority: P2
 size: M
 blocked_by: []

@@ -1,12 +1,12 @@
 ---
 id: 0025
-name: `make init` turns a fresh clone of the template into a greenfield app with its own name, domain docs and no example features on its surface
+name: "`make init` turns a fresh clone of the template into a greenfield app with its own name, domain docs and no example features on its surface"
 status: done
 priority: P1
 size: L
 blocked_by: []
 blocks: []
-source: conversation, 2026-11-16 (the template as the base of a software factory's business apps)
+source: "conversation, 2026-11-16 (the template as the base of a software factory's business apps)"
 ---
 
 # `make init` turns a fresh clone of the template into a greenfield app with its own name, domain docs and no example features on its surface

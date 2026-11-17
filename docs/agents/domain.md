@@ -24,6 +24,7 @@ Two vocabularies, each with its own glossary and ADR series. The platform's is h
 │   │   ├── adr/
 │   │   │   ├── 0001-each-module-is-its-own-crate.md
 │   │   │   └── …
+|   |   ├── specs/           # the platform's specs
 │   │   └── tickets/         # the platform's tickets
 │   ├── agents/
 │   └── tickets/             # the business domain's tickets, numbered from 0001

@@ -1,7 +1,7 @@
 ---
 id: 0012
 name: Read modules keep their own copy of other modules' roots, fed from topics from the earliest
-status: in-progress
+status: to-check
 priority: P2
 size: L
 blocked_by: [0011]

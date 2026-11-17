@@ -1,12 +1,12 @@
 ---
 id: 0014
-name: `Generations` never switches back to an older generation once a newer one is served
+name: "`Generations` never switches back to an older generation once a newer one is served"
 status: done
 priority: P2
 size: S
 blocked_by: []
 blocks: [0017]
-source: PR 3 review (Copilot, "Prevent cached generation updates from moving backwards"), confirmed by reading 2026-11-15
+source: "PR 3 review (Copilot, \"Prevent cached generation updates from moving backwards\"), confirmed by reading 2026-11-15"
 ---
 
 # `Generations` never switches back to an older generation once a newer one is served
