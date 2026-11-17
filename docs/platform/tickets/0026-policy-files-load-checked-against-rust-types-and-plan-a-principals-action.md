@@ -1,7 +1,7 @@
 ---
 id: 0026
 name: Policy files and grants compile, checked against their resources' Rust types, into one swappable rule set that plans a principal's action as allowed, denied or a filter
-status: in-review
+status: needs-info
 priority: P1
 size: L
 blocked_by: []
@@ -85,3 +85,7 @@ Tickets 0027–0029 put it to use; nothing calls it yet when this lands.
 ## Notes
 
 - The glossary gains **Principal**, **Policy**, **Grant**, **Scope**, **Gate** and **Plan** in ticket 0027, once they're used.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: gh pr edit 4 --repo mtranter/rust-react-template --body-file - failed: GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. (repository.pullRequest.projectCards)
