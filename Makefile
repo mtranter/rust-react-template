@@ -13,6 +13,10 @@ endif
 DATABASE_URL ?= postgres://app:app@localhost:5432/app
 export DATABASE_URL
 
+# A recipe's git output on a terminal would open the pager, which with a
+# `LESS` lacking `-F` waits for a keypress even on empty output.
+export GIT_PAGER := cat
+
 # `query!` compiles against the checked-in .sqlx cache, as in CI, so a fresh
 # clone's empty database doesn't fail the build; `prepare` and `new-module`
 # turn it off to refresh the cache.
