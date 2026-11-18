@@ -4,7 +4,7 @@ name: "Roles are records in `access` that admins list, create and delete, and gr
 status: ready-for-agent
 spec: docs/platform/specs/0001-admins-assign-roles-to-users-within-the-app.md
 blocked_by: [docs/platform/tickets/0029-admins-grant-and-revoke-roles-actions-at-runtime-taking-effect-within-seconds-without-a-deploy.md]
-blocks: []
+blocks: [docs/platform/tickets/0032-a-principal-s-roles-are-user-plus-its-subject-s-as.md]
 ---
 
 # Roles are records in `access` that admins list, create and delete, and grants must name one
