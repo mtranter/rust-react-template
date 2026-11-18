@@ -210,7 +210,7 @@
         "tags": [
           "Access"
         ],
-        "summary": "Grant a role an action on a resource, within a scope (`any` unless given), taking effect\non every server instance within 5 seconds. The resource, action and scope must be in the\ncatalog (`get_access_catalog`), else `400` names the field at fault; a grant equal to an\nexisting one is refused with `409`. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "summary": "Grant a role an action on a resource, within a scope (`any` unless given), taking effect\non every server instance within 5 seconds. The role must exist (`list_roles`), and the\nresource, action and scope must be in the catalog (`get_access_catalog`), else `400`\nnames the field at fault; a grant equal to an\nexisting one is refused with `409`. `403` unless the caller is an `admin`, or holds a role granted it.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -629,6 +629,467 @@
           }
         ],
         "operationId": "get_access_catalog"
+      }
+    },
+    "/access/roles": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "List the roles grants can be made to, each with its description and whether it is built\nin (`admin` and `user`, which can't be deleted). Paginated, ordered by name unless `sort`\nsays otherwise (`name` or `createdAt`, `-` prefix for descending). `403` unless the caller\nis an `admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RoleSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_RoleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "list_roles"
+      },
+      "post": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Create a role, so grants can be made to it. Its name is its id and can't be changed\nlater; a name a role already has is refused with `409`, and an empty one with `400`\nnaming `name`. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "create_role"
+      }
+    },
+    "/access/roles/{name}": {
+      "delete": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Delete a role. Requires `If-Match` with the version listed; a stale value is refused with\n`412`. A built-in role (`admin`, `user`), or one a grant still names, is refused with\n`409`: revoke its grants (`list_grants` filtered by `role`, then `revoke_grant`) first.\n`404` when no role has that name. `403` unless the caller is an `admin`, or holds a role\ngranted it.",
+        "parameters": [
+          {
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "delete_role"
       }
     },
     "/users": {
@@ -3022,7 +3483,7 @@
       "GrantRequest": {
         "type": "object",
         "title": "GrantRequest",
-        "description": "A role granted an action on a resource, within a scope. Each must be in the catalog\n(`get_access_catalog`); the role is any the identity provider puts in tokens.",
+        "description": "A role granted an action on a resource, within a scope. The role must exist (`list_roles`);\nthe resource, action and scope must be in the catalog (`get_access_catalog`).",
         "required": [
           "role",
           "resource",
@@ -3211,6 +3672,36 @@
           }
         }
       },
+      "ListResult_RoleResponse": {
+        "type": "object",
+        "title": "ListResult_RoleResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ListResult_UserResponse": {
         "type": "object",
         "title": "ListResult_UserResponse",
@@ -3330,6 +3821,67 @@
           "-title",
           "authorName",
           "-authorName",
+          "createdAt",
+          "-createdAt"
+        ]
+      },
+      "RoleRequest": {
+        "type": "object",
+        "title": "RoleRequest",
+        "description": "A role to create: its name is its id, which grants name and which can't be changed.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the role is for, for the admins granting it.",
+            "default": ""
+          }
+        }
+      },
+      "RoleResponse": {
+        "type": "object",
+        "title": "RoleResponse",
+        "required": [
+          "name",
+          "description",
+          "builtIn",
+          "createdAt",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "builtIn": {
+            "type": "boolean",
+            "description": "`admin` and `user`, which can't be deleted."
+          },
+          "createdBy": {
+            "type": "string",
+            "description": "Who created it; absent for a built-in role, or one created for a module's default grants."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Echo it back in `If-Match` to delete this role."
+          }
+        }
+      },
+      "RoleSort": {
+        "type": "string",
+        "enum": [
+          "name",
+          "-name",
           "createdAt",
           "-createdAt"
         ]

@@ -1,5 +1,5 @@
 use super::{ListQuery, Listed, Tx, Version, Versioned};
-use crate::domain::{Grant, GrantId};
+use crate::domain::{Grant, GrantId, Role};
 use app_authz::Rows;
 use app_error::AppResult;
 use chrono::{DateTime, Utc};
@@ -41,8 +41,10 @@ pub trait GrantRepository: Send + Sync {
     /// Only if the stored version is `expected`, else `PreconditionFailed`.
     async fn delete(&self, tx: &mut Tx, id: GrantId, expected: Version) -> AppResult<()>;
 
+    /// The revision of grants and roles alike: a change to either bumps it.
     async fn revision(&self) -> AppResult<i64>;
-    /// Holds the revision's row until `tx` ends, so changes to the grants commit one at a time.
+    /// Holds the revision's row until `tx` ends, so changes to grants and roles commit one at a
+    /// time.
     async fn bump_revision(&self, tx: &mut Tx) -> AppResult<i64>;
 
     /// The keys of the default grants applied so far: the module whose they are, and the grant.
@@ -54,4 +56,29 @@ pub trait GrantRepository: Send + Sync {
         rule: &app_authz::Grant,
         at: DateTime<Utc>,
     ) -> AppResult<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleSortKey {
+    Name,
+    CreatedAt,
+}
+
+/// Roles are created and deleted, never changed. A role created again under a deleted one's
+/// name continues from the version its deletion reached, since its events are keyed by name.
+#[async_trait::async_trait]
+pub trait RoleRepository: Send + Sync {
+    async fn get(&self, name: &str) -> AppResult<Option<Versioned<Role>>>;
+    /// Ordered by name unless sorted otherwise.
+    async fn list(
+        &self,
+        query: &ListQuery<RoleSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Versioned<Role>>>;
+    /// `Conflict` when a role of that name exists.
+    async fn insert(&self, tx: &mut Tx, role: &Role) -> AppResult<Version>;
+    async fn exists(&self, tx: &mut Tx, name: &str) -> AppResult<bool>;
+    /// Only if the stored version is `expected`, else `PreconditionFailed`; `Conflict` while a
+    /// grant names the role.
+    async fn delete(&self, tx: &mut Tx, name: &str, expected: Version) -> AppResult<()>;
 }

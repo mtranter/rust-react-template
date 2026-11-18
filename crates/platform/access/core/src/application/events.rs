@@ -1,6 +1,6 @@
 use super::{PendingEvent, Version};
-use crate::domain::{Grant, GrantEvent, Scope};
-use access_api::events::v1::{self, GrantTopic};
+use crate::domain::{Grant, GrantEvent, Role, RoleEvent, Scope};
+use access_api::events::v1::{self, GrantTopic, RoleTopic};
 
 /// Where the domain's events meet the published contract.
 pub(crate) fn pending(grant: &Grant, version: Version, event: GrantEvent) -> PendingEvent {
@@ -23,6 +23,22 @@ fn state(grant: &Grant) -> v1::Grant {
         granted_by: grant.granted_by().subject().map(str::to_owned),
         granted_at: grant.granted_at(),
     }
+}
+
+pub(crate) fn role_pending(role: &Role, version: Version, event: RoleEvent) -> PendingEvent {
+    let event = match event {
+        RoleEvent::Created => v1::RoleEvent::Created,
+        RoleEvent::Deleted { by } => v1::RoleEvent::Deleted(v1::DeletedBy {
+            deleted_by: by.subject().map(str::to_owned),
+        }),
+    };
+    let state = v1::Role {
+        name: role.name().to_owned(),
+        description: role.description().to_owned(),
+        created_by: role.created_by().subject().map(str::to_owned),
+        created_at: role.created_at(),
+    };
+    PendingEvent::on::<RoleTopic>(version, &state, event)
 }
 
 /// `any`, or the scope's name: a scope can't be named `any` (ADR 0040).

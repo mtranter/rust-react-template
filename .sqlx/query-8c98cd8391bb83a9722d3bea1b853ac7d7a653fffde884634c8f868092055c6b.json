@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO access.deleted_role (name, version) VALUES ($1, $2)\n            ON CONFLICT (name) DO UPDATE SET version = EXCLUDED.version\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8c98cd8391bb83a9722d3bea1b853ac7d7a653fffde884634c8f868092055c6b"
+}

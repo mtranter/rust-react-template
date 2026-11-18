@@ -5,6 +5,7 @@ use sqlx::PgPool;
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_grant_takes_effect_at_the_instances_next_poll(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
 
     let granted = access
         .grant("support", "gadget", "scrap", "any")
@@ -31,6 +32,7 @@ async fn a_grant_takes_effect_at_the_instances_next_poll(pool: PgPool) {
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_grant_is_announced_with_who_made_it(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
 
     let granted = access
         .grant("support", "gadget", "make", "maker")
@@ -49,6 +51,7 @@ async fn a_grant_is_announced_with_who_made_it(pool: PgPool) {
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_grant_the_catalog_lacks_is_refused_naming_the_field_and_changes_nothing(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
     let revision = access.revision().await;
     let before = access.grants().await.unwrap().items;
 
@@ -58,6 +61,7 @@ async fn a_grant_the_catalog_lacks_is_refused_naming_the_field_and_changes_nothi
         (("support", "gadget", "make", "owner"), "scope"),
         (("support", "module:workshop", "use", "maker"), "scope"),
         (("  ", "gadget", "make", "any"), "role"),
+        (("nobody", "gadget", "make", "any"), "role"),
     ] {
         let (role, resource, action, scope) = grant;
         assert_eq!(
@@ -75,6 +79,7 @@ async fn a_grant_the_catalog_lacks_is_refused_naming_the_field_and_changes_nothi
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_grant_equal_to_one_already_made_is_a_conflict_and_changes_nothing(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
     access
         .grant("support", "gadget", "make", "any")
         .await
@@ -99,6 +104,7 @@ async fn a_grant_equal_to_one_already_made_is_a_conflict_and_changes_nothing(poo
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn the_same_action_may_be_granted_within_another_scope(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
     access
         .grant("support", "gadget", "make", "any")
         .await

@@ -5,6 +5,7 @@ use sqlx::PgPool;
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_grant_of_an_action_a_later_release_removed_is_listed_stale_and_skipped(pool: PgPool) {
     let first = Access::seeded(pool.clone()).await;
+    first.create_role("support", "").await.unwrap();
     first
         .grant("support", "gadget", "polish", "any")
         .await

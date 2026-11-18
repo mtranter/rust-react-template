@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: role
+  version: default
+  rules:
+    - name: admins always list, create and delete roles, whatever is granted or revoked
+      actions: ["*"]
+      effect: EFFECT_ALLOW
+      roles: [admin]

@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO access.role (name, description, created_by, created_at, version)\n            VALUES ($1, $2, $3, $4,\n                    COALESCE((SELECT version FROM access.deleted_role WHERE name = $1), 0) + 1)\n            RETURNING version\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "access.role",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0b03b10285a5abe0439efbb61364a44976ac5744bdd779115f974ea7c24f1506"
+}

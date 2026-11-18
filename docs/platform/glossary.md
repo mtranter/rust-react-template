@@ -141,8 +141,12 @@ _Avoid_: User (for the caller), identity, subject
 A Module's YAML in its core's `policies/`, embedded in the binary and checked against its Rust types when it loads: a resource's rules (what is denied or allowed, to which roles, on which condition), its Scopes, and its default Grants (ADR 0040).
 _Avoid_: Permission file, ACL
 
+**Role**:
+A record in the `access` Module that Grants are made to: a name, which is its id and never changes, and a description. Admins create and delete them (`list_roles`, `create_role`, `delete_role`); `admin` and `user` are built in and can't be deleted, and one a Grant still names can't be deleted until the Grant is revoked. `migrate` creates a role a Default Grant names when it first applies that Grant. A Principal still takes its roles from the token.
+_Avoid_: Group, permission set
+
 **Grant**:
-A role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.
+A Role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.
 _Avoid_: Permission, entitlement
 
 **Scope**:
@@ -150,11 +154,11 @@ A named condition on a resource's rows (`author`: the note's author is the Princ
 _Avoid_: Filter (for its name), row rule
 
 **Default Grant**:
-A Grant a Module's `policies/default_grants.yaml` declares, which `migrate` applies once, as `System`, recording its key (Module, role, resource, action, Scope) in `access`. A revoked one stays revoked; one added in a later release is granted by that release's `migrate`.
+A Grant a Module's `policies/default_grants.yaml` declares, which `migrate` applies once, as `System`, recording its key (Module, role, resource, action, Scope) in `access`, and creating its Role first if none has that name. A revoked one stays revoked, and its Role, once an admin deletes it, stays deleted; one added in a later release is granted by that release's `migrate`.
 _Avoid_: Seed (seeds don't run in production), built-in permission
 
 **Revision**:
-The counter `access` bumps in the unit of work of every change to the Grants. Each server instance polls it every 5 seconds and, when it has moved, rebuilds its rule set from every Module's policies and every Grant, and swaps it in whole.
+The counter `access` bumps in the unit of work of every change to the Grants or Roles. Each server instance polls it every 5 seconds and, when it has moved, rebuilds its rule set from every Module's policies and every Grant, and swaps it in whole.
 _Avoid_: Version (that is a root's), generation
 
 **Catalog**:

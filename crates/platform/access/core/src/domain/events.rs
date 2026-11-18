@@ -6,3 +6,11 @@ pub enum GrantEvent {
     Granted,
     Revoked { by: super::GrantedBy },
 }
+
+/// What happened to a [`Role`](super::Role).
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RoleEvent {
+    Created,
+    Deleted { by: super::GrantedBy },
+}

@@ -25,6 +25,10 @@ fn map_sqlx(err: sqlx::Error) -> AppError {
         "grant_once" => Some(AppError::conflict(
             "that role is granted that action within that scope already",
         )),
+        "grant_role_exists" => Some(AppError::invalid_field(
+            "role",
+            "no role has that name: create it first",
+        )),
         _ => None,
     })
 }
