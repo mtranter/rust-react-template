@@ -1,7 +1,7 @@
 ---
 id: 0027
 name: Every operation has a Principal that passed its Module's gate and its action's policy, unless it is listed as public
-status: in-review
+status: done
 priority: P1
 size: L
 blocked_by: [0026]
