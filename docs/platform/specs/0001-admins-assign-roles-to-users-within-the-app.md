@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: ticketed
 ---
 
 # Admins assign roles to users within the app
