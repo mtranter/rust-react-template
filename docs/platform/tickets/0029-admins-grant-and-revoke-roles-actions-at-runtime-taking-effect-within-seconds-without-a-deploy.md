@@ -1,7 +1,7 @@
 ---
 id: 0029
 name: Admins grant and revoke roles' actions at runtime, taking effect on every instance within 5 seconds, without a deploy
-status: in-review
+status: done
 priority: P1
 size: L
 blocked_by: [0026, 0027]
