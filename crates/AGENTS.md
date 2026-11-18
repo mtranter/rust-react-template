@@ -100,7 +100,7 @@ Take `ListQuery<XSortKey>` and return `Listed<T>`; build the SQL with `QueryBuil
 
 ### Common crates (ADR 0003)
 
-Split pure (`app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only). Never merge them, and never add poem/sqlx to a pure crate. Declare ids with `app_domain::uuid_newtype!`. Config and tracing live in `crates/server`, not `common`.
+Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only). Never merge them, and never add poem/sqlx to a pure crate (`make check-deps` fails a pure crate depending on any non-pure workspace crate). Declare ids with `app_domain::uuid_newtype!`. Config and tracing live in `crates/server`, not `common`.
 
 ### API surface
 
@@ -109,7 +109,7 @@ Split pure (`app-domain`, `app-error`, `app-events`, `app-persistence`, `app-tes
 - Request/response types expose ids, timestamps and versions as `string`. Past 12 modules, nest sub-tuples in the `Endpoints` tuple (std's `Default` cap; poem-openapi's is 16).
 - **Every operation is an MCP tool** (ADR 0034), served at `/mcp` by `app_web::mcp` with no code per operation: listed from the spec, each call sent in-process through the same endpoint `/api` is served by, so auth, `If-Match` (the tool's `expected_version`), `Idempotency-Key` (its `idempotency_key`), validation and the `ErrorBody` behave as over REST. So every operation declares `operation_id` (snake_case, verb first, unique: `edit_note`), the tool's name and a public contract, and a summary written for an agent as much as for a person; `composed_app.rs` fails on one missing either and lists every tool, so the surface shows in a diff. Keep an operation off MCP only through `REST_ONLY` in `crates/server/src/tools.rs`, with its reason; one whose body isn't JSON must be listed there. Every `/mcp` request needs a valid bearer token of the subject who opened its session. A new refusal status needs its line in the instructions there (a composed test fails otherwise).
 - **Auth** (ADR 0025): one JWT Bearer scheme (`app_web::JwtAuth`) guarding one route. Don't build a user store or token issuance unless asked.
-- **Authorization** (ADR 0040) is decided, not built: platform tickets 0026–0029, in that order. Until they land, don't hand-roll a role check in a module: build the tickets.
+- **Authorization** (ADR 0040) is half built: its engine is `app-authz` (policy files embedded with `app_authz::policy_file!`, so a refusal names the file and line; `Policies`, `RuleSet`, `Plan`, `Authorizer`), but nothing calls it yet. Platform tickets 0027–0029 put it to use, in that order. Until they land, don't hand-roll a role check in a module: build the tickets.
 - **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); MSRV 1.94, set by `sqlx` 0.9.
 
 ### Running and deploying

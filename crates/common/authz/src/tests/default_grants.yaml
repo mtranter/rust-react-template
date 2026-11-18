@@ -1,0 +1,7 @@
+apiVersion: auth.flagrante.io/v1
+defaultGrants:
+  - { role: user, resource: "module:notebook", action: use }
+  - { role: user, resource: note, actions: [create, list] }
+  - { role: user, resource: note, actions: [view, edit, archive], scope: author }
+  - { role: admin, resource: "module:notebook", action: use }
+  - { role: admin, resource: note, actions: ["*"] }

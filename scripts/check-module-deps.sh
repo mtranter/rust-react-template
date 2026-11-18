@@ -7,6 +7,8 @@
 #     and seeds), and `server` isn't a module;
 #   - an `-api` crate's workspace dependencies (normal or build) are anything but
 #     pure crates: the pure `common` crates and other `-api` crates;
+#   - a pure `common` crate's workspace dependencies (normal or build) are anything
+#     but other pure `common` crates (`deny.toml` bans only a direct poem or sqlx);
 #   - a write module (one with `src/domain/`) declares `[package.metadata.module] reads`:
 #     only a read module joins another module's views.
 #
@@ -16,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # ADR 0003: the pure `common` crates. Never add a framework-coupled one.
-pure_common='["app-domain", "app-error", "app-events", "app-persistence", "app-test-support"]'
+pure_common='["app-authz", "app-domain", "app-error", "app-events", "app-persistence", "app-test-support"]'
 
 cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson pure "$pure_common" '
   def rel: ltrimstr($root);
@@ -35,6 +37,9 @@ cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson
     elif api then
       shipped | select(.name as $d | ($pure + $apis) | index($d) | not)
         | "\($manifest): `-api` crates stay pure, but it depends on `\(.name)` (ADR 0003, 0008)"
+    elif (.name as $n | $pure | index($n)) then
+      shipped | select(.name as $d | $pure | index($d) | not)
+        | "\($manifest): pure `common` crates stay pure, but it depends on `\(.name)` (ADR 0003)"
     else empty end
 ' | {
   failed=0
