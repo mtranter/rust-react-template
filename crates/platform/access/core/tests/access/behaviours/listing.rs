@@ -29,6 +29,14 @@ async fn grants_are_sorted_by_any_key(pool: PgPool) {
 
     assert_eq!(
         roles(&by_role),
-        ["user", "user", "user", "admin", "admin", "admin"]
+        [
+            "user",
+            "user",
+            "user",
+            "maintainer",
+            "admin",
+            "admin",
+            "admin"
+        ]
     );
 }

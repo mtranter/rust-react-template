@@ -2,15 +2,15 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogResource, GrantSortKey, Listing, Versioned, scope_name,
+    CatalogAction, CatalogResource, GrantSortKey, Listing, RoleSortKey, Versioned, scope_name,
 };
-use crate::domain::{Grant, Scope};
+use crate::domain::{Grant, Role, Scope};
 use app_persistence::{Direction, Sort};
 use app_web::SortParam;
 use poem_openapi::{Enum, Object};
 
-/// A role granted an action on a resource, within a scope. Each must be in the catalog
-/// (`get_access_catalog`); the role is any the identity provider puts in tokens.
+/// A role granted an action on a resource, within a scope. The role must exist (`list_roles`);
+/// the resource, action and scope must be in the catalog (`get_access_catalog`).
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct GrantRequest {
@@ -173,6 +173,71 @@ impl SortParam for GrantSort {
             Self::ActionDesc => (GrantSortKey::Action, Direction::Desc),
             Self::GrantedAtAsc => (GrantSortKey::GrantedAt, Direction::Asc),
             Self::GrantedAtDesc => (GrantSortKey::GrantedAt, Direction::Desc),
+        };
+        Sort { key, direction }
+    }
+}
+
+/// A role to create: its name is its id, which grants name and which can't be changed.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct RoleRequest {
+    pub name: String,
+    /// What the role is for, for the admins granting it.
+    #[oai(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct RoleResponse {
+    pub name: String,
+    pub description: String,
+    /// `admin` and `user`, which can't be deleted.
+    pub built_in: bool,
+    /// Who created it; absent for a built-in role, or one created for a module's default grants.
+    #[oai(skip_serializing_if_is_none)]
+    pub created_by: Option<String>,
+    pub created_at: String,
+    /// Echo it back in `If-Match` to delete this role.
+    pub version: String,
+}
+
+impl From<Versioned<Role>> for RoleResponse {
+    fn from(versioned: Versioned<Role>) -> Self {
+        let Versioned { entity: r, version } = versioned;
+        Self {
+            name: r.name().to_owned(),
+            description: r.description().to_owned(),
+            built_in: r.is_built_in(),
+            created_by: r.created_by().subject().map(str::to_owned),
+            created_at: r.created_at().to_rfc3339(),
+            version: version.as_i64().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Enum)]
+pub enum RoleSort {
+    #[oai(rename = "name")]
+    NameAsc,
+    #[oai(rename = "-name")]
+    NameDesc,
+    #[oai(rename = "createdAt")]
+    CreatedAtAsc,
+    #[oai(rename = "-createdAt")]
+    CreatedAtDesc,
+}
+
+impl SortParam for RoleSort {
+    type Key = RoleSortKey;
+
+    fn sort(self) -> Sort<RoleSortKey> {
+        let (key, direction) = match self {
+            Self::NameAsc => (RoleSortKey::Name, Direction::Asc),
+            Self::NameDesc => (RoleSortKey::Name, Direction::Desc),
+            Self::CreatedAtAsc => (RoleSortKey::CreatedAt, Direction::Asc),
+            Self::CreatedAtDesc => (RoleSortKey::CreatedAt, Direction::Desc),
         };
         Sort { key, direction }
     }

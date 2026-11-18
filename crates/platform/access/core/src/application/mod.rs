@@ -5,6 +5,7 @@ mod catalog;
 mod error;
 mod events;
 mod repository;
+mod roles;
 mod rules;
 mod service;
 
@@ -13,6 +14,6 @@ pub use app_persistence::{
 };
 pub use catalog::{CatalogAction, CatalogResource};
 pub(crate) use events::scope_name;
-pub use repository::{GrantFilter, GrantRepository, GrantSortKey};
+pub use repository::{GrantFilter, GrantRepository, GrantSortKey, RoleRepository, RoleSortKey};
 pub use rules::{POLL_EVERY, Rules};
 pub use service::{AccessService, Listing, Modules, Operation};

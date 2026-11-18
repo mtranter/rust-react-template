@@ -4,6 +4,9 @@ import type {
   GrantRequest,
   GrantResponse,
   ListResultGrantResponse,
+  ListResultRoleResponse,
+  RoleRequest,
+  RoleResponse,
 } from "@/api";
 import { http, HttpResponse } from "msw";
 
@@ -42,6 +45,24 @@ export function grant(n: number, changes: Partial<GrantResponse> = {}): GrantRes
   };
 }
 
+export function role(name: string, changes: Partial<RoleResponse> = {}): RoleResponse {
+  const builtIn = name === "admin" || name === "user";
+  return {
+    name,
+    description: "",
+    builtIn,
+    ...(builtIn ? {} : { createdBy: "an-admin" }),
+    createdAt: new Date(Date.UTC(2026, 0, 1)).toISOString(),
+    version: "1",
+    ...changes,
+  };
+}
+
+/** The built-in roles, and `support`, which an admin created. */
+export function someRoles(): RoleResponse[] {
+  return [role("admin"), role("support", { description: "Answers customers" }), role("user")];
+}
+
 function refusal(code: ErrorBody["code"], message: string, path?: string): ErrorBody {
   return { code, message, ...(path && { fields: [{ path, message }] }), requestId: "test" };
 }
@@ -49,12 +70,13 @@ function refusal(code: ErrorBody["code"], message: string, path?: string): Error
 const forbidden = () => HttpResponse.json(refusal("forbidden", "forbidden"), { status: 403 });
 
 /**
- * `access` as the server answers an admin for `items` (changed in place by grants and
- * revocations): the catalog, the grants filtered by role, resource and action, a grant checked
- * against the catalog and refused when equal to one made, and revocations guarded by `If-Match`.
- * `requests` records each list's query and `ifMatches` each revocation's `If-Match`.
+ * `access` as the server answers an admin for `items` and `roles` (changed in place): the
+ * catalog, the grants filtered by role, resource and action, a grant checked against the roles
+ * and the catalog and refused when equal to one made, revocations guarded by `If-Match`, and the
+ * roles, created unless the name is taken and deleted unless built in or granted. `requests`
+ * records each grant list's query and `ifMatches` each revocation's and deletion's `If-Match`.
  */
-export function accessApi(items: GrantResponse[]) {
+export function accessApi(items: GrantResponse[], roles: RoleResponse[] = someRoles()) {
   const requests: URLSearchParams[] = [];
   const ifMatches: (string | null)[] = [];
   const handlers = [
@@ -76,6 +98,11 @@ export function accessApi(items: GrantResponse[]) {
     }),
     http.post("*/api/access/grants", async ({ request }) => {
       const body = (await request.json()) as GrantRequest;
+      if (!roles.some((r) => r.name === body.role)) {
+        return HttpResponse.json(refusal("validation_error", "no such role", "role"), {
+          status: 400,
+        });
+      }
       const resource = catalog.resources.find((r) => r.resource === body.resource);
       if (!resource) {
         return HttpResponse.json(refusal("validation_error", "no such resource", "resource"), {
@@ -118,6 +145,45 @@ export function accessApi(items: GrantResponse[]) {
       items.splice(index, 1);
       return new HttpResponse(null, { status: 204 });
     }),
+    http.get("*/api/access/roles", () =>
+      HttpResponse.json({
+        items: [...roles].sort((a, b) => a.name.localeCompare(b.name)),
+        total: roles.length,
+        limit: 100,
+        offset: 0,
+      } satisfies ListResultRoleResponse),
+    ),
+    http.post("*/api/access/roles", async ({ request }) => {
+      const body = (await request.json()) as RoleRequest;
+      if (roles.some((r) => r.name === body.name)) {
+        return HttpResponse.json(refusal("conflict", "a role of that name exists already"), {
+          status: 409,
+        });
+      }
+      const made = role(body.name, { description: body.description ?? "" });
+      roles.push(made);
+      return HttpResponse.json(made, { headers: { ETag: `"${made.version}"` } });
+    }),
+    http.delete("*/api/access/roles/:name", ({ params, request }) => {
+      const index = roles.findIndex((r) => r.name === params.name);
+      if (index < 0) {
+        return HttpResponse.json(refusal("not_found", "role not found"), { status: 404 });
+      }
+      ifMatches.push(request.headers.get("If-Match"));
+      if (request.headers.get("If-Match") !== `"${roles[index].version}"`) {
+        return HttpResponse.json(refusal("precondition_failed", "the role has changed"), {
+          status: 412,
+        });
+      }
+      if (roles[index].builtIn || items.some((g) => g.role === params.name)) {
+        return HttpResponse.json(
+          refusal("conflict", "a grant still names that role: revoke it first"),
+          { status: 409 },
+        );
+      }
+      roles.splice(index, 1);
+      return new HttpResponse(null, { status: 204 });
+    }),
   ];
   return { handlers, requests, ifMatches };
 }
@@ -126,4 +192,5 @@ export function accessApi(items: GrantResponse[]) {
 export const notAnAdmin = [
   http.get("*/api/access/catalog", forbidden),
   http.get("*/api/access/grants", forbidden),
+  http.get("*/api/access/roles", forbidden),
 ];

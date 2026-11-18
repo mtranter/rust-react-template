@@ -17,6 +17,11 @@ async fn a_caller_who_is_not_an_admin_is_kept_out(pool: PgPool) {
 
     assert_eq!(access.grants().await.err(), Some(Refusal::Forbidden));
     assert_eq!(access.catalog().await.err(), Some(Refusal::Forbidden));
+    assert_eq!(access.roles().await.err(), Some(Refusal::Forbidden));
+    assert_eq!(
+        access.create_role("support", "").await,
+        Err(Refusal::Forbidden)
+    );
     assert_eq!(
         access.grant("user", "gadget", "scrap", "any").await,
         Err(Refusal::Forbidden)
@@ -27,6 +32,7 @@ async fn a_caller_who_is_not_an_admin_is_kept_out(pool: PgPool) {
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_role_granted_access_to_grants_may_list_them(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("auditor", "").await.unwrap();
     access
         .grant("auditor", "module:access", "use", "any")
         .await

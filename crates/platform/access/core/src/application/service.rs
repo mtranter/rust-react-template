@@ -2,9 +2,11 @@ use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
     CatalogAction, CatalogResource, EventPublisher, GrantFilter, GrantRepository, GrantSortKey,
-    ListQuery, Listed, Transactions, Version, Versioned,
+    ListQuery, Listed, RoleRepository, Transactions, Version, Versioned,
 };
-use crate::domain::{Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy};
+use crate::domain::{
+    CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
+};
 use app_authz::{Authorizer, Plan, Policies, Principal, check_grant};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
@@ -37,15 +39,16 @@ pub struct Listing {
 
 #[derive(Clone)]
 pub struct AccessService {
-    repo: Arc<dyn GrantRepository>,
-    publisher: Arc<dyn EventPublisher>,
-    transactions: Arc<dyn Transactions>,
-    clock: Arc<dyn Clock>,
-    authorizer: Arc<Authorizer>,
+    pub(super) repo: Arc<dyn GrantRepository>,
+    pub(super) roles: Arc<dyn RoleRepository>,
+    pub(super) publisher: Arc<dyn EventPublisher>,
+    pub(super) transactions: Arc<dyn Transactions>,
+    pub(super) clock: Arc<dyn Clock>,
+    pub(super) authorizer: Arc<Authorizer>,
     modules: Arc<Modules>,
 }
 
-fn acting(principal: &Principal) -> GrantedBy {
+pub(super) fn acting(principal: &Principal) -> GrantedBy {
     match principal.id() {
         Some(id) => GrantedBy::User(id.to_owned()),
         None => GrantedBy::System,
@@ -55,6 +58,7 @@ fn acting(principal: &Principal) -> GrantedBy {
 impl AccessService {
     pub fn new(
         repo: Arc<dyn GrantRepository>,
+        roles: Arc<dyn RoleRepository>,
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
@@ -63,6 +67,7 @@ impl AccessService {
     ) -> Self {
         Self {
             repo,
+            roles,
             publisher,
             transactions,
             clock,
@@ -102,8 +107,9 @@ impl AccessService {
         })
     }
 
-    /// Checked against the loaded policies, so a stored grant always compiles; one equal to an
-    /// existing grant is a conflict. Takes effect on each server instance at its next poll.
+    /// Checked against the loaded policies, so a stored grant always compiles; one naming a role
+    /// that doesn't exist is refused by the store, and one equal to an existing grant is a
+    /// conflict. Takes effect on each server instance at its next poll.
     pub async fn grant(
         &self,
         principal: &Principal,
@@ -200,7 +206,9 @@ impl AccessService {
     /// Grants, as `System`, every module's default grant not applied before, in one unit of
     /// work: what `migrate` runs once every module is migrated. A default an admin revoked was
     /// applied, so it isn't granted again; one equal to a grant an admin made is recorded only.
-    /// Returns how many it granted.
+    /// A role a default being granted names is created first if it doesn't exist; a role an admin
+    /// deleted after its defaults were applied isn't, as they aren't granted again. Returns how
+    /// many it granted.
     pub async fn apply_defaults(&self) -> AppResult<usize> {
         let mut tx = self.transactions.begin().await?;
         // Taken first, so two `migrate`s apply the defaults one after the other.
@@ -227,6 +235,28 @@ impl AccessService {
                 recorded += 1;
                 if self.repo.exists(&mut tx, rule).await? {
                     continue;
+                }
+                if !self.roles.exists(&mut tx, &rule.role).await? {
+                    let (role, event) = Role::create(
+                        CreateRole {
+                            name: rule.role.clone(),
+                            description: format!(
+                                "Named by the default grants of `{}`.",
+                                policies.module()
+                            ),
+                        },
+                        GrantedBy::System,
+                        now,
+                    )?;
+                    let version = self.roles.insert(&mut tx, &role).await?;
+                    self.publisher
+                        .publish(&mut tx, events::role_pending(&role, version, event))
+                        .await?;
+                    tracing::info!(
+                        module = policies.module(),
+                        role = role.name(),
+                        "role created for a default grant"
+                    );
                 }
                 let grant = Grant::restore(GrantId::new(), rule.clone(), GrantedBy::System, now);
                 let version = self.repo.insert(&mut tx, &grant).await?;

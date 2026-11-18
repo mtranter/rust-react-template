@@ -1,4 +1,4 @@
-use crate::domain::GrantError;
+use crate::domain::{GrantError, RoleError};
 use app_authz::{GrantRefusal, GrantRefused};
 use app_error::AppError;
 
@@ -9,6 +9,20 @@ impl From<GrantError> for AppError {
             GrantError::EmptyRole | GrantError::RoleTooLong { .. } => {
                 AppError::invalid_field("role", err.to_string())
             }
+        }
+    }
+}
+
+impl From<RoleError> for AppError {
+    fn from(err: RoleError) -> Self {
+        match err {
+            RoleError::EmptyName | RoleError::NameTooLong { .. } => {
+                AppError::invalid_field("name", err.to_string())
+            }
+            RoleError::DescriptionTooLong { .. } => {
+                AppError::invalid_field("description", err.to_string())
+            }
+            RoleError::BuiltIn => AppError::conflict(err.to_string()),
         }
     }
 }

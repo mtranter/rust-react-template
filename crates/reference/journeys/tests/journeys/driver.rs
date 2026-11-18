@@ -350,6 +350,17 @@ impl Admin<'_> {
             .await
     }
 
+    /// A role grants can then name.
+    pub async fn create_role(&self, name: &str) -> Outcome<serde_json::Value> {
+        self.app
+            .api
+            .post("/api/access/roles")
+            .bearer(&self.token)
+            .json(&json!({ "name": name }))
+            .send()
+            .await
+    }
+
     pub async fn revoke(&self, grant: &GrantJson) -> Outcome<()> {
         self.app
             .api

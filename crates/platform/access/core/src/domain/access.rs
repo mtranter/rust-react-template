@@ -1,4 +1,4 @@
-use super::Grant;
+use super::{Grant, Role};
 use app_authz::{Resource, Value};
 
 /// What can be done with grants. `admin` may do all of it by `access`' own policies, which no
@@ -17,6 +17,26 @@ impl Resource for Grant {
     const ATTRS: &'static [&'static str] = &[];
     type Action = GrantAction;
     const VIEW: Option<GrantAction> = Some(GrantAction::List);
+
+    fn attr(&self, _: &str) -> Option<Value> {
+        None
+    }
+}
+
+/// What can be done with roles: `admin`'s by `access`' own policies, as with grants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray, strum::IntoStaticStr)]
+#[strum(serialize_all = "camelCase")]
+pub enum RoleAction {
+    List,
+    Create,
+    Delete,
+}
+
+impl Resource for Role {
+    const KIND: &'static str = "role";
+    const ATTRS: &'static [&'static str] = &[];
+    type Action = RoleAction;
+    const VIEW: Option<RoleAction> = Some(RoleAction::List);
 
     fn attr(&self, _: &str) -> Option<Value> {
         None

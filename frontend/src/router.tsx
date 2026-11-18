@@ -47,7 +47,10 @@ const searchRoute = createRoute({
 const accessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/access",
-  validateSearch: (search: Record<string, unknown>): GrantFilter & ListSearch<GrantSort> => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "roles" } & GrantFilter & ListSearch<GrantSort> => ({
+    tab: search.tab === "roles" ? "roles" : undefined,
     ...grantFilter(search),
     ...validateListSearch<GrantSort>(search, grantSortKeys),
   }),

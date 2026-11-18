@@ -70,6 +70,16 @@ impl GrantJson {
 
 json_newtype!(pub CatalogJson);
 
+json_newtype!(pub RoleJson);
+
+impl RoleJson {
+    pub fn name(&self) -> &str {
+        self["name"].as_str().unwrap_or_default()
+    }
+}
+
+pub type Roles = Page<RoleJson>;
+
 pub type Grants = Page<GrantJson>;
 
 /// Who administers the app in these tests.
@@ -245,6 +255,59 @@ impl Access {
         self.signed(
             self.api
                 .delete(format!("/api/access/grants/{}", grant.id())),
+        )
+        .send_empty()
+        .await
+    }
+
+    /// Every role, by name.
+    pub async fn roles(&self) -> Outcome<Roles> {
+        self.signed(self.api.get("/api/access/roles")).send().await
+    }
+
+    pub async fn role_names(&self) -> Vec<String> {
+        self.roles()
+            .await
+            .expect("an admin lists the roles")
+            .items
+            .iter()
+            .map(|r| r.name().to_owned())
+            .collect()
+    }
+
+    /// The role named `name`, which must exist.
+    pub async fn role(&self, name: &str) -> RoleJson {
+        self.roles()
+            .await
+            .expect("an admin lists the roles")
+            .items
+            .into_iter()
+            .find(|r| r.name() == name)
+            .unwrap_or_else(|| panic!("a role is named {name}"))
+    }
+
+    pub async fn create_role(&self, name: &str, description: &str) -> Outcome<RoleJson> {
+        self.signed(self.api.post("/api/access/roles"))
+            .json(&json!({ "name": name, "description": description }))
+            .send()
+            .await
+    }
+
+    pub async fn delete_role(&self, role: &RoleJson) -> Outcome<()> {
+        self.delete_role_at(role.name(), role.version()).await
+    }
+
+    pub async fn delete_role_at(&self, name: &str, version: i64) -> Outcome<()> {
+        self.signed(self.api.delete(format!("/api/access/roles/{name}")))
+            .if_match(version)
+            .send_empty()
+            .await
+    }
+
+    pub async fn delete_role_without_precondition(&self, role: &RoleJson) -> Outcome<()> {
+        self.signed(
+            self.api
+                .delete(format!("/api/access/roles/{}", role.name())),
         )
         .send_empty()
         .await

@@ -76,6 +76,7 @@ defaultGrants:
   - { role: user, resource: gadget, action: polish, scope: maker }
   - { role: admin, resource: \"module:workshop\", action: use }
   - { role: admin, resource: gadget, actions: [make, polish] }
+  - { role: maintainer, resource: gadget, action: polish }
 ";
 
 const SECOND_DEFAULTS: &str = "apiVersion: auth.flagrante.io/v1
@@ -134,4 +135,9 @@ pub const FIRST_RELEASE_DEFAULTS: &[(&str, &str, &str, &str)] = &[
     ("admin", "module:workshop", "use", "any"),
     ("admin", "gadget", "make", "any"),
     ("admin", "gadget", "polish", "any"),
+    ("maintainer", "gadget", "polish", "any"),
 ];
+
+/// The role the first release's default grants name that isn't built in, which `migrate`
+/// creates.
+pub const MAINTAINER: &str = "maintainer";

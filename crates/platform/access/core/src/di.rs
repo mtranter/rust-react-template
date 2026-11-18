@@ -2,10 +2,10 @@
 #![allow(clippy::disallowed_types)]
 
 use crate::application::{AccessService, Modules, Operation, Rules};
-use crate::db::{PgGrantRepository, migrations};
-use crate::domain::Grant;
+use crate::db::{PgGrantRepository, PgRoleRepository, migrations};
+use crate::domain::{Grant, Role};
 use crate::web::OPERATIONS;
-use access_api::events::v1::GrantTopic;
+use access_api::events::v1::{GrantTopic, RoleTopic};
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_error::AppResult;
 use app_module::{Context, Module, PoliciesError};
@@ -46,6 +46,7 @@ impl Modules {
 fn service(ctx: &Context, modules: Arc<Modules>) -> AccessService {
     AccessService::new(
         Arc::new(PgGrantRepository::new(ctx.pool())),
+        Arc::new(PgRoleRepository::new(ctx.pool())),
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
@@ -58,12 +59,13 @@ pub fn provider(ctx: &Context, modules: Arc<Modules>) -> AccessProvider {
     AccessProvider(service(ctx, modules))
 }
 
-/// `access`' gate and its `grant` resource, both `admin`'s by baseline rules rather than
-/// grants, so no revocation can lock admins out (ADR 0040). It has no default grants.
+/// `access`' gate and its `grant` and `role` resources, all `admin`'s by baseline rules rather
+/// than grants, so no revocation can lock admins out (ADR 0040). It has no default grants.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("access")
         .gate(policy_file!("policies/gate.yaml"))
         .resource::<Grant>(policy_file!("policies/grant.yaml"))
+        .resource::<Role>(policy_file!("policies/role.yaml"))
 }
 
 /// What keeps `ctx.authorizer()` in step with the stored grants: a server instance refreshes it
@@ -93,5 +95,6 @@ pub fn module(composed: fn() -> Vec<Module>) -> Module {
     .with_policies(policies)
     .performing(OPERATIONS)
     .publishes::<GrantTopic>()
+    .publishes::<RoleTopic>()
     .with_migrations(migrations())
 }

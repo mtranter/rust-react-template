@@ -13,6 +13,7 @@ async fn an_admin_lets_support_view_any_note_from_the_next_poll_until_revoked(po
     let admin = app.as_admin(ADMIN_ID);
     let support = app.with_roles(USER_ID_BOB, &["support"]);
     let note = app.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
+    admin.create_role("support").await.unwrap();
     admin
         .grant("support", "module:notes", "use", "any")
         .await
@@ -47,6 +48,7 @@ async fn a_grant_made_through_one_instance_takes_effect_on_another_at_its_next_p
     let admin = one.as_admin(ADMIN_ID);
     let support = other.with_roles(USER_ID_BOB, &["support"]);
 
+    admin.create_role("support").await.unwrap();
     admin
         .grant("support", "module:notes", "use", "any")
         .await

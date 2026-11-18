@@ -1,0 +1,10 @@
+# Learnings: 0031, roles are records in `access`
+
+- **A grant's role is a foreign key** (`grant_role_exists`, `access.grant.role → access.role.name`): within one module's schema that's allowed. The same constraint means `400 role` on a grant (mapped in `db/repository.rs`) and `409` on a role delete (mapped in `db/roles.rs`): map a constraint by name per repository, by what the write was.
+- **Roles have their own topic, `access.role.v1`**, keyed by name, not a shared one with grants: a topic has one entity type and keys one root (crates/AGENTS.md). Because a name can be deleted and created again, `access.deleted_role` keeps the version each name's deletion reached, and `insert` continues from it, so events stay ordered per key.
+- **`admin` and `user` are inserted by the migration** (no `RoleCreated` for them); roles a default grant names are created by `apply_defaults` as `System`, with an event, only when that default grant is first applied.
+- **Any test granting a role of its own must `create_role` first** (the access driver, `Admin::create_role` in the reference journeys). The access tests' `workshop` defaults name a non-built-in role, `maintainer`, to exercise defaults creating roles.
+- **New operations in `access` touch four lists**: `OPERATIONS` (web/access.rs), `TOOLS` in `crates/server/tests/composed_app.rs`, the `TOOLS` rewrite in `scripts/init.sh`, and `access_ops` (sorted) in `scripts/check-init.sh`.
+- **The SPA's `/access` tab is in the URL** (`?tab=roles`); the Tabs panels unmount when hidden, so the roles list is fetched when the tab or the grant dialog's role picker needs it (`useRoles`, limit 100: the server's max page).
+- Migrating `.sqlx` for this module applied `0002_roles.sql` to the shared dev database `app` (port 5432), which other worktrees on `main` share: their `make migrate` may then complain about an unknown applied migration until they pull it.
+- **`scripts/init.sh` rewrites `frontend/src/router.tsx` wholesale** (a heredoc): a change to the `/access` route's `validateSearch` must be made there too, or `make check-init` fails typechecking the initialised app. `make check-changed` doesn't catch it.

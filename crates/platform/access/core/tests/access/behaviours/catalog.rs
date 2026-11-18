@@ -40,11 +40,13 @@ async fn the_catalog_offers_each_resources_actions_operations_and_scopes(pool: P
         })
     );
     assert_eq!(resource(&catalog, "grant")["module"], "access");
+    assert_eq!(resource(&catalog, "role")["module"], "access");
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn an_action_becomes_reachable_once_granted(pool: PgPool) {
     let access = Access::seeded(pool).await;
+    access.create_role("support", "").await.unwrap();
     access
         .grant("support", "gadget", "scrap", "any")
         .await

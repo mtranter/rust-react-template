@@ -1,6 +1,6 @@
 use crate::driver::Access;
-use crate::workshop::{FIRST_RELEASE_DEFAULTS, Release};
-use access_api::events::v1::AccessGranted;
+use crate::workshop::{FIRST_RELEASE_DEFAULTS, MAINTAINER, Release};
+use access_api::events::v1::{AccessGranted, RoleCreated};
 use sqlx::PgPool;
 
 fn rules_of(grants: &crate::driver::Grants) -> Vec<(String, String, String, String)> {
@@ -64,4 +64,32 @@ async fn a_default_added_in_a_later_release_is_granted_by_its_migrate(pool: PgPo
     assert!(inspecting.get("grantedBy").is_none());
     assert!(later.allows("user", "gadget", "inspect"));
     assert_eq!(later.announced::<AccessGranted>().await.len(), 1);
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn a_role_a_default_names_is_created_by_no_one(pool: PgPool) {
+    let access = Access::seeded(pool).await;
+
+    let maintainer = access.role(MAINTAINER).await;
+
+    assert!(maintainer.get("createdBy").is_none());
+    assert_eq!(maintainer["builtIn"], false);
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn a_role_a_default_named_is_not_created_again_once_an_admin_deleted_it(pool: PgPool) {
+    let access = Access::seeded(pool).await;
+    let polishing = access
+        .grant_of((MAINTAINER, "gadget", "polish", "any"))
+        .await;
+    access.revoke(&polishing).await.unwrap();
+    access
+        .delete_role(&access.role(MAINTAINER).await)
+        .await
+        .unwrap();
+
+    assert_eq!(access.migrate().await, 0);
+
+    assert!(!access.role_names().await.contains(&MAINTAINER.to_owned()));
+    assert!(access.announced::<RoleCreated>().await.is_empty());
 }
