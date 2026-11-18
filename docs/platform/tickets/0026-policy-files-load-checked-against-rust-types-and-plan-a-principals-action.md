@@ -1,7 +1,7 @@
 ---
 id: 0026
 name: Policy files and grants compile, checked against their resources' Rust types, into one swappable rule set that plans a principal's action as allowed, denied or a filter
-status: in-review
+status: done
 priority: P1
 size: L
 blocked_by: []
