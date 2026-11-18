@@ -73,9 +73,9 @@ pub fn defaults() -> PolicyFile {
     crate::policy_file!("src/tests/default_grants.yaml")
 }
 
-/// ADR 0040's example files, as the `notes` Module would load them.
+/// ADR 0040's example files, as the `notebook` Module would load them.
 pub fn adr_policies() -> Policies {
-    Policies::builder("notes")
+    Policies::builder("notebook")
         .resource::<Note>(note_policy())
         .derived_roles(scopes())
         .default_grants(defaults())
@@ -101,7 +101,7 @@ pub fn note_rules(rules: &str) -> PolicyFile {
 }
 
 pub fn with_rules(rules: &str) -> Result<Policies, PolicyError> {
-    Policies::builder("notes")
+    Policies::builder("notebook")
         .resource::<Note>(note_rules(rules))
         .derived_roles(scopes())
         .build()

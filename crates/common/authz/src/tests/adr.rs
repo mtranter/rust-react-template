@@ -84,11 +84,11 @@ fn adr_0040s_examples_plan_as_it_says() {
 fn the_gate_is_granted_by_role_alone() {
     let rule_set = compile(&adr_policies(), adr_policies().default_grants());
     assert_eq!(
-        rule_set.plan_gate(&user(ALICE, &["user"]), "notes"),
+        rule_set.plan_gate(&user(ALICE, &["user"]), "notebook"),
         Plan::Allowed
     );
     assert_eq!(
-        rule_set.plan_gate(&user(ALICE, &["support"]), "notes"),
+        rule_set.plan_gate(&user(ALICE, &["support"]), "notebook"),
         Plan::Denied
     );
     assert_eq!(
@@ -96,7 +96,7 @@ fn the_gate_is_granted_by_role_alone() {
         Plan::Denied
     );
     assert_eq!(
-        rule_set.plan_gate(&Principal::System, "notes"),
+        rule_set.plan_gate(&Principal::System, "notebook"),
         Plan::Allowed
     );
 }
@@ -148,11 +148,12 @@ fn default_grants_expand_to_one_per_action() {
         "edit",
         Scope::Named("author".into())
     )));
-    assert!(
-        policies
-            .default_grants()
-            .contains(&grant("user", "module:notes", "use", Scope::Any))
-    );
+    assert!(policies.default_grants().contains(&grant(
+        "user",
+        "module:notebook",
+        "use",
+        Scope::Any
+    )));
 }
 
 #[test]
@@ -203,9 +204,9 @@ fn matches_agrees_with_the_plan() {
 fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
     let policies = adr_policies();
     let catalog = policies.catalog(&compile(&policies, policies.default_grants()));
-    assert_eq!(catalog.module, "notes");
+    assert_eq!(catalog.module, "notebook");
     let kinds: Vec<_> = catalog.resources.iter().map(|r| r.kind.as_str()).collect();
-    assert_eq!(kinds, ["module:notes", "note"]);
+    assert_eq!(kinds, ["module:notebook", "note"]);
     let note = &catalog.resources[1];
     assert_eq!(note.scopes, ["author"]);
     assert!(note.actions.iter().all(|a| a.reachable));

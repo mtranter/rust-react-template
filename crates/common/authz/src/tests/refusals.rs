@@ -3,7 +3,7 @@ use super::*;
 const NOTE: &str = include_str!("note.yaml");
 const SCOPES: &str = include_str!("notes_scopes.yaml");
 const DEFAULTS: &str = include_str!("default_grants.yaml");
-const GATE: &str = "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: \"module:notes\"\n  version: default\n  rules:\n    - actions: [use]\n      effect: EFFECT_ALLOW\n      roles: [staff]\n";
+const GATE: &str = "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: \"module:notebook\"\n  version: default\n  rules:\n    - actions: [use]\n      effect: EFFECT_ALLOW\n      roles: [staff]\n";
 
 #[derive(Clone, Copy)]
 enum In {
@@ -34,7 +34,7 @@ fn load_with(file: In, from: &str, to: &str) -> Result<Policies, PolicyError> {
             PolicyFile::new(which.name(), source)
         }
     };
-    Policies::builder("notes")
+    Policies::builder("notebook")
         .gate(edit(In::Gate, GATE))
         .resource::<Note>(edit(In::Note, NOTE))
         .derived_roles(edit(In::Scopes, SCOPES))
@@ -124,15 +124,15 @@ fn each_refusal_names_the_file_and_line() {
             "resource: note",
             "resource: task",
             Some(3),
-            "`task` is not a resource given to the `notes` module's policies",
+            "`task` is not a resource given to the `notebook` module's policies",
         ),
         (
             "a policy for the gate given as a resource's",
             In::Note,
             "resource: note",
-            "resource: \"module:notes\"",
+            "resource: \"module:notebook\"",
             Some(3),
-            "this is `module:notes`'s policy, but was given for `note`",
+            "this is `module:notebook`'s policy, but was given for `note`",
         ),
         (
             "a default grant for another module's resource",
@@ -145,7 +145,7 @@ fn each_refusal_names_the_file_and_line() {
         (
             "a default grant for another module's gate",
             In::Defaults,
-            "\"module:notes\", action: use }\n  - { role: admin",
+            "\"module:notebook\", action: use }\n  - { role: admin",
             "\"module:tasks\", action: use }\n  - { role: admin",
             Some(6),
             "`module:tasks` is not a resource given",
@@ -267,7 +267,7 @@ fn each_refusal_names_the_file_and_line() {
             "a description",
             In::Note,
             "resourcePolicy:",
-            "description: notes\nresourcePolicy:",
+            "description: notebook\nresourcePolicy:",
             Some(2),
             "`description` is not supported in a policy file",
         ),

@@ -4,7 +4,7 @@ resourcePolicy:
   version: default
   importDerivedRoles: [notes_scopes]
   rules:
-    - name: archived notes are read-only
+    - name: an archived note is read-only
       actions: [edit, archive]
       effect: EFFECT_DENY
       roles: ["*"]

@@ -184,7 +184,7 @@ fn scopes_apply_as_derived_roles_and_as_grants() {
 
 #[test]
 fn a_derived_role_applies_only_to_its_parent_roles() {
-    let policies = Policies::builder("notes")
+    let policies = Policies::builder("notebook")
         .resource::<Note>(note_rules(
             "    - actions: [edit]\n      effect: EFFECT_ALLOW\n      derivedRoles: [own_draft]\n      condition:\n        match:\n          expr: R.attr.archived == false\n",
         ))
@@ -202,7 +202,7 @@ fn a_derived_role_applies_only_to_its_parent_roles() {
             .contains("not a derived role imported")
     );
 
-    let policies = Policies::builder("notes")
+    let policies = Policies::builder("notebook")
         .resource::<Note>(PolicyFile::new(
             "note.yaml",
             "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: note\n  version: default\n  importDerivedRoles: [drafts]\n  rules:\n    - actions: [edit]\n      effect: EFFECT_ALLOW\n      derivedRoles: [own_draft]\n      condition:\n        match:\n          expr: R.attr.archived == false\n",

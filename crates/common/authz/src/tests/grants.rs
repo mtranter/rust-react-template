@@ -9,7 +9,7 @@ fn editor_set() -> PolicyFile {
 }
 
 fn policies() -> Policies {
-    Policies::builder("notes")
+    Policies::builder("notebook")
         .resource::<Note>(PolicyFile::new(
             "note.yaml",
             "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: note\n  version: default\n  importDerivedRoles: [notes_scopes, editors]\n  rules: []\n",
@@ -29,7 +29,10 @@ fn a_grant_checks_its_resource_action_and_scope() {
             grant("support", "note", "items:add", named("author")),
             Ok(()),
         ),
-        (grant("support", "module:notes", "use", Scope::Any), Ok(())),
+        (
+            grant("support", "module:notebook", "use", Scope::Any),
+            Ok(()),
+        ),
         (
             grant("", "note", "view", Scope::Any),
             Err(GrantRefusal::NoRole),
@@ -71,13 +74,13 @@ fn a_grant_checks_its_resource_action_and_scope() {
             }),
         ),
         (
-            grant("support", "module:notes", "use", named("author")),
+            grant("support", "module:notebook", "use", named("author")),
             Err(GrantRefusal::ScopeOnGate),
         ),
         (
-            grant("support", "module:notes", "view", Scope::Any),
+            grant("support", "module:notebook", "view", Scope::Any),
             Err(GrantRefusal::UnknownAction {
-                resource: "module:notes".into(),
+                resource: "module:notebook".into(),
                 action: "view".into(),
             }),
         ),
@@ -134,7 +137,7 @@ fn a_resource_in_two_modules_policies_fails_the_compile() {
     assert_eq!(
         crate::RuleSet::compile(&twice, &[]).map(|_| ()),
         Err(crate::CompileError::DuplicateResource(
-            "module:notes".into()
+            "module:notebook".into()
         ))
     );
 }
