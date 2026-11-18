@@ -1,7 +1,7 @@
 ---
 id: 0028
 name: A row the principal may not act on is refused, and a list holds only the rows they may see, filtered in its SQL
-status: ready-for-agent
+status: in-progress
 priority: P1
 size: M
 blocked_by: [0026, 0027]
