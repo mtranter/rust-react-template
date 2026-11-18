@@ -1,7 +1,7 @@
 ---
 id: 0032
 name: "A Principal's roles are `user` plus its subject's assignments in `access`, not the token's `roles` claim"
-status: in-review
+status: done
 spec: docs/platform/specs/0001-admins-assign-roles-to-users-within-the-app.md
 blocked_by: [docs/platform/tickets/0031-roles-are-records-in-access-that-admins-list-creat.md]
 blocks: [docs/platform/tickets/0033-access-records-who-signs-in-and-admins-manage-user.md]
