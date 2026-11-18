@@ -40,8 +40,8 @@ impl Rules {
     /// failed read or compile changes nothing. A grant its module's policies no longer have (a
     /// later release removed its action or scope) is skipped, and logged once per revision.
     pub async fn refresh(&self) -> AppResult<()> {
-        // The revision is read before the grants and assignments: a change committed between the two reads is
-        // then built now and again on the next poll, never missed.
+        // The revision is read before the grants and assignments: a change committed between the
+        // two reads is then built now and again on the next poll, never missed.
         let revision = self.repo.revision().await?;
         if *self.built_at.lock().expect("not poisoned") == Some(revision) {
             return Ok(());

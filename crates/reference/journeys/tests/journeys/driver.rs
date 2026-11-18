@@ -98,9 +98,8 @@ const READER: &str = "00000000-0000-0000-0000-000000000000";
 const ADMIN: &str = "admin";
 
 /// Assigns `role` to `subject` through `access`' Module API, as a seed does.
-async fn assign(pool: &PgPool, subject: &str, role: &str) {
-    let ctx = Context::new(pool.clone(), Arc::new(app_domain::SystemClock));
-    access::assignments(&ctx)
+async fn assign(ctx: &Context, subject: &str, role: &str) {
+    access::assignments(ctx)
         .ensure_assigned(&Principal::System, subject, role)
         .await
         .expect("assign the role");
@@ -235,7 +234,8 @@ impl App {
     }
 
     /// Signed in with a real token, which the server verifies, holding `user`
-    /// and whatever `access` assigns them.
+    /// and whatever `access` assigns them. The seeds assign Alice `admin` (she
+    /// is the dev sign-in), so a journey that needs a plain user uses Bob.
     pub fn as_user(&self, user: impl Display) -> Session<'_> {
         Session {
             app: self,
@@ -247,7 +247,8 @@ impl App {
     /// through `access`, as a seed does, from this instance's next poll.
     pub async fn as_admin(&self, user: impl Display) -> Admin<'_> {
         let user = user.to_string();
-        assign(&self.pool, &user, ADMIN).await;
+        let ctx = Context::new(self.pool.clone(), self.clock.clone());
+        assign(&ctx, &user, ADMIN).await;
         self.polls_the_grants().await;
         Admin {
             app: self,
@@ -513,7 +514,7 @@ pub const TEMPLATE: Template = Template::new("journeys", |pool| {
         for module in Reference::modules() {
             module.seed(&ctx).await.expect("seed every module");
         }
-        assign(&pool, READER, ADMIN).await;
+        assign(&ctx, READER, ADMIN).await;
         // As in an environment seeded before this build: its subscriptions
         // receive none of the seeds' events, but an `earliest` one's backfill does.
         app_db::Worker::new(

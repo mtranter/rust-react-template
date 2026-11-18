@@ -176,7 +176,8 @@ impl Notes {
 
     /// Later requests are `user`'s, with a real token, holding `user` and
     /// `roles`, assigned in the rule set in force as `access` would. Every test
-    /// starts signed in as Alice, a `user`.
+    /// starts signed in as Alice, a `user`. Roles are the subject's, not the
+    /// token's: a later `by(..)` verb for the same subject resets them to `user`.
     pub fn sign_in_as(&self, user: impl Display, roles: &[&str]) {
         let user = user.to_string();
         self.ctx.authorizer().assign_in_memory(&user, roles);

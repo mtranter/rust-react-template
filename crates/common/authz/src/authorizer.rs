@@ -53,6 +53,7 @@ impl Authorizer {
 
     /// Assigns `subject` exactly `roles` (beside [`USER`]) in the rule set in force, until it is
     /// next replaced: for a Module's own tests, which have no `access` to assign them.
+    #[cfg(any(test, feature = "testing"))]
     pub fn assign_in_memory(&self, subject: &str, roles: &[&str]) {
         self.current.rcu(|current| {
             let mut next = RuleSet::clone(current);

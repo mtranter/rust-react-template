@@ -82,18 +82,28 @@ impl Default for AppConfig {
 impl AppConfig {
     /// The error is boxed: `figment::Error` is large, and this is a cold path.
     pub fn load() -> Result<Self, Box<figment::Error>> {
-        let config: Self = Figment::from(Serialized::defaults(AppConfig::default()))
-            .merge(Toml::file("config.toml"))
-            .merge(Env::prefixed("APP_"))
-            .merge(
-                Env::raw()
-                    .only(&["DATABASE_URL"])
-                    .map(|key| key.as_str().to_ascii_lowercase().into()),
-            )
+        let config: Self = Self::figment(Env::var("APP_BOOTSTRAP_ADMINS"))
             .extract()
             .map_err(Box::new)?;
         config.validate()?;
         Ok(config)
+    }
+
+    /// `APP_BOOTSTRAP_ADMINS` is taken raw, not through `Env`, which parses each value: an
+    /// all-digit subject (as Google issues) would be a number, and `true` a bool, neither a string.
+    fn figment(bootstrap_admins: Option<String>) -> Figment {
+        let figment = Figment::from(Serialized::defaults(AppConfig::default()))
+            .merge(Toml::file("config.toml"))
+            .merge(Env::prefixed("APP_").ignore(&["bootstrap_admins"]))
+            .merge(
+                Env::raw()
+                    .only(&["DATABASE_URL"])
+                    .map(|key| key.as_str().to_ascii_lowercase().into()),
+            );
+        match bootstrap_admins {
+            Some(subjects) => figment.merge(Serialized::default("bootstrap_admins", subjects)),
+            None => figment,
+        }
     }
 
     /// Without this, a copy-paste prod deploy would accept tokens anyone can forge.
@@ -207,6 +217,16 @@ mod tests {
         };
         assert_eq!(config.bootstrap_admins(), ["ada", "auth0|bob"]);
         assert!(AppConfig::default().bootstrap_admins().is_empty());
+    }
+
+    #[test]
+    fn a_bootstrap_admin_whose_subject_reads_as_a_number_or_bool_is_still_a_subject() {
+        for raw in ["12345", "true", "109876543210987654321", "12345,ada"] {
+            let config: AppConfig = AppConfig::figment(Some(raw.to_string()))
+                .extract()
+                .unwrap_or_else(|err| panic!("{raw}: {err}"));
+            assert_eq!(config.bootstrap_admins.as_str(), raw);
+        }
     }
 
     #[test]
