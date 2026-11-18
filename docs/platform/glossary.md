@@ -135,7 +135,7 @@ _Avoid_: Endpoint, command (for a tool)
 
 **Principal**:
 Who is acting: a user, with an id (the token's `sub`) and roles, `user` plus their Assignments, or `System`, the worker's and seeds' caller, acting on facts already decided, which policies don't apply to. Built on every guarded request from the token's subject and the rule set in force, never the token's own `roles` claim (ADR 0040, 0041).
-_Avoid_: User (for the caller), identity, subject
+_Avoid_: User (for the caller), identity, Subject (that is whom it acts for, as `access` records them)
 
 **Policy**:
 A Module's YAML in its core's `policies/`, embedded in the binary and checked against its Rust types when it loads: a resource's rules (what is denied or allowed, to which roles, on which condition), its Scopes, and its default Grants (ADR 0040).
@@ -148,6 +148,10 @@ _Avoid_: Group, permission set
 **Assignment**:
 A Role given to a subject (the token's `sub`), signed in yet or not, in the `access` Module: a Principal holds `user` and every Role assigned to its subject. Admins assign and unassign them at runtime (`assign_role`, `unassign_role`), taking effect within the same 5 seconds as a Grant; `user` is never assigned. A **bootstrap admin**, listed in `APP_BOOTSTRAP_ADMINS`, holds `admin` with nothing assigned and can't be unassigned it, and while there is none the last `admin` Assignment can't be removed (ADR 0041).
 _Avoid_: Membership, role binding
+
+**Subject**:
+Someone Roles can be assigned to, named by the token's `sub`: in the `access` Module, every subject seen signing in, recorded on authentication with the token's `name` and `email` claims when it carries them and when it was last seen (to within an hour, so most requests write nothing), and every subject assigned a Role or listed in `APP_BOOTSTRAP_ADMINS` before it ever has. Admins list them with their Roles (`list_subjects`) to pick whom to assign. A record of sightings, not an aggregate: upserted, unversioned, announcing nothing.
+_Avoid_: User (that is the reference `users` Module's account), account, member
 
 **Grant**:
 A Role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.

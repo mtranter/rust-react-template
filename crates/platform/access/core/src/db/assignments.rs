@@ -97,6 +97,19 @@ impl AssignmentRepository for PgAssignmentRepository {
         Ok(Version::from_i64(version))
     }
 
+    async fn of_subjects(&self, subjects: &[String]) -> AppResult<Vec<Versioned<Assignment>>> {
+        let found = sqlx::query_as!(
+            AssignmentRow,
+            r#"SELECT subject, role, assigned_by, assigned_at, version
+               FROM access.assignment WHERE subject = ANY($1) ORDER BY subject, role"#,
+            subjects,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+        Ok(found.into_iter().map(AssignmentRow::restore).collect())
+    }
+
     async fn holders(&self, tx: &mut Tx, role: &str) -> AppResult<i64> {
         sqlx::query_scalar!(
             r#"SELECT COUNT(*) AS "count!" FROM access.assignment WHERE role = $1"#,

@@ -138,6 +138,19 @@ impl Module {
         }
     }
 
+    /// More request data beside its provider's, for the whole API: `access` resolves every
+    /// token's Principal (an `Arc<dyn PrincipalResolver>`).
+    pub fn providing<T: Clone + Send + Sync + 'static>(
+        self,
+        data: impl Fn(&Context) -> T + Send + Sync + 'static,
+    ) -> Self {
+        let provide = self.provide;
+        Self {
+            provide: Box::new(move |ctx, app| provide(ctx, app).data(data(ctx)).boxed()),
+            ..self
+        }
+    }
+
     /// The module's gate, resources, scopes and default grants (ADR 0040),
     /// built when the server, worker or `migrate` starts.
     pub fn with_policies(

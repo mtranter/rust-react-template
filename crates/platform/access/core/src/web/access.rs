@@ -22,4 +22,5 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("delete_role", "role", "delete"),
     Performs::new("assign_role", "assignment", "assign"),
     Performs::new("unassign_role", "assignment", "unassign"),
+    Performs::new("list_subjects", "subject", "list"),
 ];

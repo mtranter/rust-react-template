@@ -420,6 +420,17 @@ impl Admin<'_> {
             .send()
             .await
     }
+
+    /// Whom roles can be assigned to, as many as a page holds: more than the journeys sign in.
+    pub async fn subjects(&self) -> Outcome<Page<serde_json::Value>> {
+        self.app
+            .api
+            .get("/api/access/subjects")
+            .bearer(&self.token)
+            .query("limit", 100)
+            .send()
+            .await
+    }
 }
 
 pub struct Session<'a> {

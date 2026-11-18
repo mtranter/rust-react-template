@@ -22,6 +22,42 @@ pub struct Claims {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iat: Option<usize>,
     pub exp: usize,
+    /// OIDC's standard profile claims, when the provider puts them in the access token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+}
+
+impl Claims {
+    /// Of `subject`, issued now and expiring in `ttl_secs`, with no profile.
+    pub fn lasting(subject: impl Into<String>, ttl_secs: u64) -> AppResult<Self> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(AppError::internal)?
+            .as_secs() as usize;
+        Ok(Self {
+            sub: subject.into(),
+            iat: Some(now),
+            exp: now + ttl_secs as usize,
+            name: None,
+            email: None,
+        })
+    }
+
+    pub fn named(self, name: impl Into<String>) -> Self {
+        Self {
+            name: Some(name.into()),
+            ..self
+        }
+    }
+
+    pub fn with_email(self, email: impl Into<String>) -> Self {
+        Self {
+            email: Some(email.into()),
+            ..self
+        }
+    }
 }
 
 /// Turns a verified token's claims into who is acting (ADR 0040). Held in request data as an
@@ -129,19 +165,15 @@ impl JwtVerifier {
 
     /// Dev/test only: no issuance backend ships (ADR 0025). Fails in JWKS mode.
     pub fn issue(&self, subject: impl Into<String>, ttl_secs: u64) -> AppResult<String> {
+        self.sign(&Claims::lasting(subject, ttl_secs)?)
+    }
+
+    /// Dev/test only, as [`Self::issue`], for claims carrying a profile.
+    pub fn sign(&self, claims: &Claims) -> AppResult<String> {
         let Mode::Symmetric(s) = &*self.0 else {
             return Err(AppError::internal(AuthError::NotIssuable));
         };
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(AppError::internal)?
-            .as_secs() as usize;
-        let claims = Claims {
-            sub: subject.into(),
-            iat: Some(now),
-            exp: now + ttl_secs as usize,
-        };
-        encode(&Header::new(Algorithm::HS256), &claims, &s.encoding).map_err(AppError::internal)
+        encode(&Header::new(Algorithm::HS256), claims, &s.encoding).map_err(AppError::internal)
     }
 }
 

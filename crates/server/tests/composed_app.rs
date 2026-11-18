@@ -130,6 +130,7 @@ const TOOLS: &[&str] = &[
     "revoke_grant",
     "get_access_catalog",
     "list_roles",
+    "list_subjects",
     "create_role",
     "delete_role",
     "assign_role",

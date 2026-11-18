@@ -1,16 +1,18 @@
 // Naming the pool to wire the repository is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{AccessService, Modules, Operation, Rules};
-use crate::db::{PgAssignmentRepository, PgGrantRepository, PgRoleRepository, migrations};
-use crate::domain::{Assignment, Grant, Role};
-use crate::web::OPERATIONS;
+use crate::application::{AccessService, Modules, Operation, Rules, SignIns};
+use crate::db::{
+    PgAssignmentRepository, PgGrantRepository, PgRoleRepository, PgSubjectRepository, migrations,
+};
+use crate::domain::{Assignment, Grant, Role, Subject};
+use crate::web::{OPERATIONS, RecordingSignIns};
 use access_api::RoleAssignments;
 use access_api::events::v1::{AssignmentTopic, GrantTopic, RoleTopic};
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_error::AppResult;
 use app_module::{Context, Module, PoliciesError};
-use app_web::Provide;
+use app_web::{PrincipalResolver, Provide};
 use std::sync::Arc;
 
 pub struct AccessProvider(AccessService);
@@ -49,6 +51,7 @@ fn service(ctx: &Context, modules: Arc<Modules>) -> AccessService {
         Arc::new(PgGrantRepository::new(ctx.pool())),
         Arc::new(PgRoleRepository::new(ctx.pool())),
         Arc::new(PgAssignmentRepository::new(ctx.pool())),
+        Arc::new(PgSubjectRepository::new(ctx.pool())),
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
@@ -61,7 +64,16 @@ pub fn provider(ctx: &Context, modules: Arc<Modules>) -> AccessProvider {
     AccessProvider(service(ctx, modules))
 }
 
-/// `access`' gate and its `grant`, `role` and `assignment` resources, all `admin`'s by baseline
+/// Resolves every token's Principal from the rule set in force, as the `Authorizer` does, and
+/// records its subject as seen signing in: what `module(..)` gives every request.
+pub fn sign_ins(ctx: &Context) -> Arc<dyn PrincipalResolver> {
+    Arc::new(RecordingSignIns {
+        sign_ins: SignIns::new(Arc::new(PgSubjectRepository::new(ctx.pool())), ctx.clock()),
+        authorizer: ctx.authorizer(),
+    })
+}
+
+/// `access`' gate and its `grant`, `role`, `assignment` and `subject` resources, all `admin`'s by baseline
 /// rules rather than grants, so no revocation can lock admins out (ADR 0040). It has no default
 /// grants.
 pub fn policies() -> PoliciesBuilder {
@@ -70,6 +82,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Grant>(policy_file!("policies/grant.yaml"))
         .resource::<Role>(policy_file!("policies/role.yaml"))
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
+        .resource::<Subject>(policy_file!("policies/subject.yaml"))
 }
 
 /// Assigning roles, for another module's seed to give the accounts it seeds theirs, as `System`:
@@ -108,6 +121,7 @@ pub fn module(composed: fn() -> Vec<Module>) -> Module {
             .expect("every module's policies load: the server checks them before it serves");
         provider(ctx, Arc::new(modules))
     })
+    .providing(sign_ins)
     .with_policies(policies)
     .performing(OPERATIONS)
     .publishes::<GrantTopic>()

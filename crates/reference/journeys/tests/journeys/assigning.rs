@@ -32,3 +32,19 @@ async fn a_user_holds_a_role_an_admin_assigns_from_the_next_poll_until_it_is_una
     app.polls_the_grants().await;
     assert_eq!(bob.roles().await.err(), Some(Refusal::Forbidden));
 }
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn a_user_is_listed_for_an_admin_to_assign_once_they_have_signed_in(pool: PgPool) {
+    let app = App::seeded(pool).await;
+    let admin = app.as_admin(ADMIN_ID).await;
+    let listed = |subjects: &[serde_json::Value]| {
+        subjects
+            .iter()
+            .any(|s| s["subject"] == USER_ID_BOB.to_string())
+    };
+    assert!(!listed(&admin.subjects().await.unwrap().items));
+
+    app.as_user(USER_ID_BOB).me().await.unwrap();
+
+    assert!(listed(&admin.subjects().await.unwrap().items));
+}

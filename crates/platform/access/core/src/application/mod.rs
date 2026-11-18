@@ -9,6 +9,7 @@ mod repository;
 mod roles;
 mod rules;
 mod service;
+mod subjects;
 
 pub use app_persistence::{
     EventPublisher, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
@@ -17,6 +18,8 @@ pub use catalog::{CatalogAction, CatalogResource};
 pub(crate) use events::scope_name;
 pub use repository::{
     AssignmentRepository, GrantFilter, GrantRepository, GrantSortKey, RoleRepository, RoleSortKey,
+    SubjectFilter, SubjectRepository, SubjectSortKey,
 };
 pub use rules::{POLL_EVERY, Rules};
 pub use service::{AccessService, Listing, Modules, Operation};
+pub use subjects::{HeldRole, SignIns, SubjectListing};
