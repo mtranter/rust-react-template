@@ -1,0 +1,256 @@
+use super::error::refused;
+use super::events::{self, scope_name};
+use super::{
+    CatalogAction, CatalogResource, EventPublisher, GrantFilter, GrantRepository, GrantSortKey,
+    ListQuery, Listed, Transactions, Version, Versioned,
+};
+use crate::domain::{Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy};
+use app_authz::{Authorizer, Plan, Policies, Principal, check_grant};
+use app_domain::Clock;
+use app_error::{AppError, AppResult};
+use std::collections::HashSet;
+use std::sync::Arc;
+
+/// An operation and the action it performs, from its module's `OPERATIONS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Operation {
+    pub id: &'static str,
+    pub resource: &'static str,
+    pub action: &'static str,
+}
+
+/// Every module served beside `access`, its own included: what can be granted, and by which
+/// operations it is performed.
+#[derive(Debug, Clone)]
+pub struct Modules {
+    pub policies: Vec<Policies>,
+    pub operations: Vec<Operation>,
+}
+
+/// A grant as an admin lists it: stale when its module's policies no longer have its resource,
+/// action or scope, so the rule set skips it.
+#[derive(Debug, Clone)]
+pub struct Listing {
+    pub grant: Versioned<Grant>,
+    pub stale: bool,
+}
+
+#[derive(Clone)]
+pub struct AccessService {
+    repo: Arc<dyn GrantRepository>,
+    publisher: Arc<dyn EventPublisher>,
+    transactions: Arc<dyn Transactions>,
+    clock: Arc<dyn Clock>,
+    authorizer: Arc<Authorizer>,
+    modules: Arc<Modules>,
+}
+
+fn acting(principal: &Principal) -> GrantedBy {
+    match principal.id() {
+        Some(id) => GrantedBy::User(id.to_owned()),
+        None => GrantedBy::System,
+    }
+}
+
+impl AccessService {
+    pub fn new(
+        repo: Arc<dyn GrantRepository>,
+        publisher: Arc<dyn EventPublisher>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+        authorizer: Arc<Authorizer>,
+        modules: Arc<Modules>,
+    ) -> Self {
+        Self {
+            repo,
+            publisher,
+            transactions,
+            clock,
+            authorizer,
+            modules,
+        }
+    }
+
+    fn authorize(&self, principal: &Principal, action: GrantAction) -> AppResult<Plan> {
+        self.authorizer.authorize::<Grant>(principal, action)
+    }
+
+    fn is_stale(&self, grant: &Grant) -> bool {
+        check_grant(&self.modules.policies, grant.rule()).is_err()
+    }
+
+    pub async fn list(
+        &self,
+        principal: &Principal,
+        filter: GrantFilter,
+        query: ListQuery<GrantSortKey>,
+    ) -> AppResult<Listed<Listing>> {
+        let rows = self
+            .authorizer
+            .rows::<Grant>(principal, GrantAction::List)?;
+        let listed = self.repo.list(&filter, &query, &rows).await?;
+        Ok(Listed {
+            items: listed
+                .items
+                .into_iter()
+                .map(|grant| Listing {
+                    stale: self.is_stale(&grant.entity),
+                    grant,
+                })
+                .collect(),
+            total: listed.total,
+        })
+    }
+
+    /// Checked against the loaded policies, so a stored grant always compiles; one equal to an
+    /// existing grant is a conflict. Takes effect on each server instance at its next poll.
+    pub async fn grant(
+        &self,
+        principal: &Principal,
+        cmd: GrantAccess,
+    ) -> AppResult<Versioned<Grant>> {
+        self.authorize(principal, GrantAction::Create)?;
+        let (grant, event) = Grant::make(GrantId::new(), cmd, acting(principal), self.clock.now())?;
+        check_grant(&self.modules.policies, grant.rule()).map_err(refused)?;
+        let mut tx = self.transactions.begin().await?;
+        let version = self.repo.insert(&mut tx, &grant).await?;
+        self.publisher
+            .publish(&mut tx, events::pending(&grant, version, event))
+            .await?;
+        self.repo.bump_revision(&mut tx).await?;
+        tx.commit().await?;
+        Ok(Versioned {
+            entity: grant,
+            version,
+        })
+    }
+
+    /// Removes the grant and announces it, as it was last, in the same transaction.
+    pub async fn revoke(
+        &self,
+        principal: &Principal,
+        id: GrantId,
+        expected: Version,
+    ) -> AppResult<()> {
+        let plan = self.authorize(principal, GrantAction::Revoke)?;
+        let current = self
+            .repo
+            .get(id)
+            .await?
+            .ok_or_else(|| AppError::not_found("grant"))?;
+        self.authorizer.check(principal, &plan, &current.entity)?;
+        if current.version != expected {
+            return Err(AppError::precondition_failed(
+                "the grant was revoked and granted again meanwhile",
+            ));
+        }
+        let event = current.entity.revoke(acting(principal));
+        let mut tx = self.transactions.begin().await?;
+        self.repo.delete(&mut tx, id, expected).await?;
+        self.publisher
+            .publish(
+                &mut tx,
+                events::pending(&current.entity, expected.next(), event),
+            )
+            .await?;
+        self.repo.bump_revision(&mut tx).await?;
+        tx.commit().await
+    }
+
+    /// Every module's gate and resources, their actions with the operations performing each and
+    /// whether anything in force could allow them, and their scopes.
+    pub fn catalog(&self, principal: &Principal) -> AppResult<Vec<CatalogResource>> {
+        self.authorize(principal, GrantAction::List)?;
+        let rule_set = self.authorizer.current();
+        Ok(self
+            .modules
+            .policies
+            .iter()
+            .flat_map(|policies| {
+                let catalog = policies.catalog(&rule_set);
+                catalog
+                    .resources
+                    .into_iter()
+                    .map(move |resource| CatalogResource {
+                        module: catalog.module.clone(),
+                        actions: resource
+                            .actions
+                            .into_iter()
+                            .map(|action| CatalogAction {
+                                operations: self
+                                    .modules
+                                    .operations
+                                    .iter()
+                                    .filter(|o| {
+                                        o.resource == resource.kind && o.action == action.name
+                                    })
+                                    .map(|o| o.id)
+                                    .collect(),
+                                name: action.name,
+                                reachable: action.reachable,
+                            })
+                            .collect(),
+                        resource: resource.kind,
+                        scopes: resource.scopes,
+                    })
+            })
+            .collect())
+    }
+
+    /// Grants, as `System`, every module's default grant not applied before, in one unit of
+    /// work: what `migrate` runs once every module is migrated. A default an admin revoked was
+    /// applied, so it isn't granted again; one equal to a grant an admin made is recorded only.
+    /// Returns how many it granted.
+    pub async fn apply_defaults(&self) -> AppResult<usize> {
+        let mut tx = self.transactions.begin().await?;
+        // Taken first, so two `migrate`s apply the defaults one after the other.
+        self.repo.bump_revision(&mut tx).await?;
+        let mut applied: HashSet<_> = self
+            .repo
+            .applied_defaults(&mut tx)
+            .await?
+            .into_iter()
+            .collect();
+        let now = self.clock.now();
+        let mut granted = 0;
+        let mut recorded = 0;
+        for policies in &self.modules.policies {
+            for rule in policies.default_grants() {
+                let key = (policies.module().to_owned(), rule.clone());
+                // A module's file may name one grant twice (`*` and the action itself).
+                if !applied.insert(key) {
+                    continue;
+                }
+                self.repo
+                    .record_default(&mut tx, policies.module(), rule, now)
+                    .await?;
+                recorded += 1;
+                if self.repo.exists(&mut tx, rule).await? {
+                    continue;
+                }
+                let grant = Grant::restore(GrantId::new(), rule.clone(), GrantedBy::System, now);
+                let version = self.repo.insert(&mut tx, &grant).await?;
+                self.publisher
+                    .publish(
+                        &mut tx,
+                        events::pending(&grant, version, GrantEvent::Granted),
+                    )
+                    .await?;
+                tracing::info!(
+                    module = policies.module(),
+                    role = grant.role(),
+                    resource = grant.resource(),
+                    action = grant.action(),
+                    scope = scope_name(grant.scope()),
+                    "default grant applied"
+                );
+                granted += 1;
+            }
+        }
+        // Nothing new leaves the revision where it was, so no instance rebuilds for nothing.
+        if recorded > 0 {
+            tx.commit().await?;
+        }
+        Ok(granted)
+    }
+}

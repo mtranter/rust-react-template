@@ -3,6 +3,44 @@
 version = 4
 
 [[package]]
+name = "access"
+version = "0.1.0"
+dependencies = [
+ "access-api",
+ "app-authz",
+ "app-db",
+ "app-domain",
+ "app-error",
+ "app-events",
+ "app-module",
+ "app-persistence",
+ "app-test-db",
+ "app-test-support",
+ "app-web",
+ "async-trait",
+ "chrono",
+ "poem",
+ "poem-openapi",
+ "serde_json",
+ "sqlx",
+ "strum",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "access-api"
+version = "0.1.0"
+dependencies = [
+ "app-events",
+ "chrono",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3085,6 +3123,7 @@ dependencies = [
 name = "reference-journeys"
 version = "0.1.0"
 dependencies = [
+ "access",
  "app-authz",
  "app-db",
  "app-domain",
@@ -3630,6 +3669,7 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "access",
  "app-authz",
  "app-bus",
  "app-db",

@@ -142,12 +142,24 @@ A Module's YAML in its core's `policies/`, embedded in the binary and checked ag
 _Avoid_: Permission file, ACL
 
 **Grant**:
-A role given an action on a resource, within a Scope or on any row. It only allows. Default grants are a Module's, in its policy files; ticket 0029 lets admins make and revoke them at runtime.
+A role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.
 _Avoid_: Permission, entitlement
 
 **Scope**:
 A named condition on a resource's rows (`author`: the note's author is the Principal), which a Grant can pair with any role. A derived role whose `parentRoles` is `["*"]`.
 _Avoid_: Filter (for its name), row rule
+
+**Default Grant**:
+A Grant a Module's `policies/default_grants.yaml` declares, which `migrate` applies once, as `System`, recording its key (Module, role, resource, action, Scope) in `access`. A revoked one stays revoked; one added in a later release is granted by that release's `migrate`.
+_Avoid_: Seed (seeds don't run in production), built-in permission
+
+**Revision**:
+The counter `access` bumps in the unit of work of every change to the Grants. Each server instance polls it every 5 seconds and, when it has moved, rebuilds its rule set from every Module's policies and every Grant, and swaps it in whole.
+_Avoid_: Version (that is a root's), generation
+
+**Catalog**:
+What admins grant from (`get_access_catalog`): every Module's Gate and resources, each action with the operations performing it and whether anything in force could allow it, and each resource's Scopes. Built from the loaded policies and `OPERATIONS`, never stored.
+_Avoid_: Permission list, schema
 
 **Gate**:
 A Module's resource `module:<name>` and its one action, `use`, granted on roles only: what a Principal must pass before any of the Module's guarded operations, through its `Caller`.

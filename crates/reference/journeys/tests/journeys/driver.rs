@@ -68,6 +68,10 @@ impl NoteJson {
     }
 }
 
+json_newtype!(pub GrantJson);
+
+json_newtype!(pub CatalogJson);
+
 json_newtype!(pub NoteSummaryJson);
 
 impl NoteSummaryJson {
@@ -100,6 +104,8 @@ pub struct App {
     worker: Worker,
     clock: Arc<FixedClock>,
     seeded_through: i64,
+    pool: PgPool,
+    rules: access::Rules,
 }
 
 impl App {
@@ -107,14 +113,24 @@ impl App {
     /// module, as `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
-        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
+        let app = Self::instance(pool, clock).await;
+        let ctx = Context::new(app.pool.clone(), app.clock.clone());
         server::register_topics::<Reference>(&ctx)
             .await
             .expect("register every module's topics");
         server::register_subscriptions::<Reference>(&ctx)
             .await
             .expect("register every module's subscriptions");
+        app
+    }
+
+    /// One server instance over the database, serving once it has read the
+    /// stored grants, as `server` does.
+    async fn instance(pool: PgPool, clock: Arc<FixedClock>) -> Self {
+        let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
+        let ctx = Context::new(pool.clone(), clock.clone()).with_authorizer(Arc::new(authorizer));
+        let rules = server::rules::<Reference>(&ctx).expect("every module's policies load");
+        rules.refresh().await.expect("the grants are read");
         let worker = server::worker::<Reference>(&ctx);
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
@@ -130,7 +146,20 @@ impl App {
             worker,
             clock,
             seeded_through,
+            pool,
+            rules,
         }
+    }
+
+    /// A second server instance over the same database, as behind a load balancer.
+    pub async fn another_instance(&self) -> Self {
+        Self::instance(self.pool.clone(), self.clock.clone()).await
+    }
+
+    /// The instance's next poll of the grants' revision, as it makes every
+    /// `access::POLL_EVERY`: what bounds how long a change of grants takes to apply.
+    pub async fn polls_the_grants(&self) {
+        self.rules.refresh().await.expect("the grants are read");
     }
 
     pub fn now(&self) -> DateTime<Utc> {
@@ -199,6 +228,14 @@ impl App {
     /// Signed in with a real token, which the server verifies, as a `user`.
     pub fn as_user(&self, user: impl Display) -> Session<'_> {
         self.with_roles(user, &[USER])
+    }
+
+    /// Signed in as an `admin`, who manages who may do what.
+    pub fn as_admin(&self, user: impl Display) -> Admin<'_> {
+        Admin {
+            app: self,
+            token: self.token_of(user, &[ADMIN]),
+        }
     }
 
     /// Signed in, but holding only `roles`.
@@ -289,6 +326,61 @@ impl Agent<'_> {
     }
 }
 
+/// An admin, granting and revoking over the API.
+pub struct Admin<'a> {
+    app: &'a App,
+    token: String,
+}
+
+impl Admin<'_> {
+    /// `scope` is `any` or one of the resource's scopes.
+    pub async fn grant(
+        &self,
+        role: &str,
+        resource: &str,
+        action: &str,
+        scope: &str,
+    ) -> Outcome<GrantJson> {
+        self.app
+            .api
+            .post("/api/access/grants")
+            .bearer(&self.token)
+            .json(&json!({ "role": role, "resource": resource, "action": action, "scope": scope }))
+            .send()
+            .await
+    }
+
+    pub async fn revoke(&self, grant: &GrantJson) -> Outcome<()> {
+        self.app
+            .api
+            .delete(format!("/api/access/grants/{}", grant.id()))
+            .bearer(&self.token)
+            .if_match(grant.version())
+            .send_empty()
+            .await
+    }
+
+    /// The grants, as many as a page holds: more than the journeys make.
+    pub async fn grants(&self) -> Outcome<Page<GrantJson>> {
+        self.app
+            .api
+            .get("/api/access/grants")
+            .bearer(&self.token)
+            .query("limit", 100)
+            .send()
+            .await
+    }
+
+    pub async fn catalog(&self) -> Outcome<CatalogJson> {
+        self.app
+            .api
+            .get("/api/access/catalog")
+            .bearer(&self.token)
+            .send()
+            .await
+    }
+}
+
 pub struct Session<'a> {
     app: &'a App,
     token: String,
@@ -322,6 +414,12 @@ impl Session<'_> {
             .await
     }
 
+    pub async fn note(&self, id: impl Display) -> Outcome<NoteJson> {
+        self.signed(self.app.api.get(format!("/api/notes/{id}")))
+            .send()
+            .await
+    }
+
     pub async fn notes(&self) -> Outcome<Page<NoteJson>> {
         self.signed(self.app.api.get("/api/notes")).send().await
     }
@@ -350,13 +448,19 @@ impl Session<'_> {
     }
 }
 
-/// Every journey's database starts as a copy of this: every module migrated
-/// and seeded, as `migrate` and `seed` leave it.
+/// Every journey's database starts as a copy of this: every module migrated,
+/// its default grants applied, and seeded, as `migrate` and `seed` leave it.
 pub const TEMPLATE: Template = Template::new("journeys", |pool| {
     Box::pin(async move {
         app_db::run_migrations(&pool, &server::module_migrations::<Reference>())
             .await
             .expect("migrate every module");
+        server::apply_default_grants::<Reference>(&Context::new(
+            pool.clone(),
+            Arc::new(app_domain::SystemClock),
+        ))
+        .await
+        .expect("apply every module's default grants");
         for module in Reference::modules() {
             module.seed(pool.clone()).await.expect("seed every module");
         }

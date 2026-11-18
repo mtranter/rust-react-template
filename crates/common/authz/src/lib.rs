@@ -21,7 +21,7 @@ pub use authorizer::Authorizer;
 pub use condition::Filter;
 pub use policies::{
     Catalog, CatalogAction, CatalogResource, GATE_ACTION, Grant, GrantRefusal, GrantRefused,
-    Policies, PoliciesBuilder, PolicyFile, Scope,
+    Policies, PoliciesBuilder, PolicyFile, Scope, check_grant,
 };
 pub use principal::{Principal, Value};
 pub use resource::{Action, Resource};

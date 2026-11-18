@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: grant
+  version: default
+  rules:
+    - name: admins always grant and revoke, whatever is granted or revoked
+      actions: ["*"]
+      effect: EFFECT_ALLOW
+      roles: [admin]

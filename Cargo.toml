@@ -2,8 +2,9 @@
 resolver = "3"
 members = [
     "crates/common/*",
-    # Every module's `core` and `api` crates, in `crates/modules/` and the
-    # reference modules in `crates/reference/` (see crates/AGENTS.md), so a new
+    # Every module's `core` and `api` crates, in `crates/modules/`, the
+    # platform's in `crates/platform/` and the reference modules in
+    # `crates/reference/` (see crates/AGENTS.md), so a new
     # module needs no entry here. Cargo reads a glob matching nothing as a path,
     # so `crates/modules/*/*` would fail while there are no modules.
     "crates/*/*/core",
@@ -37,6 +38,8 @@ app-test-db-macros = { path = "crates/common/test-db-macros" }
 app-module = { path = "crates/common/module" }
 app-authz = { path = "crates/common/authz" }
 server = { path = "crates/server" }
+access-api = { path = "crates/platform/access/api" }
+access = { path = "crates/platform/access/core" }
 users-api = { path = "crates/reference/users/api" }
 users = { path = "crates/reference/users/core" }
 notes-api = { path = "crates/reference/notes/api" }

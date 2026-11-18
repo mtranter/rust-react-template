@@ -19,14 +19,20 @@ impl Authorizer {
         }
     }
 
-    /// Every Module's policies with their default grants, held in memory: until grants are stored
-    /// and editable (platform ticket 0029), the defaults are the only grants.
+    /// Every Module's policies with their default grants, held in memory: for a Module's own
+    /// tests, which run without the `access` Module that stores grants.
     pub fn from_policies(policies: &[Policies]) -> Result<Self, CompileError> {
         let defaults: Vec<_> = policies
             .iter()
             .flat_map(|p| p.default_grants().iter().cloned())
             .collect();
         Ok(Self::new(RuleSet::compile(policies, &defaults)?.rule_set))
+    }
+
+    /// Every Module's baseline rules and no grant: what a process holds until it has read the
+    /// stored grants, and all the worker needs, acting as `System`.
+    pub fn baseline(policies: &[Policies]) -> Result<Self, CompileError> {
+        Ok(Self::new(RuleSet::compile(policies, &[])?.rule_set))
     }
 
     /// A snapshot: a `replace` after this isn't seen through it.

@@ -38,6 +38,7 @@ name = "composed_app"
 path = "tests/composed_app.rs"
 
 [dependencies]
+access.workspace = true
 app-authz.workspace = true
 app-bus.workspace = true
 app-db.workspace = true

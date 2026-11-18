@@ -1,6 +1,7 @@
 import { App } from "@/App";
 import { createAppRouter } from "@/router";
 import { createMemoryHistory } from "@tanstack/react-router";
+import { http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -14,7 +15,16 @@ const name = new URLSearchParams(window.location.search).get("scenario");
 const scenario = scenarios.find((s) => s.name === name);
 if (!scenario) throw new Error(`no scenario named "${name}"`);
 
-await setupWorker(...scenario.handlers).start({
+// After the scenario's, so a scenario of an admin answers the catalog first: by default the
+// caller manages no access, as the server answers one who isn't an admin.
+const notAnAdmin = http.get("*/api/access/catalog", () =>
+  HttpResponse.json(
+    { code: "forbidden", message: "forbidden", requestId: "screens" },
+    { status: 403 },
+  ),
+);
+
+await setupWorker(...scenario.handlers, notAnAdmin).start({
   serviceWorker: { url: "/screens/mockServiceWorker.js" },
   quiet: true,
   onUnhandledRequest: (request, print) => {

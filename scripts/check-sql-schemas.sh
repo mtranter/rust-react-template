@@ -13,7 +13,7 @@ set -euo pipefail
 shopt -s nullglob
 cd "$(dirname "$0")/.."
 
-modules=(crates/modules/*/core crates/reference/*/core crates/module-template/core)
+modules=(crates/modules/*/core crates/platform/*/core crates/reference/*/core crates/module-template/core)
 
 schema_of() {
   local file="$1/src/db/migrations.rs"

@@ -1,6 +1,7 @@
 //! Run explicitly, never on server startup, so production controls migration
 //! timing (ADR 0021). Then registers every module's topics (ADR 0033) and subscriptions (ADR 0014), so
-//! they exist before any process of this build publishes or relays.
+//! they exist before any process of this build publishes or relays, and applies
+//! the default grants this build adds (ADR 0040).
 
 use app_domain::SystemClock;
 use app_module::Context;
@@ -20,6 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = Context::new(pool, Arc::new(SystemClock));
     server::register_topics::<Registered>(&ctx).await?;
     server::register_subscriptions::<Registered>(&ctx).await?;
+    let granted = server::apply_default_grants::<Registered>(&ctx).await?;
+    tracing::info!(granted, "default grants applied");
 
     tracing::info!("migrations complete");
     Ok(())

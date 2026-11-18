@@ -7,8 +7,8 @@ import { defineConfig } from "vitest/config";
 /**
  * The dev sign-in: no identity provider runs in dev, so the proxy signs every `/api` request as
  * the reference modules' seeded Alice (crates/reference/users/api/src/seed.rs) with the `user` role, using the
- * backend's dev-only HS256 secret (`APP_JWT_SECRET`). Only `vite` serves this; production builds
- * carry no token.
+ * backend's dev-only HS256 secret (`APP_JWT_SECRET`). `APP_DEV_ROLES=user,admin` signs her in as
+ * an admin too, to manage access. Only `vite` serves this; production builds carry no token.
  */
 function devToken(): string {
   const secret = process.env.APP_JWT_SECRET ?? "dev-only-insecure-secret-change-me";
@@ -16,7 +16,7 @@ function devToken(): string {
   const encode = (part: object) => Buffer.from(JSON.stringify(part)).toString("base64url");
   const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
     sub: "00000001-0001-0000-0000-000000000001",
-    roles: ["user"],
+    roles: (process.env.APP_DEV_ROLES ?? "user").split(","),
     iat: now,
     exp: now + 12 * 60 * 60,
   })}`;

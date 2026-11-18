@@ -24,6 +24,7 @@ use app_module::{Context, Module, PoliciesError};
 use app_persistence::Handlers;
 use app_web::{Idempotent, Performs};
 use poem_openapi::{OpenApi, OpenApiService};
+use std::sync::Arc;
 
 /// Modules served as one app: the API's operations and the modules behind them.
 pub trait Composition: Send + Sync + 'static {
@@ -65,10 +66,30 @@ pub fn policies<C: Composition>() -> Result<Vec<Policies>, PoliciesError> {
     C::modules().iter().filter_map(Module::policies).collect()
 }
 
-/// One rule set from every module's policies and default grants (ADR 0040),
-/// for the context every service and `Caller` plans with.
+/// Every module's baseline rules and no grant (ADR 0040), for the context every
+/// service and `Caller` plans with: the server fills it from the stored grants
+/// ([`rules`]) before it serves, and the worker, acting as `System`, needs no more.
 pub fn authorizer<C: Composition>() -> Result<Authorizer, Box<dyn std::error::Error>> {
-    Ok(Authorizer::from_policies(&policies::<C>()?)?)
+    Ok(Authorizer::baseline(&policies::<C>()?)?)
+}
+
+/// Every module's policies and operations: what `access` grants from.
+pub fn access_modules<C: Composition>() -> Result<Arc<access::Modules>, PoliciesError> {
+    Ok(Arc::new(access::Modules::of(&C::modules())?))
+}
+
+/// What keeps `ctx.authorizer()` in step with the grants `access` stores: refresh
+/// it once before serving, then watch it.
+pub fn rules<C: Composition>(ctx: &Context) -> Result<access::Rules, PoliciesError> {
+    Ok(access::rules(ctx, access_modules::<C>()?))
+}
+
+/// Grants every module's default grants `migrate` hasn't applied before, as
+/// `migrate` does once every module is migrated. Returns how many it granted.
+pub async fn apply_default_grants<C: Composition>(
+    ctx: &Context,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    Ok(access::apply_default_grants(ctx, access_modules::<C>()?).await?)
 }
 
 /// Every module's `OPERATIONS`: the action each guarded operation performs.
