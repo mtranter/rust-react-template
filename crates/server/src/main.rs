@@ -22,6 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = Context::new(pool, Arc::new(SystemClock))
         .with_bus(bus)
         .with_authorizer(Arc::new(authorizer()?));
+    // Serves only once the stored grants are in force; a poll that fails later
+    // keeps the rule set it had.
+    let rules = server::rules::<Registered>(&ctx)?;
+    rules.refresh().await.inspect_err(|err| {
+        tracing::error!(error = ?err, "server refused to start: the grants can't be read");
+    })?;
+    tokio::spawn(async move { rules.watch(access::POLL_EVERY).await });
     let verifier = build_verifier(&config).await?;
     let discovery = Discovery::new(
         PublicUrl::new(config.public_url.clone()),

@@ -10,6 +10,7 @@ publish = false
 # the journeys over them. A composition of its own, so they run unchanged once
 # an app's server registers its own modules instead.
 [dependencies]
+access.workspace = true
 app-module.workspace = true
 server.workspace = true
 users.workspace = true

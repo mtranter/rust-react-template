@@ -1,5 +1,7 @@
 import type {
+  CatalogResponse,
   ErrorBody,
+  GrantResponse,
   ListResultNoteResponse,
   ListResultNoteSummaryResponse,
   NoteResponse,
@@ -143,6 +145,53 @@ function searching(items: NoteSummaryResponse[]) {
     } satisfies ListResultNoteSummaryResponse);
   });
 }
+
+const accessCatalog: CatalogResponse = {
+  resources: [
+    {
+      module: "workshop",
+      resource: "module:workshop",
+      actions: [{ name: "use", operations: [], reachable: true }],
+      scopes: ["any"],
+    },
+    {
+      module: "workshop",
+      resource: "gadget",
+      actions: [
+        { name: "make", operations: ["make_gadget"], reachable: true },
+        { name: "view", operations: ["get_gadget"], reachable: true },
+        { name: "scrap", operations: [], reachable: false },
+      ],
+      scopes: ["any", "maker"],
+    },
+  ],
+};
+
+const grants: GrantResponse[] = [
+  ["user", "module:workshop", "use", "any"],
+  ["user", "gadget", "make", "any"],
+  ["user", "gadget", "view", "maker"],
+  ["admin", "gadget", "view", "any"],
+  ["support", "gadget", "polish", "any"],
+].map(([role, resource, action, scope], i) => ({
+  id: `grant-${i + 1}`,
+  role,
+  resource,
+  action,
+  scope,
+  ...(role === "support" && { grantedBy: "an-admin" }),
+  grantedAt: new Date(Date.UTC(2026, 0, 1 + i, 9, 0)).toISOString(),
+  stale: action === "polish",
+  version: "1",
+}));
+
+/** `access` as the server answers an admin. */
+const accessApi = [
+  http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
+  http.get("*/api/access/grants", () =>
+    HttpResponse.json({ items: grants, total: grants.length, limit: 20, offset: 0 }),
+  ),
+];
 
 export const scenarios: Scenario[] = [
   {
@@ -288,6 +337,30 @@ export const scenarios: Scenario[] = [
         ),
       ),
     ],
+    shows: (page) => page.getByRole("alert"),
+  },
+  {
+    name: "access",
+    route: "/access",
+    handlers: accessApi,
+    shows: (page) => page.getByText("Stale"),
+  },
+  {
+    name: "access-grant",
+    route: "/access",
+    handlers: accessApi,
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Grant access" }).click();
+      const dialog = page.getByRole("dialog", { name: "Grant access" });
+      await dialog.getByLabel("Role").fill("support");
+      await dialog.getByLabel("Resource").selectOption("gadget");
+    },
+    shows: (page) => page.getByRole("dialog", { name: "Grant access" }).getByLabel("Action"),
+  },
+  {
+    name: "access-not-an-admin",
+    route: "/access",
+    handlers: [],
     shows: (page) => page.getByRole("alert"),
   },
 ];

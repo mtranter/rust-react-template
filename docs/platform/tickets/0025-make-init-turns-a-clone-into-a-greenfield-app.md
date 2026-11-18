@@ -88,7 +88,7 @@ What `init` must **not** do is delete the example modules. They are still what a
 - [ ] `make init NAME=crm TITLE="Acme CRM"` on a fresh clone ends in one commit, and `make check` passes on it.
 - [ ] Run again, or on a dirty tree, or without `NAME`/`TITLE`, it refuses and changes nothing.
 - [ ] After it:
-  - [ ] the spec has no operations and `/mcp` lists no tools;
+  - [ ] the spec has only the platform's `access` operations and `/mcp` lists only its tools (ticket 0029: `access` is platform, not reference, so it stays registered);
   - [ ] the UI shows a placeholder home titled `Acme CRM`;
   - [ ] `make dev` starts and serves it;
   - [ ] `make new-module NAME=contacts` scaffolds a module that is registered and passes its tests.

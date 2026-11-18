@@ -227,6 +227,20 @@ impl Policies {
     }
 }
 
+/// Whether `grant` could be saved, against whichever Module's policies have its resource.
+pub fn check_grant(policies: &[Policies], grant: &Grant) -> Result<(), GrantRefused> {
+    match policies
+        .iter()
+        .find(|p| p.resource(&grant.resource).is_some())
+    {
+        Some(p) => p.check(grant),
+        None => Err(GrantRefused {
+            grant: Box::new(grant.clone()),
+            reason: GrantRefusal::UnknownResource(grant.resource.clone()),
+        }),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     pub module: String,

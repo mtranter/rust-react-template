@@ -1,0 +1,110 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, role, resource, action, scope, granted_by, granted_at, version\n               FROM access.grant",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "role",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "resource",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "resource"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "action",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "scope",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "scope"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "granted_by",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "granted_by"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "granted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "granted_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "access.\"grant\"",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "0b2d4efc15c7f9857b445ad4e14611883ed546be8979f20a9856b0de86092bb7"
+}

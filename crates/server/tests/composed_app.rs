@@ -23,6 +23,10 @@ const TEMPLATE: Template = Template::new("composed_app", |pool| {
         app_db::run_migrations(&pool, &server::module_migrations::<Registered>())
             .await
             .expect("migrate every module");
+        let ctx = Context::new(pool.clone(), Arc::new(SystemClock));
+        server::apply_default_grants::<Registered>(&ctx)
+            .await
+            .expect("apply every module's default grants");
         for module in Registered::modules() {
             module.seed(pool.clone()).await.expect("seed every module");
         }
@@ -31,20 +35,30 @@ const TEMPLATE: Template = Template::new("composed_app", |pool| {
 
 const NIL_ID: &str = "00000000-0000-0000-0000-000000000000";
 
-/// As `main` builds it: every module's policies compiled into its authorizer.
-fn context(pool: PgPool) -> Context {
+/// As `main` builds it: every module's policies and the stored grants compiled
+/// into its authorizer.
+async fn context(pool: PgPool) -> Context {
     let authorizer = server::authorizer::<Registered>().expect("every module's policies load");
-    Context::new(pool, Arc::new(SystemClock)).with_authorizer(Arc::new(authorizer))
+    let ctx = Context::new(pool, Arc::new(SystemClock)).with_authorizer(Arc::new(authorizer));
+    server::rules::<Registered>(&ctx)
+        .expect("every module's policies load")
+        .refresh()
+        .await
+        .expect("the grants are read");
+    ctx
 }
 
 #[app_test_db::test(TEMPLATE)]
 async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
     let verifier = JwtVerifier::new("test-secret");
+    // An admin, so `access` reads its tables rather than refusing at its gate.
     let bearer = format!(
         "Bearer {}",
-        verifier.issue(NIL_ID, &["user"], 60).expect("issue token")
+        verifier
+            .issue(NIL_ID, &["user", "admin"], 60)
+            .expect("issue token")
     );
-    let ctx = context(pool);
+    let ctx = context(pool).await;
     // A read module serving its own copy answers once the worker has caught it up.
     server::register_subscriptions::<Registered>(&ctx)
         .await
@@ -111,6 +125,10 @@ fn with_params(path: &str) -> String {
 /// The MCP surface, so a change to it shows in a diff: every operation's id
 /// but those `REST_ONLY`. `make new-module` adds a new module's here.
 const TOOLS: &[&str] = &[
+    "list_grants",
+    "grant_access",
+    "revoke_grant",
+    "get_access_catalog",
     "register_user",
     "list_users",
     "get_me",
@@ -140,7 +158,7 @@ impl From<Refused> for Code {
 async fn one_mcp_endpoint_offers_a_tool_per_operation(pool: PgPool) {
     let verifier = JwtVerifier::new("test-secret");
     let token = verifier.issue(NIL_ID, &["user"], 60).expect("issue token");
-    let ctx = context(pool);
+    let ctx = context(pool).await;
     let api = TestApi::over(server::build_app::<Registered>(
         &ctx,
         verifier,
@@ -205,7 +223,7 @@ fn the_instructions_say_what_every_refusal_status_means() {
 
 #[app_test_db::test(TEMPLATE)]
 async fn with_an_issuer_mcp_clients_are_told_where_to_sign_in(pool: PgPool) {
-    let ctx = context(pool);
+    let ctx = context(pool).await;
     let discovery = Discovery::new(
         PublicUrl::new(Some("https://app.example".into())),
         Some("https://issuer.example".into()),

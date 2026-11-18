@@ -26,7 +26,7 @@ for word in "$name" "$entity"; do
 done
 [ "$entity" != "$name" ] || die "the entity must differ from the module name: pass it, e.g. \`$name $name-item\`"
 [ "$name" != widgets ] || die "\`widgets\` is the module template's own name: pick another"
-for taken in "crates/modules/$name" "crates/reference/$name"; do
+for taken in "crates/modules/$name" "crates/platform/$name" "crates/reference/$name"; do
   [ ! -e "$taken" ] || die "$taken already exists"
 done
 ! grep -qE "^$name = " Cargo.toml || die "the workspace already has a crate named \`$name\`"
@@ -41,9 +41,9 @@ entity_upper=$(tr '[:lower:]' '[:upper:]' <<<"$entity_ident")
 plural_type=$(pascal "$name")
 entity_type=$(pascal "$entity")
 
-cores=(crates/modules/*/core/Cargo.toml crates/reference/*/core/Cargo.toml)
+cores=(crates/modules/*/core/Cargo.toml crates/platform/*/core/Cargo.toml crates/reference/*/core/Cargo.toml)
 existing=$( ((${#cores[@]})) && sed -nE 's/^name = "([^"]+)"/\1/p' "${cores[@]}" | paste -sd '|' - || true)
-seeds=(crates/modules/*/*/src/seed.rs crates/reference/*/*/src/seed.rs)
+seeds=(crates/modules/*/*/src/seed.rs crates/platform/*/*/src/seed.rs crates/reference/*/*/src/seed.rs)
 last=$( ((${#seeds[@]})) && sed -nE 's/^pub const MODULE: u32 = ([0-9]+);/\1/p' "${seeds[@]}" | sort -n | tail -1 || true)
 number=$((${last:-0} + 1))
 
@@ -85,8 +85,8 @@ after_last() {
   mv "$file.new" "$file"
 }
 
-after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|reference)/' "$name-api = { path = \"$root/api\" }"
-after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|reference)/' "$name = { path = \"$dir\" }"
+after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|platform|reference)/' "$name-api = { path = \"$root/api\" }"
+after_last Cargo.toml '^[a-z0-9-]+ = \{ path = "crates/(modules|platform|reference)/' "$name = { path = \"$dir\" }"
 after_last crates/server/Cargo.toml "^(${existing:-$name})\.workspace = true" "$name.workspace = true" '^\[dependencies\]'
 NAME=$name perl -i -pe 's{^seed = \[\]}{seed = ["$ENV{NAME}/seed"]} or s{^(seed = \[.*)\]}{$1, "$ENV{NAME}/seed"]}' crates/server/Cargo.toml
 NAME=$name perl -i -pe 's{(\{ crate = "(?:sqlx|poem)", wrappers = \[[^\]]*)\]}{$1, "$ENV{NAME}"]}g' deny.toml

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Every module core crate (`crates/modules/*/core`) must be registered everywhere
-# the server and CI look for it — a missing entry compiles and passes the
-# module's own tests, then fails only in a deployed environment. A reference
+# Every module core crate (`crates/modules/*/core`, and the platform's in
+# `crates/platform/*/core`) must be registered everywhere the server and CI look
+# for it — a missing entry compiles and passes the module's own tests, then
+# fails only in a deployed environment. A reference
 # module (`crates/reference/*/core`) is registered with the server everywhere or
 # nowhere (`make init` unregisters them):
 #
@@ -52,11 +53,11 @@ registrations() {
 }
 
 numbers=()
-for module in crates/modules/*/core crates/reference/*/core; do
+for module in crates/modules/*/core crates/platform/*/core crates/reference/*/core; do
   name=$(sed -nE 's/^name = "([^"]+)"/\1/p' "$module/Cargo.toml" | head -1)
 
   found=$(registrations "$module")
-  if [[ $module == crates/modules/* ]] || grep -q '^1' <<<"$found"; then
+  if [[ $module == crates/modules/* || $module == crates/platform/* ]] || grep -q '^1' <<<"$found"; then
     while IFS= read -r missing; do fail "${missing#0 }"; done < <(grep '^0' <<<"$found" || true)
   fi
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Turns a fresh clone of the template into a greenfield app, once, in one
 # commit: its own name and domain docs, the reference modules registered with
-# no server, the UI down to a shell. The reference code stays, compiled and
+# no server, the UI down to a shell. The platform's modules (`crates/platform/`,
+# `access`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
 # tested, for agents to copy until the app's ticket 0001 retires it. Then it
 # removes itself, its make targets and its CI job.
 #
@@ -89,6 +90,7 @@ Once this app's own code shows the same patterns, the reference code is dead wei
 - [ ] The app's first feature covers \`frontend/AGENTS.md\`'s: a server-paged list with its page and sort in the URL, a create form showing server field errors, an edit dialog sending \`If-Match\` and handling a \`412\`.
 - [ ] Both tables, \`docs/agents/domain.md\` and \`frontend/AGENTS.md\`'s links point at the app's code instead.
 - [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
+- [ ] \`crates/platform/\` stays: \`access\` is the platform's, registered in every app, not reference code.
 - [ ] \`crates/reference/\`, its workspace members and dependencies in the root \`Cargo.toml\`, its packages in \`deny.toml\`, its queries in \`.sqlx\` (\`make prepare\`) and its mentions in \`scripts/\` are gone, and \`make check\` passes.
 EOF
 
@@ -102,10 +104,12 @@ perl -0 -i -pe '
 ' AGENTS.md
 
 # 4. The reference modules off the server: compiled and tested, registered nowhere.
+# The platform's `access` stays, granting from whatever the app registers.
 cat >crates/server/src/modules.rs <<'EOF'
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
-//! fails on a module missing from either).
+//! fails on a module missing from either). The platform's `access` comes first:
+//! it grants from every module's policies, so it is built from this list.
 
 use crate::Composition;
 use app_module::Module;
@@ -116,20 +120,21 @@ pub struct Registered;
 impl Composition for Registered {
     /// Nest sub-tuples past 12 entries, where std stops deriving `Default` for
     /// tuples (poem-openapi's own cap is 16).
-    type Endpoints = ();
+    type Endpoints = access::AccessEndpoints;
 
     fn modules() -> Vec<Module> {
-        vec![]
+        vec![access::module(Self::modules)]
     }
 }
 EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = []}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "revoke_grant",\n    "get_access_catalog",\n];}s' crates/server/tests/composed_app.rs
 perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
 
-# 5. The UI down to a shell: the root layout and a placeholder home page.
+# 5. The UI down to a shell: the root layout, a placeholder home page, and the
+# platform's access screen.
 git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/pages/search-page.tsx frontend/src/test/fixtures.ts \
   frontend/src/test/notes-list.test.tsx frontend/src/test/note-editing.test.tsx \
@@ -145,6 +150,10 @@ export function HomePage() {
 }
 EOF
 cat >frontend/src/router.tsx <<'EOF'
+import type { GrantSort } from "@/api/types.gen";
+import { type ListSearch, validateListSearch } from "@/components/data-table";
+import { type GrantFilter, grantSortKeys } from "@/features/access";
+import { AccessPage } from "@/pages/access-page";
 import { HomePage } from "@/pages/home-page";
 import { RootLayout } from "@/pages/root-layout";
 import {
@@ -162,7 +171,22 @@ const indexRoute = createRoute({
   component: HomePage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute]);
+const accessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/access",
+  validateSearch: (search: Record<string, unknown>): GrantFilter & ListSearch<GrantSort> => ({
+    ...grantFilter(search),
+    ...validateListSearch<GrantSort>(search, grantSortKeys),
+  }),
+  component: AccessPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, accessRoute]);
+
+function grantFilter(search: Record<string, unknown>): GrantFilter {
+  const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+  return { role: text(search.role), resource: text(search.resource), action: text(search.action) };
+}
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, history });

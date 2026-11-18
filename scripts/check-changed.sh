@@ -8,7 +8,7 @@
 # what's across their boundaries, and the crates composing modules depend on
 # them (`server` on every registered module, `reference-journeys` on the
 # reference modules), so a module's change runs its own tests and the composed
-# app's. A change to what every crate shares (common, the lockfile, the .sqlx
+# app's. The platform's modules (`crates/platform/`) are modules like the app's. A change to what every crate shares (common, the lockfile, the .sqlx
 # cache) tests the whole workspace.
 set -euo pipefail
 
@@ -29,7 +29,7 @@ while IFS= read -r path; do
     frontend/openapi.json) backend=true frontend=true ;;
     frontend/*) frontend=true ;;
     crates/reference/journeys/*) backend=true crates+=(crates/reference/journeys) ;;
-    crates/modules/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
+    crates/modules/*/*/* | crates/platform/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
     crates/module-template/*/*) backend=true crates+=("$(cut -d/ -f1-3 <<<"$path")") ;;
     crates/server/*) backend=true crates+=(crates/server) ;;
     crates/* | .sqlx/* | Cargo.toml | Cargo.lock | deny.toml | rust-toolchain.toml | .cargo/* | \
@@ -52,7 +52,7 @@ if ! $all_tests && [ ${#crates[@]} -gt 0 ]; then
     if [ ! -f "$crate/Cargo.toml" ]; then all_tests=true; break; fi
     package=$(package_of "$crate")
     packages+=("$package")
-    for manifest in crates/modules/*/*/Cargo.toml crates/reference/*/*/Cargo.toml crates/reference/journeys/Cargo.toml \
+    for manifest in crates/modules/*/*/Cargo.toml crates/platform/*/*/Cargo.toml crates/reference/*/*/Cargo.toml crates/reference/journeys/Cargo.toml \
       crates/module-template/*/Cargo.toml crates/server/Cargo.toml; do
       [ -f "$manifest" ] || continue
       grep -Eq "^$package(\.workspace| *=)" "$manifest" && packages+=("$(package_of "$(dirname "$manifest")")")

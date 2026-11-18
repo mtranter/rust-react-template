@@ -69,7 +69,15 @@ for made in TEMPLATE_VERSION GLOSSARY.md docs/adr/.gitkeep docs/tickets/0001-ret
 done
 grep -qx "commit $template" TEMPLATE_VERSION || fail "TEMPLATE_VERSION doesn't name $template"
 git diff --quiet "$template" HEAD -- docs/platform || fail "\`make init\` changed docs/platform/"
-jq -e '.paths == {}' frontend/openapi.json >/dev/null || fail "the app's spec has operations"
+# The platform's `access` stays registered: its operations, and so its MCP
+# tools, are the only ones. composed_app.rs, which `init`'s `make check` ran,
+# fails on a tool not in its TOOLS.
+access_ops='["get_access_catalog","grant_access","list_grants","revoke_grant"]'
+jq -e --argjson ops "$access_ops" '[.paths[][].operationId] | sort == $ops' frontend/openapi.json >/dev/null ||
+  fail "the app's spec has operations other than access': $(jq -c '[.paths[][].operationId]' frontend/openapi.json)"
+[ "$(sed -n '/^const TOOLS/,/^];/p' crates/server/tests/composed_app.rs | grep -oE '"[a-z_]+"' | tr -d '"' | sort | paste -sd, -)" = \
+  "$(jq -r --argjson ops "$access_ops" '$ops | join(",")' <<<null)" ] ||
+  fail "the app's MCP tools aren't only access'"
 grep -q "<title>$title</title>" frontend/index.html || fail "frontend/index.html isn't titled $title"
 ! git grep -nE 'make init NAME|check-init|scripts/init\.sh|^init:' -- AGENTS.md Makefile .github scripts ||
   fail "the app still offers \`make init\`, which it no longer has"

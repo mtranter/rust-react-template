@@ -12,7 +12,7 @@
 #   - a write module (one with `src/domain/`) declares `[package.metadata.module] reads`:
 #     only a read module joins another module's views.
 #
-# The module template's and the reference modules' `core` and `api` count as a module's.
+# The module template's, the platform's and the reference modules' `core` and `api` count as a module's.
 # A module's kind is inferred from its `src/domain/` folder: a read module has none.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -22,8 +22,8 @@ pure_common='["app-authz", "app-domain", "app-error", "app-events", "app-persist
 
 cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson pure "$pure_common" '
   def rel: ltrimstr($root);
-  def core: .manifest_path | rel | test("^(crates/(modules|reference)/[^/]+|crates/module-template)/core/Cargo.toml$");
-  def api: .manifest_path | rel | test("^(crates/(modules|reference)/[^/]+|crates/module-template)/api/Cargo.toml$");
+  def core: .manifest_path | rel | test("^(crates/(modules|platform|reference)/[^/]+|crates/module-template)/core/Cargo.toml$");
+  def api: .manifest_path | rel | test("^(crates/(modules|platform|reference)/[^/]+|crates/module-template)/api/Cargo.toml$");
   def shipped: .dependencies[] | select(.path and .kind != "dev");
 
   [.packages[] | select(core) | .name] as $cores
