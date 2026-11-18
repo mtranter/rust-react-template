@@ -80,7 +80,8 @@ fn held_role(assignment: &Assignment, version: Version) -> HeldRole {
     }
 }
 
-/// Past this many subjects remembered, those last recorded over `SEEN_WITHIN` ago are forgotten.
+/// Past this many subjects remembered, those last recorded over `SEEN_WITHIN` ago are forgotten,
+/// or every one if none was.
 const REMEMBERED: usize = 10_000;
 
 /// Records each subject that authenticates. Remembers what it last recorded of each, so a
@@ -124,6 +125,10 @@ impl SignIns {
         let mut recorded = self.recorded.lock().unwrap_or_else(|e| e.into_inner());
         if recorded.len() >= REMEMBERED {
             recorded.retain(|_, last| sighting.at - last.at < SEEN_WITHIN);
+            // All seen within the hour: forgetting them costs each one more write, not growth.
+            if recorded.len() >= REMEMBERED {
+                recorded.clear();
+            }
         }
         let merged = match recorded.remove(subject) {
             Some(last) => Sighting {

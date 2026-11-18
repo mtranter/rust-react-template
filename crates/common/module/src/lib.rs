@@ -138,8 +138,8 @@ impl Module {
         }
     }
 
-    /// More request data beside its provider's, for the whole API: `access` resolves every
-    /// token's Principal (an `Arc<dyn PrincipalResolver>`).
+    /// More request data beside its provider's, built from the `Context`, for the whole API
+    /// rather than only the module's own endpoints.
     pub fn providing<T: Clone + Send + Sync + 'static>(
         self,
         data: impl Fn(&Context) -> T + Send + Sync + 'static,

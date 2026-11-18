@@ -375,7 +375,7 @@ test("removes a role from a user once confirmed, sending the version listed", as
   expect(screen.getByText("Role removed")).toBeInTheDocument();
 });
 
-test("a role assigned again meanwhile isn't removed: it says so and reloads the users", async () => {
+test("a role changed meanwhile isn't removed: it says so and reloads the users", async () => {
   const subjects = [
     subject("auth0|bob", { name: "Bob Babbage", roles: [{ role: "support", version: "1" }] }),
   ];
