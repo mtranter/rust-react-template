@@ -1,8 +1,9 @@
+use super::Caller;
 use super::models::{ChangeDisplayNameRequest, CreateUserRequest, UserResponse, UserSort};
 use crate::application::{UserService, Versioned};
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
 use app_error::AppError;
-use app_web::{ApiResult, JwtAuth, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
     ApiResponse, OpenApi, Tags,
@@ -23,11 +24,11 @@ enum Deleted {
     Deleted,
 }
 
-fn caller_id(auth: &JwtAuth) -> ApiResult<UserId> {
-    auth.0
-        .sub
-        .parse()
-        .map_err(|_| AppError::Unauthorized.into())
+fn caller_id(caller: &Caller) -> ApiResult<UserId> {
+    caller
+        .id()
+        .and_then(|id| id.parse().ok())
+        .ok_or_else(|| AppError::Unauthorized.into())
 }
 
 fn tagged(user: Versioned<User>) -> UserResult {
@@ -41,7 +42,7 @@ pub struct UsersEndpoints;
 
 #[OpenApi(prefix_path = "/users", tag = "ApiTag::Users")]
 impl UsersEndpoints {
-    /// Register a new user.
+    /// Register a new user. Public: no token is needed.
     #[oai(path = "/", method = "post", operation_id = "register_user")]
     async fn create(
         &self,
@@ -62,14 +63,14 @@ impl UsersEndpoints {
         Ok(tagged(user))
     }
 
-    /// The currently-authenticated user (JWT Bearer guarded — ADR 0025). The
+    /// The currently-authenticated user. The
     /// response carries the version in the `ETag` header (and body) — the token
     /// a subsequent change must send back in `If-Match`.
     ///
     /// Declared before `/:id` so the static segment wins in routing.
     #[oai(path = "/me", method = "get", operation_id = "get_me")]
-    async fn me(&self, users: Data<&UserService>, auth: JwtAuth) -> ApiResult<UserResult> {
-        let user = users.0.get(caller_id(&auth)?).await?;
+    async fn me(&self, users: Data<&UserService>, caller: Caller) -> ApiResult<UserResult> {
+        let user = users.0.get(&caller, caller_id(&caller)?).await?;
         Ok(tagged(user))
     }
 
@@ -80,7 +81,7 @@ impl UsersEndpoints {
     async fn change_display_name(
         &self,
         users: Data<&UserService>,
-        auth: JwtAuth,
+        caller: Caller,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
         body: Json<ChangeDisplayNameRequest>,
     ) -> ApiResult<UserResult> {
@@ -88,8 +89,9 @@ impl UsersEndpoints {
         let user = users
             .0
             .change_display_name(
+                &caller,
                 ChangeDisplayName {
-                    user_id: caller_id(&auth)?,
+                    user_id: caller_id(&caller)?,
                     display_name: body.0.display_name,
                 },
                 expected,
@@ -105,21 +107,29 @@ impl UsersEndpoints {
     async fn delete(
         &self,
         users: Data<&UserService>,
-        auth: JwtAuth,
+        caller: Caller,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
     ) -> ApiResult<Deleted> {
         let expected = if_match_version(if_match.0)?;
-        users.0.delete(caller_id(&auth)?, expected).await?;
+        users
+            .0
+            .delete(&caller, caller_id(&caller)?, expected)
+            .await?;
         Ok(Deleted::Deleted)
     }
 
     /// Fetch a user by id.
     #[oai(path = "/:id", method = "get", operation_id = "get_user")]
-    async fn get(&self, users: Data<&UserService>, id: Path<String>) -> ApiResult<UserResult> {
+    async fn get(
+        &self,
+        users: Data<&UserService>,
+        caller: Caller,
+        id: Path<String>,
+    ) -> ApiResult<UserResult> {
         let id: UserId =
             id.0.parse()
                 .map_err(|_| AppError::validation("invalid user id"))?;
-        let user = users.0.get(id).await?;
+        let user = users.0.get(&caller, id).await?;
         Ok(tagged(user))
     }
 
@@ -129,13 +139,14 @@ impl UsersEndpoints {
     async fn list(
         &self,
         users: Data<&UserService>,
+        caller: Caller,
         limit: Query<Option<i64>>,
         offset: Query<Option<i64>>,
         sort: Query<Option<Vec<UserSort>>>,
     ) -> ApiResult<Json<ListResult<UserResponse>>> {
         let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
         let page = query.page;
-        let listed = users.0.list(query).await?;
+        let listed = users.0.list(&caller, query).await?;
         Ok(Json(ListResult::new(listed, page)))
     }
 }

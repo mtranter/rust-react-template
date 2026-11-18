@@ -5,7 +5,7 @@ use app_test_support::{assert_json_exists, assert_json_matches};
 use notes_api::events::v1::{self, NoteCreated};
 use notes_api::seed::AUTHOR_ID_UNKNOWN;
 use sqlx::PgPool;
-use users_api::seed::USER_ID_ALICE;
+use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_created_note_is_kept_with_its_title_trimmed(pool: PgPool) {
@@ -74,11 +74,11 @@ async fn a_note_title_has_a_maximum_length(pool: PgPool) {
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
-async fn a_note_needs_a_valid_author(pool: PgPool) {
+async fn a_caller_whose_id_is_not_a_user_id_cannot_write_a_note(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     assert_eq!(
         notes.create("nobody", "Title", "").await,
-        Err(Refusal::invalid(["authorId"]))
+        Err(Refusal::invalid([]))
     );
 }
 
@@ -87,7 +87,7 @@ async fn a_note_by_someone_who_is_not_a_user_is_refused(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
     assert_eq!(
         notes.create(AUTHOR_ID_UNKNOWN, "Title", "").await,
-        Err(Refusal::invalid(["authorId"]))
+        Err(Refusal::invalid([]))
     );
     assert_eq!(notes.list().await.total, 3);
 }
@@ -100,4 +100,17 @@ async fn a_note_sent_without_its_title_is_malformed_and_changes_nothing(pool: Pg
         Err(Refusal::Malformed)
     );
     assert_eq!(notes.list().await.total, 3);
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn a_note_is_written_by_the_caller_whatever_its_body_says(pool: PgPool) {
+    let notes = Notes::seeded(pool).await;
+    notes.sign_in_as(USER_ID_ALICE, &[crate::driver::USER]);
+
+    let created = notes
+        .create_claiming_to_be(USER_ID_BOB, "Not Bob's")
+        .await
+        .unwrap();
+
+    assert_json_matches!(created, "$.authorId", USER_ID_ALICE.to_string());
 }

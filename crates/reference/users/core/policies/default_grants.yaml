@@ -1,0 +1,7 @@
+apiVersion: auth.flagrante.io/v1
+defaultGrants:
+  - { role: user, resource: "module:users", action: use }
+  - { role: user, resource: user, actions: [list, view] }
+  - { role: user, resource: user, actions: [rename, delete], scope: self }
+  - { role: admin, resource: "module:users", action: use }
+  - { role: admin, resource: user, actions: ["*"] }

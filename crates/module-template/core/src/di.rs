@@ -3,6 +3,9 @@
 
 use crate::application::WidgetService;
 use crate::db::{PgWidgetRepository, PgWidgetSearch, SEARCH, SearchRows, migrations};
+use crate::domain::Widget;
+use crate::web::OPERATIONS;
+use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_db::Projecting;
 use app_module::{Context, Module};
 use app_persistence::Handlers;
@@ -19,7 +22,17 @@ pub fn provider(ctx: &Context) -> WidgetsProvider {
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
+        ctx.authorizer(),
     ))
+}
+
+/// The widgets module's gate and its `widget` resource, and what `user` and
+/// `admin` are granted by default (ADR 0040). Add a scope (a derived role
+/// whose `parentRoles` is `["*"]`) to grant an action on some widgets only.
+pub fn policies() -> PoliciesBuilder {
+    Policies::builder("widgets")
+        .resource::<Widget>(policy_file!("policies/widget.yaml"))
+        .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
 impl Provide for WidgetsProvider {
@@ -38,6 +51,8 @@ pub fn handlers(_ctx: &Context) -> Handlers {
 
 pub fn module() -> Module {
     let module = Module::new(provider)
+        .with_policies(policies)
+        .performing(OPERATIONS)
         .publishes::<WidgetTopic>()
         .with_handlers(handlers)
         .with_migrations(migrations());

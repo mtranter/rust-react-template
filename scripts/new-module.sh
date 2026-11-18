@@ -58,6 +58,7 @@ while IFS= read -r -d '' source; do
   path=${source#"$template"/}
   path=${path/#core\/tests\/widgets\//core/tests/$ident/}
   path=${path/#core\/src\/domain\/widget.rs/core/src/domain/$entity_ident.rs}
+  path=${path/#core\/policies\/widget.yaml/core/policies/$entity_ident.yaml}
   crate=$ident
   [ "$(basename "$source")" = Cargo.toml ] && crate=$name
   mkdir -p "$(dirname "$root/$path")"

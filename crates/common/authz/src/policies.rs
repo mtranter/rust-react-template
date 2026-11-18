@@ -259,6 +259,11 @@ pub(crate) fn action_matches(pattern: &str, action: &str) -> bool {
 }
 
 impl PoliciesBuilder {
+    /// The Module whose policies these are, to name it when they don't load.
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
     /// The policy for `R`; its `resource` must be `R::KIND`.
     pub fn resource<R: Resource>(mut self, file: PolicyFile) -> Self {
         self.resources.push(Given {

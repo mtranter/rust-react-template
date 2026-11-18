@@ -6,20 +6,23 @@
 mod app;
 pub mod config;
 mod modules;
+mod public;
 mod shutdown;
 pub mod telemetry;
 mod tools;
 
 pub use app::build_app;
 pub use modules::Registered;
+pub use public::PUBLIC;
 pub use shutdown::shutdown_signal;
 pub use tools::Tools;
 
+use app_authz::{Authorizer, Policies};
 use app_db::{ModuleMigrations, SubscriptionError, Worker};
 use app_error::AppResult;
-use app_module::{Context, Module};
+use app_module::{Context, Module, PoliciesError};
 use app_persistence::Handlers;
-use app_web::Idempotent;
+use app_web::{Idempotent, Performs};
 use poem_openapi::{OpenApi, OpenApiService};
 
 /// Modules served as one app: the API's operations and the modules behind them.
@@ -54,6 +57,26 @@ pub fn spec<C: Composition>() -> String {
 /// Whether any module broadcasts, so the server and worker need the bus.
 pub fn uses_bus<C: Composition>() -> bool {
     C::modules().iter().any(|module| module.uses_bus())
+}
+
+/// Every module's policies, built as the server, worker and `migrate` start:
+/// the first that doesn't load is the error, naming its module, file and line.
+pub fn policies<C: Composition>() -> Result<Vec<Policies>, PoliciesError> {
+    C::modules().iter().filter_map(Module::policies).collect()
+}
+
+/// One rule set from every module's policies and default grants (ADR 0040),
+/// for the context every service and `Caller` plans with.
+pub fn authorizer<C: Composition>() -> Result<Authorizer, Box<dyn std::error::Error>> {
+    Ok(Authorizer::from_policies(&policies::<C>()?)?)
+}
+
+/// Every module's `OPERATIONS`: the action each guarded operation performs.
+pub fn operations<C: Composition>() -> Vec<Performs> {
+    C::modules()
+        .iter()
+        .flat_map(|module| module.operations().iter().copied())
+        .collect()
 }
 
 pub fn module_migrations<C: Composition>() -> Vec<ModuleMigrations> {

@@ -3,7 +3,10 @@ use super::{
     EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
     Version, Versioned,
 };
-use crate::domain::{AuthorId, CreateNote, EditNote, ItemId, Note, NoteError, NoteEvent, NoteId};
+use crate::domain::{
+    AuthorId, CreateNote, EditNote, ItemId, Note, NoteAction, NoteError, NoteEvent, NoteId,
+};
+use app_authz::{Authorizer, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -18,6 +21,7 @@ pub struct NoteService {
     publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
+    authorizer: Arc<Authorizer>,
 }
 
 impl NoteService {
@@ -27,6 +31,7 @@ impl NoteService {
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
+        authorizer: Arc<Authorizer>,
     ) -> Self {
         Self {
             repo,
@@ -34,17 +39,42 @@ impl NoteService {
             publisher,
             transactions,
             clock,
+            authorizer,
         }
     }
 
-    /// The author check and the save aren't one transaction: they're different
-    /// modules. An author deleted in between is caught by the `UserDeleted`
-    /// reaction only if it runs after this commits.
-    pub async fn create(&self, cmd: CreateNote) -> AppResult<Versioned<Note>> {
-        let author = cmd.author_id;
+    /// Asked first in every use case, before anything is loaded or begun. A
+    /// `Where` plan (a scope, such as `author`) is allowed here until rows are
+    /// checked against it (platform ticket 0028).
+    fn authorize(&self, principal: &Principal, action: NoteAction) -> AppResult<()> {
+        self.authorizer
+            .authorize::<Note>(principal, action)
+            .map(|_| ())
+    }
+
+    /// The caller is the author. The author check and the save aren't one
+    /// transaction: they're different modules. An author deleted in between is
+    /// caught by the `UserDeleted` reaction only if it runs after this commits.
+    pub async fn create(
+        &self,
+        principal: &Principal,
+        title: String,
+        body: String,
+    ) -> AppResult<Versioned<Note>> {
+        self.authorize(principal, NoteAction::Create)?;
+        let not_a_user = || AppError::validation("only a registered user can write a note");
+        let author: AuthorId = principal
+            .id()
+            .and_then(|id| id.parse().ok())
+            .ok_or_else(not_a_user)?;
+        let cmd = CreateNote {
+            author_id: author,
+            title,
+            body,
+        };
         let (note, event) = Note::create(NoteId::new(), cmd, self.clock.now())?;
         if !self.users.exists(author.as_uuid()).await? {
-            return Err(AppError::invalid_field("authorId", "unknown author"));
+            return Err(not_a_user());
         }
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &note, Expected::New).await?;
@@ -59,7 +89,13 @@ impl NoteService {
     }
 
     /// `expected` is the version the caller last read (from `If-Match`).
-    pub async fn edit(&self, cmd: EditNote, expected: Version) -> AppResult<Versioned<Note>> {
+    pub async fn edit(
+        &self,
+        principal: &Principal,
+        cmd: EditNote,
+        expected: Version,
+    ) -> AppResult<Versioned<Note>> {
+        self.authorize(principal, NoteAction::Edit)?;
         self.change(cmd.note_id, expected, |note| note.edit(cmd))
             .await
     }
@@ -68,10 +104,12 @@ impl NoteService {
     /// change is the note's, announced on the note's topic.
     pub async fn add_item(
         &self,
+        principal: &Principal,
         note: NoteId,
         text: &str,
         expected: Version,
     ) -> AppResult<Versioned<Note>> {
+        self.authorize(principal, NoteAction::AddItem)?;
         let id = ItemId::new();
         self.change(note, expected, |note| note.add_item(id, text))
             .await
@@ -79,10 +117,12 @@ impl NoteService {
 
     pub async fn remove_item(
         &self,
+        principal: &Principal,
         note: NoteId,
         item: ItemId,
         expected: Version,
     ) -> AppResult<Versioned<Note>> {
+        self.authorize(principal, NoteAction::RemoveItem)?;
         self.change(note, expected, |note| note.remove_item(item))
             .await
     }
@@ -95,7 +135,7 @@ impl NoteService {
     ) -> AppResult<Versioned<Note>> {
         // Load first so a missing note is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
-        let mut note = self.get(id).await?.entity;
+        let mut note = self.load(id).await?.entity;
         let event = change(&mut note)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -113,8 +153,14 @@ impl NoteService {
     }
 
     /// Removes the note and announces it, as it was last, in the same transaction.
-    pub async fn delete(&self, id: NoteId, expected: Version) -> AppResult<()> {
-        let current = self.get(id).await?;
+    pub async fn delete(
+        &self,
+        principal: &Principal,
+        id: NoteId,
+        expected: Version,
+    ) -> AppResult<()> {
+        self.authorize(principal, NoteAction::Delete)?;
+        let current = self.load(id).await?;
         // Checked here as well as by the delete, so the state announced is the
         // version deleted; the event announces the version after it, so it's the
         // newest of its key.
@@ -137,7 +183,13 @@ impl NoteService {
 
     /// Saves every note in `tx`, so a failure archives none of them. A note
     /// edited meanwhile is stale and fails it too, to be retried.
-    pub async fn archive_notes_by(&self, tx: &mut Tx, author: AuthorId) -> AppResult<()> {
+    pub async fn archive_notes_by(
+        &self,
+        principal: &Principal,
+        tx: &mut Tx,
+        author: AuthorId,
+    ) -> AppResult<()> {
+        self.authorize(principal, NoteAction::Archive)?;
         let now = self.clock.now();
         for Versioned {
             entity: mut note,
@@ -158,14 +210,24 @@ impl NoteService {
         Ok(())
     }
 
-    pub async fn get(&self, id: NoteId) -> AppResult<Versioned<Note>> {
+    pub async fn get(&self, principal: &Principal, id: NoteId) -> AppResult<Versioned<Note>> {
+        self.authorize(principal, NoteAction::View)?;
+        self.load(id).await
+    }
+
+    async fn load(&self, id: NoteId) -> AppResult<Versioned<Note>> {
         self.repo
             .get(id)
             .await?
             .ok_or_else(|| AppError::not_found("note"))
     }
 
-    pub async fn list(&self, query: ListQuery<NoteSortKey>) -> AppResult<Listed<Versioned<Note>>> {
+    pub async fn list(
+        &self,
+        principal: &Principal,
+        query: ListQuery<NoteSortKey>,
+    ) -> AppResult<Listed<Versioned<Note>>> {
+        self.authorize(principal, NoteAction::List)?;
         self.repo.list(&query).await
     }
 }

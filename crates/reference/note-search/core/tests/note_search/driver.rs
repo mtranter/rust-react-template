@@ -3,15 +3,17 @@
 //! itself, built from their seed data as published, and runs the worker that
 //! keeps note-search's copy (ADR 0036).
 
+use app_authz::Authorizer;
 use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
 use app_module::Context;
 use app_persistence::{Handlers, PendingEvent, Version};
 use app_test_db::Template;
 use app_web::testing::{Page, Refused, TestApi};
-use app_web::{Accept, json_newtype};
+use app_web::{Accept, JwtVerifier, json_newtype};
 use note_search::NoteSearchEndpoints;
 use notes_api::events::v1 as notes_events;
+use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -21,6 +23,8 @@ use users_api::events::v1 as users_events;
 pub enum Refusal {
     /// The request couldn't be parsed.
     Malformed,
+    /// Signed in, but the policies don't allow it.
+    Forbidden,
     /// The copy hasn't caught up with what the providers had published yet.
     Unavailable,
 }
@@ -29,6 +33,7 @@ impl From<Refused> for Refusal {
     fn from(refused: Refused) -> Self {
         match refused.code.as_str() {
             "malformed_request" => Refusal::Malformed,
+            "forbidden" => Refusal::Forbidden,
             "unavailable" => Refusal::Unavailable,
             other => panic!("unexpected error code {other}"),
         }
@@ -61,6 +66,7 @@ pub struct NoteSearch {
     api: TestApi,
     ctx: Context,
     worker: Worker,
+    verifier: JwtVerifier,
 }
 
 impl NoteSearch {
@@ -76,13 +82,22 @@ impl NoteSearch {
     /// caught up.
     pub async fn added_after_the_seeds(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock.clone());
+        let policies = note_search::policies()
+            .build()
+            .expect("note-search's policies load");
+        let authorizer =
+            Authorizer::from_policies(&[policies]).expect("note-search's policies compile");
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
+        let verifier = JwtVerifier::new("test-secret");
         let search = Self {
             api: TestApi::new(NoteSearchEndpoints, ctx.idempotency(), |app| {
                 app.accept(note_search::provider(&ctx))
+                    .data(verifier.clone())
+                    .data(ctx.authorizer())
             }),
             worker: ctx.worker(note_search::handlers(&ctx)),
             ctx,
+            verifier,
         };
         for user in [users_api::seed::alice(), users_api::seed::bob()] {
             search
@@ -192,8 +207,26 @@ impl NoteSearch {
         self.search(&query).await
     }
 
+    /// As Alice, a `user`.
     pub async fn search(&self, query: &[(&str, String)]) -> Outcome<Found> {
-        self.api.get("/api/note-search").queries(query).send().await
+        self.search_with_roles(&["user"], query).await
+    }
+
+    pub async fn search_with_roles(
+        &self,
+        roles: &[&str],
+        query: &[(&str, String)],
+    ) -> Outcome<Found> {
+        let token = self
+            .verifier
+            .issue(users_api::seed::USER_ID_ALICE.to_string(), roles, 60)
+            .expect("issue token");
+        self.api
+            .get("/api/note-search")
+            .bearer(token)
+            .queries(query)
+            .send()
+            .await
     }
 }
 

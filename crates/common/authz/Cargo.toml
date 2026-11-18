@@ -8,6 +8,7 @@ publish = false
 
 # Pure (ADR 0040): no poem, no sqlx; `deny.toml` and `make check-deps` keep it so.
 [dependencies]
+app-error.workspace = true
 arc-swap.workspace = true
 saphyr.workspace = true
 strum.workspace = true

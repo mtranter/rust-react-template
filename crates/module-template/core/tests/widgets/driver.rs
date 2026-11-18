@@ -1,17 +1,19 @@
 //! The only place in these tests that knows the transport (ADR 0004).
 
+use app_authz::Authorizer;
 use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::Version;
 use app_test_db::Template;
-use app_web::testing::{Page, Refused, TestApi};
-use app_web::{Accept, json_newtype};
+use app_web::testing::{Call, Page, Refused, TestApi};
+use app_web::{Accept, JwtVerifier, json_newtype};
+use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
 use std::fmt::Display;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use widgets::{Widget, WidgetsEndpoints, seed};
 use widgets_api::events::v1;
 
@@ -21,6 +23,9 @@ pub enum Refusal {
     Invalid(Vec<String>),
     /// The request couldn't be parsed.
     Malformed,
+    NotSignedIn,
+    /// Signed in, but the policies don't allow it.
+    Forbidden,
     NotFound,
     PreconditionRequired,
     Stale,
@@ -39,6 +44,8 @@ impl From<Refused> for Refusal {
         match refused.code.as_str() {
             "validation_error" => Refusal::Invalid(refused.paths),
             "malformed_request" => Refusal::Malformed,
+            "unauthorized" => Refusal::NotSignedIn,
+            "forbidden" => Refusal::Forbidden,
             "not_found" => Refusal::NotFound,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
@@ -84,19 +91,30 @@ impl From<Widget> for WidgetMatchJson {
 
 pub type MatchesPage = Page<WidgetMatchJson>;
 
+/// The role every signed-in user has (ADR 0040), which widgets' default grants name.
+pub const USER: &str = "user";
+
 pub struct Widgets {
     api: TestApi,
     worker: Worker,
     seeded_through: i64,
+    verifier: JwtVerifier,
+    /// The token later requests present, if any.
+    caller: Mutex<Option<String>>,
 }
 
 impl Widgets {
     pub async fn seeded(pool: PgPool) -> Self {
         // Fixed after the seeds, so what a test creates is the newest.
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock.clone());
+        let policies = widgets::policies().build().expect("widgets' policies load");
+        let authorizer = Authorizer::from_policies(&[policies]).expect("widgets' policies compile");
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
+        let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(WidgetsEndpoints, ctx.idempotency(), |app| {
             app.accept(widgets::provider(&ctx))
+                .data(verifier.clone())
+                .data(ctx.authorizer())
         });
         // Registered after the seeds, so the search copy starts from the backfill.
         let handlers = widgets::handlers(&ctx);
@@ -105,10 +123,36 @@ impl Widgets {
             .expect("register the search copy's subscription");
         let worker = ctx.worker(handlers);
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
-        Self {
+        let widgets = Self {
             api,
             worker,
             seeded_through,
+            verifier,
+            caller: Mutex::new(None),
+        };
+        widgets.sign_in_with_roles(&[USER]);
+        widgets
+    }
+
+    /// Later requests present a real token carrying `roles`. Every test
+    /// starts signed in as a `user`.
+    pub fn sign_in_with_roles(&self, roles: &[&str]) {
+        let token = self
+            .verifier
+            .issue("a-user", roles, 60)
+            .expect("issue token");
+        *self.caller.lock().unwrap() = Some(token);
+    }
+
+    /// Later requests present no token.
+    pub fn sign_out(&self) {
+        *self.caller.lock().unwrap() = None;
+    }
+
+    fn signed<'c>(&self, call: Call<'c>) -> Call<'c> {
+        match self.caller.lock().unwrap().as_ref() {
+            Some(token) => call.bearer(token),
+            None => call,
         }
     }
 
@@ -133,15 +177,16 @@ impl Widgets {
     }
 
     pub async fn search(&self, name: &str) -> Outcome<MatchesPage> {
-        self.api
-            .get("/api/widgets/search")
+        self.signed(self.api.get("/api/widgets/search"))
             .queries(&[("name", name.to_string())])
             .send()
             .await
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<WidgetJson> {
-        self.api.get(format!("/api/widgets/{id}")).send().await
+        self.signed(self.api.get(format!("/api/widgets/{id}")))
+            .send()
+            .await
     }
 
     pub async fn list(&self) -> WidgetsPage {
@@ -157,20 +202,20 @@ impl Widgets {
     }
 
     async fn list_with(&self, query: &[(&str, String)]) -> Outcome<WidgetsPage> {
-        self.api.get("/api/widgets").queries(query).send().await
+        self.signed(self.api.get("/api/widgets").queries(query))
+            .send()
+            .await
     }
 
     pub async fn create(&self, name: &str) -> Outcome<WidgetJson> {
-        self.api
-            .post("/api/widgets")
+        self.signed(self.api.post("/api/widgets"))
             .json(&json!({ "name": name }))
             .send()
             .await
     }
 
     pub async fn rename(&self, id: impl Display, version: i64, name: &str) -> Outcome<WidgetJson> {
-        self.api
-            .patch(format!("/api/widgets/{id}"))
+        self.signed(self.api.patch(format!("/api/widgets/{id}")))
             .if_match(version)
             .json(&json!({ "name": name }))
             .send()
@@ -182,8 +227,7 @@ impl Widgets {
         id: impl Display,
         name: &str,
     ) -> Outcome<WidgetJson> {
-        self.api
-            .patch(format!("/api/widgets/{id}"))
+        self.signed(self.api.patch(format!("/api/widgets/{id}")))
             .json(&json!({ "name": name }))
             .send()
             .await

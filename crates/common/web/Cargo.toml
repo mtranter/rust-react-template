@@ -7,7 +7,9 @@ license.workspace = true
 publish = false
 
 [dependencies]
+app-authz.workspace = true
 app-domain.workspace = true
+async-trait.workspace = true
 app-error.workspace = true
 app-persistence.workspace = true
 chrono.workspace = true

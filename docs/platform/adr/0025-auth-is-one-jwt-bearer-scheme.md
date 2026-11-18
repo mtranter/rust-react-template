@@ -15,3 +15,4 @@ The template shows how a guarded route works and goes no further: a single JWT B
 
 - A failed auth renders as the shared `ErrorBody` (ADR 0022).
 - Journeys sign in with real HS256 tokens (ADR 0029).
+- Authentication says who the caller is; what they may do is [ADR 0040](0040-code-declares-what-can-be-granted-admins-grant-it-at-runtime-and-lists-filter-in-sql.md): the scheme's checker resolves the token to a Principal, and each Module's operations take its `Caller`, which passes the Module's gate. So every operation is guarded but those in `server::PUBLIC`, not one route.

@@ -46,27 +46,14 @@ test("lists notes and shows a newly created note", async () => {
 
   const posted: unknown[] = [];
   server.use(
-    http.get("*/api/users", () =>
-      HttpResponse.json({
-        items: [
-          {
-            id: "a1",
-            email: "alice@example.com",
-            displayName: "Alice",
-            createdAt: "",
-            version: "1",
-          },
-          { id: "b2", email: "bob@example.com", displayName: "Bob", createdAt: "", version: "1" },
-        ],
-      }),
-    ),
     http.get("*/api/notes", () => HttpResponse.json(page(notes))),
     http.post("*/api/notes", async ({ request }) => {
-      const body = (await request.json()) as { authorId: string; title: string };
+      const body = (await request.json()) as { title: string };
       posted.push(body);
+      // The server makes the signed-in caller the author.
       const created: NoteResponse = {
         id: "2",
-        authorId: body.authorId,
+        authorId: "a1",
         title: body.title,
         body: "",
         items: [],
@@ -88,25 +75,15 @@ test("lists notes and shows a newly created note", async () => {
 
   expect(await screen.findByText("First note")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("combobox", { name: "Author" }));
-  await user.click(await screen.findByRole("option", { name: "Bob" }));
   await user.type(screen.getByLabelText("Title"), "Second note");
   await user.click(screen.getByRole("button", { name: "Add note" }));
 
   await waitFor(() => expect(screen.getByText("Second note")).toBeInTheDocument());
-  expect(posted).toEqual([{ authorId: "b2", title: "Second note" }]);
+  expect(posted).toEqual([{ title: "Second note" }]);
 });
-
-const authors = {
-  items: [
-    { id: "a1", email: "alice@example.com", displayName: "Alice", createdAt: "", version: "1" },
-  ],
-};
 
 async function submitNote(title: string) {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("combobox", { name: "Author" }));
-  await user.click(await screen.findByRole("option", { name: "Alice" }));
   await user.clear(screen.getByLabelText("Title"));
   await user.type(screen.getByLabelText("Title"), title);
   await user.click(screen.getByRole("button", { name: "Add note" }));
@@ -122,7 +99,6 @@ test("shows a refused title beside the Title field, and saves once it's fixed", 
   };
   const posted: string[] = [];
   server.use(
-    http.get("*/api/users", () => HttpResponse.json(authors)),
     http.post("*/api/notes", async ({ request }) => {
       const { title } = (await request.json()) as { title: string };
       posted.push(title);
@@ -153,10 +129,7 @@ test("shows a refused title beside the Title field, and saves once it's fixed", 
 
 test("toasts a refusal that names no field", async () => {
   const refused: ErrorBody = { code: "internal_error", message: "internal error", requestId: "r2" };
-  server.use(
-    http.get("*/api/users", () => HttpResponse.json(authors)),
-    http.post("*/api/notes", () => HttpResponse.json(refused, { status: 500 })),
-  );
+  server.use(http.post("*/api/notes", () => HttpResponse.json(refused, { status: 500 })));
 
   renderWithQuery(<NewNoteForm />);
   await submitNote("Title");

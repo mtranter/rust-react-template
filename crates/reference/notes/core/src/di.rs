@@ -3,6 +3,9 @@
 
 use crate::application::NoteService;
 use crate::db::{PgNoteRepository, migrations};
+use crate::domain::Note;
+use crate::web::OPERATIONS;
+use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_module::{Context, Module};
 use app_persistence::Handlers;
 use app_web::Provide;
@@ -32,7 +35,17 @@ fn service(ctx: &Context, users: Arc<dyn UserDirectory>) -> NoteService {
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
+        ctx.authorizer(),
     )
+}
+
+/// The notes module's gate, its `note` resource and the `author` scope, and
+/// what `user` and `admin` are granted by default (ADR 0040).
+pub fn policies() -> PoliciesBuilder {
+    Policies::builder("notes")
+        .resource::<Note>(policy_file!("policies/note.yaml"))
+        .derived_roles(policy_file!("policies/derived_roles.yaml"))
+        .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
 /// What the worker runs for notes: its reactions to other modules' events.
@@ -43,6 +56,8 @@ pub fn handlers(ctx: &Context, users: Arc<dyn UserDirectory>) -> Handlers {
 /// `users` is the users module's `directory`, passed in by the server (ADR 0008).
 pub fn module(users: fn(&Context) -> Arc<dyn UserDirectory>) -> Module {
     let module = Module::new(move |ctx: &Context| provider(ctx, users(ctx)))
+        .with_policies(policies)
+        .performing(OPERATIONS)
         .publishes::<NoteTopic>()
         .with_handlers(move |ctx| handlers(ctx, users(ctx)))
         .with_migrations(migrations());

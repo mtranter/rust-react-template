@@ -3,7 +3,8 @@ use super::{
     EventPublisher, Expected, ListQuery, Listed, Transactions, UserRepository, UserSortKey,
     Version, Versioned,
 };
-use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
+use crate::domain::{ChangeDisplayName, RegisterUser, User, UserAction, UserId};
+use app_authz::{Authorizer, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -16,6 +17,7 @@ pub struct UserService {
     publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
+    authorizer: Arc<Authorizer>,
 }
 
 impl UserService {
@@ -24,8 +26,10 @@ impl UserService {
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
+        authorizer: Arc<Authorizer>,
     ) -> Self {
         Self {
+            authorizer,
             repo,
             publisher,
             transactions,
@@ -33,6 +37,16 @@ impl UserService {
         }
     }
 
+    /// Asked first in every use case but `register`, before anything is loaded
+    /// or begun. A `Where` plan (the `self` scope) is allowed here until rows
+    /// are checked against it (platform ticket 0028).
+    fn authorize(&self, principal: &Principal, action: UserAction) -> AppResult<()> {
+        self.authorizer
+            .authorize::<User>(principal, action)
+            .map(|_| ())
+    }
+
+    /// Public (`server::PUBLIC`), so it takes no Principal.
     pub async fn register(&self, cmd: RegisterUser) -> AppResult<Versioned<User>> {
         let (user, event) = User::register(UserId::new(), cmd, self.clock.now())?;
         if self.repo.find_by_email(user.email()).await?.is_some() {
@@ -54,10 +68,12 @@ impl UserService {
     /// since changed (e.g. a rename in another tab).
     pub async fn change_display_name(
         &self,
+        principal: &Principal,
         cmd: ChangeDisplayName,
         expected: Version,
     ) -> AppResult<Versioned<User>> {
-        let mut user = self.get(cmd.user_id).await?.entity;
+        self.authorize(principal, UserAction::Rename)?;
+        let mut user = self.load(cmd.user_id).await?.entity;
         let event = user.change_display_name(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -76,8 +92,14 @@ impl UserService {
 
     /// Removes the account and announces it, as it was last, in the same
     /// transaction; modules holding the id react in their own time (ADR 0011).
-    pub async fn delete(&self, id: UserId, expected: Version) -> AppResult<()> {
-        let current = self.get(id).await?;
+    pub async fn delete(
+        &self,
+        principal: &Principal,
+        id: UserId,
+        expected: Version,
+    ) -> AppResult<()> {
+        self.authorize(principal, UserAction::Delete)?;
+        let current = self.load(id).await?;
         // Checked here as well as by the delete, so the state announced is the
         // version deleted, not one read before a concurrent change. The event
         // announces the version after it, so it's the newest of its key.
@@ -98,7 +120,12 @@ impl UserService {
         tx.commit().await
     }
 
-    pub async fn get(&self, id: UserId) -> AppResult<Versioned<User>> {
+    pub async fn get(&self, principal: &Principal, id: UserId) -> AppResult<Versioned<User>> {
+        self.authorize(principal, UserAction::View)?;
+        self.load(id).await
+    }
+
+    async fn load(&self, id: UserId) -> AppResult<Versioned<User>> {
         self.repo
             .get(id)
             .await?
@@ -109,7 +136,12 @@ impl UserService {
         Ok(self.repo.get(id).await?.is_some())
     }
 
-    pub async fn list(&self, query: ListQuery<UserSortKey>) -> AppResult<Listed<Versioned<User>>> {
+    pub async fn list(
+        &self,
+        principal: &Principal,
+        query: ListQuery<UserSortKey>,
+    ) -> AppResult<Listed<Versioned<User>>> {
+        self.authorize(principal, UserAction::List)?;
         self.repo.list(&query).await
     }
 }

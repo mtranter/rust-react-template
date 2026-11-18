@@ -1,0 +1,6 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: user
+  version: default
+  importDerivedRoles: [users_scopes]
+  rules: []

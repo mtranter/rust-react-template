@@ -1,6 +1,7 @@
+use super::Caller;
 use super::models::{AddItemRequest, CreateNoteRequest, EditNoteRequest, NoteResponse, NoteSort};
 use crate::application::{NoteService, Versioned};
-use crate::domain::{AuthorId, CreateNote, EditNote, ItemId, Note, NoteId};
+use crate::domain::{EditNote, ItemId, Note, NoteId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
@@ -44,34 +45,28 @@ pub struct NotesEndpoints;
 
 #[OpenApi(prefix_path = "/notes", tag = "ApiTag::Notes")]
 impl NotesEndpoints {
-    /// Create a note.
+    /// Create a note, written by the caller.
     #[oai(path = "/", method = "post", operation_id = "create_note")]
     async fn create(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         body: Json<CreateNoteRequest>,
     ) -> ApiResult<NoteResult> {
-        let author_id: AuthorId = body
-            .0
-            .author_id
-            .parse()
-            .map_err(|_| AppError::invalid_field("authorId", "authorId must be a user id"))?;
-        let note = notes
-            .0
-            .create(CreateNote {
-                author_id,
-                title: body.0.title,
-                body: body.0.body,
-            })
-            .await?;
+        let note = notes.0.create(&caller, body.0.title, body.0.body).await?;
         Ok(tagged(note))
     }
 
     /// Fetch a note by id. The response carries its version in the `ETag` header
     /// (and body) — the token a subsequent edit must send back in `If-Match`.
     #[oai(path = "/:id", method = "get", operation_id = "get_note")]
-    async fn get(&self, notes: Data<&NoteService>, id: Path<String>) -> ApiResult<NoteResult> {
-        let note = notes.0.get(note_id(&id.0)?).await?;
+    async fn get(
+        &self,
+        notes: Data<&NoteService>,
+        caller: Caller,
+        id: Path<String>,
+    ) -> ApiResult<NoteResult> {
+        let note = notes.0.get(&caller, note_id(&id.0)?).await?;
         Ok(tagged(note))
     }
 
@@ -82,6 +77,7 @@ impl NotesEndpoints {
     async fn edit(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         id: Path<String>,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
         body: Json<EditNoteRequest>,
@@ -90,6 +86,7 @@ impl NotesEndpoints {
         let note = notes
             .0
             .edit(
+                &caller,
                 EditNote {
                     note_id: note_id(&id.0)?,
                     title: body.0.title,
@@ -107,11 +104,12 @@ impl NotesEndpoints {
     async fn delete(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         id: Path<String>,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
     ) -> ApiResult<Deleted> {
         let expected = if_match_version(if_match.0)?;
-        notes.0.delete(note_id(&id.0)?, expected).await?;
+        notes.0.delete(&caller, note_id(&id.0)?, expected).await?;
         Ok(Deleted::Deleted)
     }
 
@@ -121,6 +119,7 @@ impl NotesEndpoints {
     async fn add_item(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         id: Path<String>,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
         body: Json<AddItemRequest>,
@@ -128,7 +127,7 @@ impl NotesEndpoints {
         let expected = if_match_version(if_match.0)?;
         let note = notes
             .0
-            .add_item(note_id(&id.0)?, &body.0.text, expected)
+            .add_item(&caller, note_id(&id.0)?, &body.0.text, expected)
             .await?;
         Ok(tagged(note))
     }
@@ -143,6 +142,7 @@ impl NotesEndpoints {
     async fn remove_item(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         id: Path<String>,
         item_id: Path<String>,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
@@ -150,7 +150,12 @@ impl NotesEndpoints {
         let expected = if_match_version(if_match.0)?;
         let note = notes
             .0
-            .remove_item(note_id(&id.0)?, parse_item_id(&item_id.0)?, expected)
+            .remove_item(
+                &caller,
+                note_id(&id.0)?,
+                parse_item_id(&item_id.0)?,
+                expected,
+            )
             .await?;
         Ok(tagged(note))
     }
@@ -161,13 +166,14 @@ impl NotesEndpoints {
     async fn list(
         &self,
         notes: Data<&NoteService>,
+        caller: Caller,
         limit: Query<Option<i64>>,
         offset: Query<Option<i64>>,
         sort: Query<Option<Vec<NoteSort>>>,
     ) -> ApiResult<Json<ListResult<NoteResponse>>> {
         let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
         let page = query.page;
-        let listed = notes.0.list(query).await?;
+        let listed = notes.0.list(&caller, query).await?;
         Ok(Json(ListResult::new(listed, page)))
     }
 }

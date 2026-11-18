@@ -1,16 +1,22 @@
 use super::{NoteService, Tx};
 use crate::domain::AuthorId;
+use app_authz::Principal;
 use app_error::AppResult;
 use app_events::EnvelopeOf;
 use app_persistence::Handle;
 use async_trait::async_trait;
 use users_api::events::v1::UserDeleted;
 
-/// Notes outlive their author, read-only: deleting a user archives their notes.
+/// Notes outlive their author, read-only: deleting a user archives their
+/// notes, as `System`, acting on a fact already decided.
 #[async_trait]
 impl Handle<UserDeleted> for NoteService {
     async fn handle(&self, tx: &mut Tx, event: EnvelopeOf<UserDeleted>) -> AppResult<()> {
-        self.archive_notes_by(tx, AuthorId::from_uuid(event.data.entity.id))
-            .await
+        self.archive_notes_by(
+            &Principal::System,
+            tx,
+            AuthorId::from_uuid(event.data.entity.id),
+        )
+        .await
     }
 }

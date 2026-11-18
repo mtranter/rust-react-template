@@ -5,10 +5,7 @@ import { server } from "../vitest.setup";
 import { renderAt } from "./test/render-app";
 
 test.each(["/", "/home"])("shows the notes page at %s", async (path) => {
-  server.use(
-    http.get("*/api/notes", () => HttpResponse.json({ items: [] })),
-    http.get("*/api/users", () => HttpResponse.json({ items: [] })),
-  );
+  server.use(http.get("*/api/notes", () => HttpResponse.json({ items: [] })));
 
   renderAt(path);
 

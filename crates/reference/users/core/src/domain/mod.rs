@@ -1,3 +1,4 @@
+mod access;
 mod commands;
 mod email;
 mod error;
@@ -5,6 +6,7 @@ mod events;
 mod ids;
 mod user;
 
+pub use access::UserAction;
 pub use commands::{ChangeDisplayName, RegisterUser};
 pub use email::Email;
 pub use error::UserError;

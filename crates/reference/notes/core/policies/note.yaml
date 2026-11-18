@@ -1,0 +1,13 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: note
+  version: default
+  importDerivedRoles: [notes_scopes]
+  rules:
+    - name: an archived note is read-only
+      actions: [edit, delete, archive, "items:*"]
+      effect: EFFECT_DENY
+      roles: ["*"]
+      condition:
+        match:
+          expr: R.attr.archived == true

@@ -131,6 +131,32 @@ _Avoid_: Request id (which only correlates logs and responses)
 An operation of the Spec as an AI agent calls it over MCP, at `/mcp`: named by the operation's id, described by its summary, and answered by sending the operation's own request in-process (ADR 0034). Every operation is one unless deliberately kept REST-only.
 _Avoid_: Endpoint, command (for a tool)
 
+## Authorization
+
+**Principal**:
+Who is acting: a user, with an id and the roles their token gives them, or `System`, the worker's and seeds' caller, acting on facts already decided, which policies don't apply to. Built on every guarded request from the token's claims (ADR 0040).
+_Avoid_: User (for the caller), identity, subject
+
+**Policy**:
+A Module's YAML in its core's `policies/`, embedded in the binary and checked against its Rust types when it loads: a resource's rules (what is denied or allowed, to which roles, on which condition), its Scopes, and its default Grants (ADR 0040).
+_Avoid_: Permission file, ACL
+
+**Grant**:
+A role given an action on a resource, within a Scope or on any row. It only allows. Default grants are a Module's, in its policy files; ticket 0029 lets admins make and revoke them at runtime.
+_Avoid_: Permission, entitlement
+
+**Scope**:
+A named condition on a resource's rows (`author`: the note's author is the Principal), which a Grant can pair with any role. A derived role whose `parentRoles` is `["*"]`.
+_Avoid_: Filter (for its name), row rule
+
+**Gate**:
+A Module's resource `module:<name>` and its one action, `use`, granted on roles only: what a Principal must pass before any of the Module's guarded operations, through its `Caller`.
+_Avoid_: Middleware, guard (for this)
+
+**Plan**:
+What the rule set answers for a Principal's action: `Allowed`, `Denied`, or `Where(filter)`, the conditions left once the Principal's roles are known, checked against a loaded row or pushed into a list's query.
+_Avoid_: Decision (for a `Where`), verdict
+
 ## Testing
 
 **Integration Test**:

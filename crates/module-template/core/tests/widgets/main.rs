@@ -4,6 +4,7 @@
 mod driver;
 
 mod behaviours {
+    mod access;
     mod creating;
     mod lifecycle;
     mod listing;

@@ -2,7 +2,7 @@ use crate::driver::{NoteJson, Notes, Outcome, Refusal};
 use notes::seed::ALICE_NOTE_ID_SHOPPING_LIST;
 use notes_api::events::v1::{NoteCreated, NoteDeleted, NoteEdited};
 use sqlx::PgPool;
-use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
+use users_api::seed::USER_ID_ALICE;
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn a_retried_create_gets_the_original_answer_and_creates_nothing_more(pool: PgPool) {
@@ -62,7 +62,7 @@ async fn a_key_sent_again_with_a_different_request_is_refused_and_changes_nothin
     keyed.create(USER_ID_ALICE, "Groceries", "milk").await;
 
     let reused: Outcome<NoteJson> = keyed
-        .create(USER_ID_BOB, "Chores", "laundry")
+        .create(USER_ID_ALICE, "Chores", "laundry")
         .await
         .outcome();
 

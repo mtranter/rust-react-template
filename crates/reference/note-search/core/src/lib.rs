@@ -9,5 +9,5 @@ mod di;
 mod web;
 
 pub use db::migrations::migrations;
-pub use di::{NoteSearchProvider, handlers, module, provider};
+pub use di::{NoteSearchProvider, handlers, module, policies, provider};
 pub use web::NoteSearchEndpoints;

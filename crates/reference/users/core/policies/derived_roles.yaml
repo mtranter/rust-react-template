@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+derivedRoles:
+  name: users_scopes
+  definitions:
+    - name: self
+      parentRoles: ["*"]
+      condition:
+        match:
+          expr: R.attr.id == P.id

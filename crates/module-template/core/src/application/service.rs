@@ -3,7 +3,8 @@ use super::{
     EventPublisher, Expected, ListQuery, Listed, PageRequest, Transactions, Version, Versioned,
     WidgetMatch, WidgetRepository, WidgetSearch, WidgetSortKey,
 };
-use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
+use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetAction, WidgetId};
+use app_authz::{Authorizer, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -15,6 +16,7 @@ pub struct WidgetService {
     publisher: Arc<dyn EventPublisher>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
+    authorizer: Arc<Authorizer>,
 }
 
 impl WidgetService {
@@ -24,6 +26,7 @@ impl WidgetService {
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
+        authorizer: Arc<Authorizer>,
     ) -> Self {
         Self {
             repo,
@@ -31,10 +34,25 @@ impl WidgetService {
             publisher,
             transactions,
             clock,
+            authorizer,
         }
     }
 
-    pub async fn create(&self, cmd: CreateWidget) -> AppResult<Versioned<Widget>> {
+    /// Asked first in every use case, before anything is loaded or begun. A
+    /// `Where` plan (a scope) is allowed here until rows are checked against
+    /// it (platform ticket 0028).
+    fn authorize(&self, principal: &Principal, action: WidgetAction) -> AppResult<()> {
+        self.authorizer
+            .authorize::<Widget>(principal, action)
+            .map(|_| ())
+    }
+
+    pub async fn create(
+        &self,
+        principal: &Principal,
+        cmd: CreateWidget,
+    ) -> AppResult<Versioned<Widget>> {
+        self.authorize(principal, WidgetAction::Create)?;
         let (widget, event) = Widget::create(WidgetId::new(), cmd, self.clock.now())?;
         let mut tx = self.transactions.begin().await?;
         let version = self.repo.save(&mut tx, &widget, Expected::New).await?;
@@ -51,12 +69,14 @@ impl WidgetService {
     /// `expected` is the version the caller last read (from `If-Match`).
     pub async fn rename(
         &self,
+        principal: &Principal,
         cmd: RenameWidget,
         expected: Version,
     ) -> AppResult<Versioned<Widget>> {
+        self.authorize(principal, WidgetAction::Rename)?;
         // Load first so a missing widget is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
-        let mut widget = self.get(cmd.widget_id).await?.entity;
+        let mut widget = self.load(cmd.widget_id).await?.entity;
         let event = widget.rename(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -73,7 +93,12 @@ impl WidgetService {
         })
     }
 
-    pub async fn get(&self, id: WidgetId) -> AppResult<Versioned<Widget>> {
+    pub async fn get(&self, principal: &Principal, id: WidgetId) -> AppResult<Versioned<Widget>> {
+        self.authorize(principal, WidgetAction::View)?;
+        self.load(id).await
+    }
+
+    async fn load(&self, id: WidgetId) -> AppResult<Versioned<Widget>> {
         self.repo
             .get(id)
             .await?
@@ -82,14 +107,22 @@ impl WidgetService {
 
     pub async fn list(
         &self,
+        principal: &Principal,
         query: ListQuery<WidgetSortKey>,
     ) -> AppResult<Listed<Versioned<Widget>>> {
+        self.authorize(principal, WidgetAction::List)?;
         self.repo.list(&query).await
     }
 
     /// From the search copy, so a write shows here once the worker has
     /// delivered its event, unlike [`get`](Self::get) and [`list`](Self::list).
-    pub async fn search(&self, name: &str, page: PageRequest) -> AppResult<Listed<WidgetMatch>> {
+    pub async fn search(
+        &self,
+        principal: &Principal,
+        name: &str,
+        page: PageRequest,
+    ) -> AppResult<Listed<WidgetMatch>> {
+        self.authorize(principal, WidgetAction::Search)?;
         self.search.search(name, page).await
     }
 }

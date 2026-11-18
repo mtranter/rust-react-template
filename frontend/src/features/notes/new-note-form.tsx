@@ -1,24 +1,13 @@
-import {
-  getNotesQueryKey,
-  getUsersOptions,
-  postNotesMutation,
-} from "@/api/@tanstack/react-query.gen";
+import { getNotesQueryKey, postNotesMutation } from "@/api/@tanstack/react-query.gen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { submitErrors } from "@/lib/api-errors";
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-const formFields = ["authorId", "title"] as const;
+const formFields = ["title"] as const;
 
 function errorsOf(errors: unknown[]) {
   return errors.map((message) => ({ message: String(message) }));
@@ -26,12 +15,6 @@ function errorsOf(errors: unknown[]) {
 
 export function NewNoteForm() {
   const queryClient = useQueryClient();
-  // One page at the server's maximum: enough for a picker until users gets a search endpoint.
-  const users = useQuery(getUsersOptions({ query: { limit: 100, sort: ["displayName"] } }));
-  const authors = (users.data?.items ?? []).map((user) => ({
-    value: user.id,
-    label: user.displayName,
-  }));
   const createNote = useMutation({
     ...postNotesMutation(),
     meta: { formFields },
@@ -39,7 +22,8 @@ export function NewNoteForm() {
   });
 
   const form = useForm({
-    defaultValues: { authorId: "", title: "" },
+    // The server makes the signed-in caller the author.
+    defaultValues: { title: "" },
     validators: {
       // Saving is the validation: the server's field errors land on the inputs.
       onSubmitAsync: async ({ value }) => {
@@ -64,32 +48,8 @@ export function NewNoteForm() {
             event.preventDefault();
             form.handleSubmit();
           }}
-          className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
+          className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start"
         >
-          <form.Field name="authorId">
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor="author">Author</FieldLabel>
-                <Select
-                  items={authors}
-                  value={field.state.value || null}
-                  onValueChange={(value) => field.handleChange(value ?? "")}
-                >
-                  <SelectTrigger id="author" className="w-full">
-                    <SelectValue placeholder={users.isPending ? "Loading…" : "Choose an author"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {authors.map((author) => (
-                      <SelectItem key={author.value} value={author.value}>
-                        {author.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError errors={errorsOf(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
           <form.Field name="title">
             {(field) => (
               <Field data-invalid={field.state.meta.errors.length > 0}>
@@ -105,15 +65,9 @@ export function NewNoteForm() {
               </Field>
             )}
           </form.Field>
-          <form.Subscribe
-            selector={(state) => [state.isSubmitting, state.values.authorId, state.values.title]}
-          >
-            {([isSubmitting, authorId, title]) => (
-              <Button
-                type="submit"
-                className="sm:mt-7"
-                disabled={!!isSubmitting || !authorId || !title}
-              >
+          <form.Subscribe selector={(state) => [state.isSubmitting, state.values.title] as const}>
+            {([isSubmitting, title]) => (
+              <Button type="submit" className="sm:mt-7" disabled={isSubmitting || !title}>
                 Add note
               </Button>
             )}

@@ -10,6 +10,8 @@ publish = false
 # only its own copy, kept from the providers' topics.
 
 [dependencies]
+app-authz.workspace = true
+strum.workspace = true
 app-error.workspace = true
 app-events.workspace = true
 notes-api.workspace = true
@@ -26,6 +28,7 @@ poem-openapi.workspace = true
 sqlx.workspace = true
 
 [dev-dependencies]
+app-authz.workspace = true
 app-test-db.workspace = true
 app-domain.workspace = true
 # What the tests publish, as the providers would: their seed data as published.
