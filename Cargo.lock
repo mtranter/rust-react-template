@@ -34,7 +34,10 @@ dependencies = [
 name = "access-api"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
+ "app-error",
  "app-events",
+ "async-trait",
  "chrono",
  "serde",
  "uuid",
@@ -3124,6 +3127,7 @@ name = "reference-journeys"
 version = "0.1.0"
 dependencies = [
  "access",
+ "access-api",
  "app-authz",
  "app-db",
  "app-domain",
@@ -4664,6 +4668,7 @@ dependencies = [
 name = "users"
 version = "0.1.0"
 dependencies = [
+ "access-api",
  "app-authz",
  "app-db",
  "app-domain",

@@ -130,7 +130,10 @@ EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = []}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "create_role",\n    "delete_role",\n];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n];}s' crates/server/tests/composed_app.rs
+# No seed assigns the dev sign-in (frontend/vite.config.ts) `admin` once the
+# reference users are off the server: it is a bootstrap admin instead.
+perl -i -pe 's{^APP_BOOTSTRAP_ADMINS=.*$}{APP_BOOTSTRAP_ADMINS=00000001-0001-0000-0000-000000000001}' .env.example
 perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
 
 # 5. The UI down to a shell: the root layout, a placeholder home page, and the

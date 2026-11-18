@@ -18,7 +18,7 @@ impl Composition for Reference {
     fn modules() -> Vec<Module> {
         vec![
             access::module(Self::modules),
-            users::module(),
+            users::module(access::assignments),
             notes::module(users::directory),
             note_search::module(),
         ]

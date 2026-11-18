@@ -8,7 +8,10 @@ publish = false
 
 # Must stay pure (no poem/sqlx): other modules depend on it.
 [dependencies]
+app-authz.workspace = true
+app-error.workspace = true
 app-events.workspace = true
+async-trait.workspace = true
 chrono.workspace = true
 serde.workspace = true
 uuid.workspace = true

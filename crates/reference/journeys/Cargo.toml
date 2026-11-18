@@ -18,6 +18,7 @@ notes.workspace = true
 note-search.workspace = true
 
 [dev-dependencies]
+access-api.workspace = true
 app-authz.workspace = true
 app-db.workspace = true
 app-domain.workspace = true

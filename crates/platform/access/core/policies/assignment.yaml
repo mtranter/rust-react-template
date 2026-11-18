@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: assignment
+  version: default
+  rules:
+    - name: admins always assign and unassign roles, whatever is granted or revoked
+      actions: ["*"]
+      effect: EFFECT_ALLOW
+      roles: [admin]

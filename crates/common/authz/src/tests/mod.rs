@@ -1,6 +1,7 @@
 //! The engine's tests, over a test `Note` and ADR 0040's example files.
 
 mod adr;
+mod assigning;
 mod combining;
 mod grants;
 mod refusals;

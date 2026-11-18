@@ -1,18 +1,20 @@
-use super::GrantRepository;
 use super::service::Modules;
+use super::{AssignmentRepository, GrantRepository};
 use app_authz::{Authorizer, RuleSet};
 use app_error::{AppError, AppResult};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// How often each server instance reads the revision (ADR 0040): a change of grants takes effect
-/// everywhere within it.
+/// How often each server instance reads the revision (ADR 0040): a change of grants, roles or
+/// assignments takes effect everywhere within it.
 pub const POLL_EVERY: Duration = Duration::from_secs(5);
 
-/// Keeps a process's rule set in step with the stored grants: every module's policies and every
-/// grant, compiled and swapped in whole when the revision has moved.
+/// Keeps a process's rule set in step with what `access` stores: every module's policies, every
+/// grant and every assignment, compiled and swapped in whole when the revision has moved. So
+/// resolving a Principal's roles, like planning its action, reads no store.
 pub struct Rules {
     repo: Arc<dyn GrantRepository>,
+    assignments: Arc<dyn AssignmentRepository>,
     modules: Arc<Modules>,
     authorizer: Arc<Authorizer>,
     built_at: Mutex<Option<i64>>,
@@ -21,11 +23,13 @@ pub struct Rules {
 impl Rules {
     pub(crate) fn new(
         repo: Arc<dyn GrantRepository>,
+        assignments: Arc<dyn AssignmentRepository>,
         modules: Arc<Modules>,
         authorizer: Arc<Authorizer>,
     ) -> Self {
         Self {
             repo,
+            assignments,
             modules,
             authorizer,
             built_at: Mutex::new(None),
@@ -36,7 +40,7 @@ impl Rules {
     /// failed read or compile changes nothing. A grant its module's policies no longer have (a
     /// later release removed its action or scope) is skipped, and logged once per revision.
     pub async fn refresh(&self) -> AppResult<()> {
-        // The revision is read before the grants: a change committed between the two reads is
+        // The revision is read before the grants and assignments: a change committed between the two reads is
         // then built now and again on the next poll, never missed.
         let revision = self.repo.revision().await?;
         if *self.built_at.lock().expect("not poisoned") == Some(revision) {
@@ -49,6 +53,8 @@ impl Rules {
             .iter()
             .map(|grant| grant.rule().clone())
             .collect();
+        let assignments = self.assignments.all().await?;
+        let assigned = assignments.len();
         let compiled =
             RuleSet::compile(&self.modules.policies, &grants).map_err(AppError::internal)?;
         for stale in &compiled.stale {
@@ -58,9 +64,15 @@ impl Rules {
                 "a stored grant names what its module's policies no longer have: skipped until it is revoked"
             );
         }
-        self.authorizer.replace(compiled.rule_set);
+        self.authorizer
+            .replace(compiled.rule_set.assigning(assignments));
         *self.built_at.lock().expect("not poisoned") = Some(revision);
-        tracing::info!(revision, grants = grants.len(), "rule set rebuilt");
+        tracing::info!(
+            revision,
+            grants = grants.len(),
+            assigned,
+            "rule set rebuilt"
+        );
         Ok(())
     }
 

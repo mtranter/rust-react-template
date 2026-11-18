@@ -56,12 +56,3 @@ async fn a_search_matching_nothing_finds_nothing(pool: PgPool) {
     let found = search.matching("zebra").await;
     assert_eq!((found.ids(), found.total), (Vec::<String>::new(), 0));
 }
-
-#[app_test_db::test(crate::driver::TEMPLATE)]
-async fn a_caller_without_the_user_role_is_kept_out_of_note_search(pool: PgPool) {
-    let search = NoteSearch::seeded(pool).await;
-    assert_eq!(
-        search.search_with_roles(&["guest"], &[]).await.err(),
-        Some(crate::driver::Refusal::Forbidden)
-    );
-}

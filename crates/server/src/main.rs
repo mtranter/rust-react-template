@@ -21,9 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
     let ctx = Context::new(pool, Arc::new(SystemClock))
         .with_bus(bus)
-        .with_authorizer(Arc::new(authorizer()?));
-    // Serves only once the stored grants are in force; a poll that fails later
-    // keeps the rule set it had.
+        .with_authorizer(Arc::new(
+            authorizer()?.with_bootstrap_admins(config.bootstrap_admins()),
+        ));
+    // Serves only once the stored grants and assignments are in force; a poll
+    // that fails later keeps the rule set it had.
     let rules = server::rules::<Registered>(&ctx)?;
     rules.refresh().await.inspect_err(|err| {
         tracing::error!(error = ?err, "server refused to start: the grants can't be read");

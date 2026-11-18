@@ -2,6 +2,7 @@ mod driver;
 
 mod access;
 mod agents;
+mod assigning;
 mod compacting_history;
 mod deleting_accounts;
 mod finding_notes;

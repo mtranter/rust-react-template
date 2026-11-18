@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO access.assignment (subject, role, assigned_by, assigned_at, version)\n            VALUES ($1, $2, $3, $4,\n                    COALESCE((SELECT version FROM access.unassigned\n                              WHERE subject = $1 AND role = $2), 0) + 1)\n            RETURNING version\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "access.assignment",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b82d14124ae86dae1648a060e1f2b67ba96952c537ec0f67b9308171960d4444"
+}

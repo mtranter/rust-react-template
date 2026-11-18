@@ -1,6 +1,6 @@
 use super::{PendingEvent, Version};
-use crate::domain::{Grant, GrantEvent, Role, RoleEvent, Scope};
-use access_api::events::v1::{self, GrantTopic, RoleTopic};
+use crate::domain::{Assignment, AssignmentEvent, Grant, GrantEvent, Role, RoleEvent, Scope};
+use access_api::events::v1::{self, AssignmentTopic, GrantTopic, RoleTopic};
 
 /// Where the domain's events meet the published contract.
 pub(crate) fn pending(grant: &Grant, version: Version, event: GrantEvent) -> PendingEvent {
@@ -39,6 +39,26 @@ pub(crate) fn role_pending(role: &Role, version: Version, event: RoleEvent) -> P
         created_at: role.created_at(),
     };
     PendingEvent::on::<RoleTopic>(version, &state, event)
+}
+
+pub(crate) fn assignment_pending(
+    assignment: &Assignment,
+    version: Version,
+    event: AssignmentEvent,
+) -> PendingEvent {
+    let event = match event {
+        AssignmentEvent::Assigned => v1::AssignmentEvent::Assigned,
+        AssignmentEvent::Unassigned { by } => v1::AssignmentEvent::Unassigned(v1::UnassignedBy {
+            unassigned_by: by.subject().map(str::to_owned),
+        }),
+    };
+    let state = v1::Assignment {
+        subject: assignment.subject().to_owned(),
+        role: assignment.role().to_owned(),
+        assigned_by: assignment.assigned_by().subject().map(str::to_owned),
+        assigned_at: assignment.assigned_at(),
+    };
+    PendingEvent::on::<AssignmentTopic>(version, &state, event)
 }
 
 /// `any`, or the scope's name: a scope can't be named `any` (ADR 0040).

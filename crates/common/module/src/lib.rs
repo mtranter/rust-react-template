@@ -98,7 +98,8 @@ impl Context {
 type Provider = Box<dyn Fn(&Context, BoxEndpoint<'static>) -> BoxEndpoint<'static> + Send + Sync>;
 type HandlersFn = Box<dyn Fn(&Context) -> Handlers + Send + Sync>;
 type PoliciesFn = Box<dyn Fn() -> PoliciesBuilder + Send + Sync>;
-type Seed = Box<dyn Fn(Pool) -> Pin<Box<dyn Future<Output = AppResult<()>> + Send>> + Send + Sync>;
+type Seed =
+    Box<dyn Fn(Context) -> Pin<Box<dyn Future<Output = AppResult<()>> + Send>> + Send + Sync>;
 
 pub struct Module {
     provide: Provider,
@@ -203,14 +204,16 @@ impl Module {
         }
     }
 
-    /// Call it only under the module's `seed` feature, which prod builds leave off.
+    /// Call it only under the module's `seed` feature, which prod builds leave off. It is given
+    /// the context, so it can build what it calls in another module's API (`access`, to assign
+    /// its seeded users' roles).
     pub fn with_seed<F, Fut>(self, seed: F) -> Self
     where
-        F: Fn(Pool) -> Fut + Send + Sync + 'static,
+        F: Fn(Context) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = AppResult<()>> + Send + 'static,
     {
         Self {
-            seed: Some(Box::new(move |pool| Box::pin(seed(pool)))),
+            seed: Some(Box::new(move |ctx| Box::pin(seed(ctx)))),
             ..self
         }
     }
@@ -240,9 +243,9 @@ impl Module {
     }
 
     /// A no-op for a module built without its seed.
-    pub async fn seed(&self, pool: Pool) -> AppResult<()> {
+    pub async fn seed(&self, ctx: &Context) -> AppResult<()> {
         match &self.seed {
-            Some(seed) => seed(pool).await,
+            Some(seed) => seed(ctx.clone()).await,
             None => Ok(()),
         }
     }

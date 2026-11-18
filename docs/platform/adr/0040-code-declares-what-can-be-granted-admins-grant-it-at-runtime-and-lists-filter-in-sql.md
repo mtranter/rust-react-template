@@ -1,5 +1,7 @@
 # Authorization: code declares what can be granted, admins grant it at runtime, and lists filter in SQL
 
+Amended by [ADR 0041](0041-a-principals-roles-are-user-plus-its-assignments-in-access.md): a user's roles are `user` plus the roles `access` assigns its subject, held in the compiled rule set, not the token's `roles` claim.
+
 Builds on [ADR 0025](0025-auth-is-one-jwt-bearer-scheme.md), which says who the caller is; this says what they may do, at three levels: a Module, an action (what an operation does), and a row. The app is single-tenant: there is one set of grants.
 
 **Code declares what is possible; data says who gets it.** An admin must be able to give a role an action without a deploy, but what an action is, what a row's attributes are and which conditions can become SQL belong to the code. So:
@@ -12,7 +14,7 @@ Builds on [ADR 0025](0025-auth-is-one-jwt-bearer-scheme.md), which says who the 
 | Default grants | the Module's policy files, applied once by `migrate` | developers |
 | **Grants**: role → action, within a scope | the `access` Module's tables | **admins, at runtime** |
 
-**A Principal is built on every guarded request.** The `JwtAuth` checker verifies the token, then hands its `Claims` to a `PrincipalResolver` (a port, in request data) for `Principal::User { id, roles, attr }`. The default resolver takes `id` from `sub` and `roles` from a `roles` claim. `Principal::System` is the worker's and seeds' caller: it acts on facts already decided, so policies don't apply to it. Poem has no principal of its own; poem-openapi's `SecurityScheme` checker is where it is built, so the spec still shows the operation guarded and MCP's in-process calls get it too (ADR 0034).
+**A Principal is built on every guarded request.** The `JwtAuth` checker verifies the token, then hands its `Claims` to a `PrincipalResolver` (a port, in request data) for `Principal::User { id, roles, attr }`. The default resolver takes `id` from `sub` and `roles` from a `roles` claim (amended by ADR 0041: `user` plus the subject's assignments in `access`). `Principal::System` is the worker's and seeds' caller: it acts on facts already decided, so policies don't apply to it. Poem has no principal of its own; poem-openapi's `SecurityScheme` checker is where it is built, so the spec still shows the operation guarded and MCP's in-process calls get it too (ADR 0034).
 
 **Policy files** are YAML in a Module core's `policies/`, embedded in the binary. Their format is inspired by Cerbos: resource policies and derived roles are, today, a strict subset of its syntax, under our own `apiVersion: auth.flagrante.io/v1`. Default grants are ours: Cerbos keeps grants in policies too, not in data.
 
@@ -64,7 +66,7 @@ A default lists `action` or `actions` (`*` for every action of its resource), an
 
 **The language is small so that every condition compiles to SQL.** A grant compiles to a rule (`roles: [role]`, `actions: [action]`, and its scope's condition), so the evaluator sees one rule set. It answers `plan(principal, action)` with `Allowed`, `Denied`, or `Where(filter)`: the conditions left once the principal's roles are known. The same `filter` is evaluated in memory against one loaded row, and pushed into a list's query as a `WHERE` clause by `app_db`, beside `push_list_clauses` (ADR 0018), so paging and totals count only rows the caller may see.
 
-**The YAML is checked against Rust types when it loads, and a grant when it is made.** A resource implements `app_authz::Resource`: its `KIND`, a closed `Action` enum (like a sort key, no caller text reaches a check), and `attr(name)`; its DB Layer maps each attribute to a column or a module-authored SQL expression (`"archived" → "archived_at IS NOT NULL"`). Loading fails on an action, attribute or scope a policy names that doesn't exist, and on a Module's policy naming another Module's resource. Granting refuses an unknown resource, action or scope, so a grant in the tables always compiles. Roles come from the identity provider, so their names are not checked.
+**The YAML is checked against Rust types when it loads, and a grant when it is made.** A resource implements `app_authz::Resource`: its `KIND`, a closed `Action` enum (like a sort key, no caller text reaches a check), and `attr(name)`; its DB Layer maps each attribute to a column or a module-authored SQL expression (`"archived" → "archived_at IS NOT NULL"`). Loading fails on an action, attribute or scope a policy names that doesn't exist, and on a Module's policy naming another Module's resource. Granting refuses an unknown resource, action or scope, so a grant in the tables always compiles. Roles come from the identity provider, so their names are not checked (amended by ticket 0031 and ADR 0041: roles are records in `access`, and a grant must name one).
 
 **The rule set in force is rebuilt when grants change, and swapped whole.** Each process holds one compiled rule set: every Module's policy files plus every grant. The `access` Module keeps a revision, bumped in the same Unit of Work as each change. Every server instance reads it every 5 seconds and rebuilds when it has moved, so a change takes effect everywhere within that bound. A request never reads grants itself. A rebuild that fails keeps the rule set it had and logs at error.
 
@@ -102,5 +104,5 @@ A default lists `action` or `actions` (`*` for every action of its resource), an
 - A rule the subset can't express is a change to the subset, made here first, not an escape hatch per Module. A new scope is a code change and a deploy, after which admins can grant within it.
 - A revoked grant still allows for up to 5 seconds on each instance.
 - MCP lists every tool whatever the caller's roles; a call the policies refuse is a `403` or `404` result.
-- Roles come only from the token. Groups, and roles the app assigns to users itself, are out of scope: either would be a different `PrincipalResolver`.
+- Roles come only from the token. Groups, and roles the app assigns to users itself, are out of scope: either would be a different `PrincipalResolver`. (Amended by ADR 0041: roles come only from `access`' assignments, and the token's are ignored.)
 - The format is ours to keep: a feature Cerbos adds later isn't ours until this ADR is amended.

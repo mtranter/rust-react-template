@@ -209,17 +209,9 @@ impl NoteSearch {
 
     /// As Alice, a `user`.
     pub async fn search(&self, query: &[(&str, String)]) -> Outcome<Found> {
-        self.search_with_roles(&["user"], query).await
-    }
-
-    pub async fn search_with_roles(
-        &self,
-        roles: &[&str],
-        query: &[(&str, String)],
-    ) -> Outcome<Found> {
         let token = self
             .verifier
-            .issue(users_api::seed::USER_ID_ALICE.to_string(), roles, 60)
+            .issue(users_api::seed::USER_ID_ALICE.to_string(), 60)
             .expect("issue token");
         self.api
             .get("/api/note-search")

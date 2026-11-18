@@ -22,6 +22,9 @@ fn map_sqlx(err: sqlx::Error) -> AppError {
         "grant_role_exists" => Some(AppError::conflict(
             "a grant still names that role: revoke it first",
         )),
+        "assignment_role_exists" => Some(AppError::conflict(
+            "the role is assigned to a subject still: unassign it first",
+        )),
         _ => None,
     })
 }

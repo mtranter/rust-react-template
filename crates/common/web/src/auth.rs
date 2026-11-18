@@ -1,7 +1,7 @@
 //! JWT Bearer authentication (ADR 0025): HS256 (dev/tests; can also issue) or
 //! verify-only JWKS discovered from an OIDC issuer (prod).
 
-use app_authz::Principal;
+use app_authz::{Authorizer, Principal, USER};
 use app_error::{AppError, AppResult};
 use async_trait::async_trait;
 use jsonwebtoken::jwk::JwkSet;
@@ -22,25 +22,22 @@ pub struct Claims {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iat: Option<usize>,
     pub exp: usize,
-    /// The roles the identity provider gives the subject (ADR 0040): a token without the claim has none.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub roles: Vec<String>,
 }
 
 /// Turns a verified token's claims into who is acting (ADR 0040). Held in request data as an
-/// `Arc<dyn PrincipalResolver>`; without one, [`ClaimsResolver`] is used.
+/// `Arc<dyn PrincipalResolver>`; without one, the [`Authorizer`] in request data is used.
 #[async_trait]
 pub trait PrincipalResolver: Send + Sync {
     async fn resolve(&self, claims: &Claims) -> AppResult<Principal>;
 }
 
-/// The default resolver: the user's id is the token's `sub`, their roles its `roles` claim.
-pub struct ClaimsResolver;
-
+/// The default resolver: the user's id is the token's `sub`, their roles `user` and those
+/// assigned to the subject in the rule set in force (kept by `access`), so a request reads no
+/// store for them. A `roles` claim in the token is ignored.
 #[async_trait]
-impl PrincipalResolver for ClaimsResolver {
+impl PrincipalResolver for Authorizer {
     async fn resolve(&self, claims: &Claims) -> AppResult<Principal> {
-        Ok(Principal::user(claims.sub.clone(), claims.roles.clone()))
+        Ok(self.principal(&claims.sub))
     }
 }
 
@@ -131,12 +128,7 @@ impl JwtVerifier {
     }
 
     /// Dev/test only: no issuance backend ships (ADR 0025). Fails in JWKS mode.
-    pub fn issue(
-        &self,
-        subject: impl Into<String>,
-        roles: &[&str],
-        ttl_secs: u64,
-    ) -> AppResult<String> {
+    pub fn issue(&self, subject: impl Into<String>, ttl_secs: u64) -> AppResult<String> {
         let Mode::Symmetric(s) = &*self.0 else {
             return Err(AppError::internal(AuthError::NotIssuable));
         };
@@ -148,7 +140,6 @@ impl JwtVerifier {
             sub: subject.into(),
             iat: Some(now),
             exp: now + ttl_secs as usize,
-            roles: roles.iter().map(|r| (*r).to_owned()).collect(),
         };
         encode(&Header::new(Algorithm::HS256), &claims, &s.encoding).map_err(AppError::internal)
     }
@@ -266,9 +257,76 @@ pub(crate) async fn verified_caller(req: &Request) -> Option<Claims> {
 async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
     let verifier = req.data::<JwtVerifier>()?;
     let claims = verifier.verify(&bearer.token).await.ok()?;
-    let resolved = match req.data::<Arc<dyn PrincipalResolver>>() {
-        Some(resolver) => resolver.resolve(&claims).await,
-        None => ClaimsResolver.resolve(&claims).await,
+    let resolved = match (
+        req.data::<Arc<dyn PrincipalResolver>>(),
+        req.data::<Arc<Authorizer>>(),
+    ) {
+        (Some(resolver), _) => resolver.resolve(&claims).await,
+        (None, Some(authorizer)) => authorizer.resolve(&claims).await,
+        (None, None) => Ok(Principal::user(claims.sub, [USER])),
     };
     resolved.ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use app_authz::RuleSet;
+    use poem::test::TestClient;
+    use poem::{EndpointExt, Route, handler};
+    use serde_json::json;
+
+    #[handler]
+    async fn roles(req: &Request) -> String {
+        let token = bearer_token(req).unwrap_or_default().to_owned();
+        match jwt_checker(req, Bearer { token }).await {
+            Some(Principal::User { roles, .. }) => roles.join(","),
+            _ => "none".to_owned(),
+        }
+    }
+
+    async fn roles_of(token: &str, authorizer: Arc<Authorizer>) -> String {
+        let app = Route::new()
+            .at("/", roles)
+            .data(JwtVerifier::new("secret"))
+            .data(authorizer);
+        TestClient::new(app)
+            .get("/")
+            .header("authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .0
+            .into_body()
+            .into_string()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_roles_claim_in_the_token_gains_nothing() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claiming_admin = encode(
+            &Header::new(Algorithm::HS256),
+            &json!({ "sub": "ada", "exp": now + 60, "roles": ["admin", "support"] }),
+            &EncodingKey::from_secret(b"secret"),
+        )
+        .unwrap();
+
+        let authorizer = Arc::new(Authorizer::new(RuleSet::default()));
+
+        assert_eq!(roles_of(&claiming_admin, authorizer).await, "user");
+    }
+
+    #[tokio::test]
+    async fn a_subject_has_user_and_the_roles_assigned_to_it() {
+        let token = JwtVerifier::new("secret").issue("ada", 60).unwrap();
+        let authorizer = Arc::new(Authorizer::new(
+            RuleSet::default().assigning([("ada".to_owned(), "support".to_owned())]),
+        ));
+
+        assert_eq!(roles_of(&token, authorizer).await, "user,support");
+    }
 }

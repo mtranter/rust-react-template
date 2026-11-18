@@ -152,13 +152,12 @@ impl Widgets {
             .expect("query the widgets")
     }
 
-    /// Later requests present a real token carrying `roles`. Every test
+    /// Later requests present a real token of a user holding `user` and
+    /// `roles`, assigned in the rule set in force as `access` would. Every test
     /// starts signed in as a `user`.
     pub fn sign_in_with_roles(&self, roles: &[&str]) {
-        let token = self
-            .verifier
-            .issue("a-user", roles, 60)
-            .expect("issue token");
+        self.ctx.authorizer().assign_in_memory("a-user", roles);
+        let token = self.verifier.issue("a-user", 60).expect("issue token");
         *self.caller.lock().unwrap() = Some(token);
     }
 

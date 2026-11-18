@@ -5,29 +5,27 @@ use sqlx::PgPool;
 use users_api::seed::USER_ID_BOB;
 
 /// Whoever administers the app: an `admin` who is none of the seeded users.
-const ADMIN_ID: &str = "00000000-0000-0000-0000-00000000ad01";
+pub const ADMIN_ID: &str = "00000000-0000-0000-0000-00000000ad01";
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn an_admin_lets_support_view_any_note_from_the_next_poll_until_revoked(pool: PgPool) {
     let app = App::seeded(pool).await;
-    let admin = app.as_admin(ADMIN_ID);
-    let support = app.with_roles(USER_ID_BOB, &["support"]);
+    let admin = app.as_admin(ADMIN_ID).await;
+    let support = app.as_user(USER_ID_BOB);
     let note = app.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
     admin.create_role("support").await.unwrap();
-    admin
-        .grant("support", "module:notes", "use", "any")
-        .await
-        .unwrap();
+    admin.assign(USER_ID_BOB, "support").await.unwrap();
     app.polls_the_grants().await;
     assert_eq!(
         support.note(ALICE_NOTE_ID_SHOPPING_LIST).await,
-        Err(Refusal::Forbidden)
+        Err(Refusal::NotFound),
+        "a `user` who isn't its author"
     );
 
     let view = admin.grant("support", "note", "view", "any").await.unwrap();
     assert_eq!(
         support.note(ALICE_NOTE_ID_SHOPPING_LIST).await,
-        Err(Refusal::Forbidden),
+        Err(Refusal::NotFound),
         "not until the instance next polls"
     );
     app.polls_the_grants().await;
@@ -37,7 +35,7 @@ async fn an_admin_lets_support_view_any_note_from_the_next_poll_until_revoked(po
     app.polls_the_grants().await;
     assert_eq!(
         support.note(ALICE_NOTE_ID_SHOPPING_LIST).await,
-        Err(Refusal::Forbidden)
+        Err(Refusal::NotFound)
     );
 }
 
@@ -45,18 +43,15 @@ async fn an_admin_lets_support_view_any_note_from_the_next_poll_until_revoked(po
 async fn a_grant_made_through_one_instance_takes_effect_on_another_at_its_next_poll(pool: PgPool) {
     let one = App::seeded(pool).await;
     let other = one.another_instance().await;
-    let admin = one.as_admin(ADMIN_ID);
-    let support = other.with_roles(USER_ID_BOB, &["support"]);
+    let admin = one.as_admin(ADMIN_ID).await;
+    let support = other.as_user(USER_ID_BOB);
 
     admin.create_role("support").await.unwrap();
-    admin
-        .grant("support", "module:notes", "use", "any")
-        .await
-        .unwrap();
+    admin.assign(USER_ID_BOB, "support").await.unwrap();
     admin.grant("support", "note", "view", "any").await.unwrap();
     assert_eq!(
         support.note(ALICE_NOTE_ID_SHOPPING_LIST).await,
-        Err(Refusal::Forbidden)
+        Err(Refusal::NotFound)
     );
     other.polls_the_grants().await;
 
@@ -69,7 +64,7 @@ async fn a_grant_made_through_one_instance_takes_effect_on_another_at_its_next_p
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn revoking_every_grant_leaves_admins_their_access(pool: PgPool) {
     let app = App::seeded(pool).await;
-    let admin = app.as_admin(ADMIN_ID);
+    let admin = app.as_admin(ADMIN_ID).await;
 
     for grant in admin.grants().await.unwrap().items {
         admin.revoke(&grant).await.unwrap();
@@ -90,7 +85,7 @@ async fn revoking_every_grant_leaves_admins_their_access(pool: PgPool) {
 async fn the_catalog_offers_each_note_action_with_the_operations_performing_it(pool: PgPool) {
     let app = App::seeded(pool).await;
 
-    let catalog = app.as_admin(ADMIN_ID).catalog().await.unwrap();
+    let catalog = app.as_admin(ADMIN_ID).await.catalog().await.unwrap();
 
     let resources = catalog["resources"].as_array().unwrap();
     let note = resources

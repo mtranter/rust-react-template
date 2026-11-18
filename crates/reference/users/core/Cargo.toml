@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+access-api.workspace = true
 app-authz.workspace = true
 strum.workspace = true
 app-domain.workspace = true

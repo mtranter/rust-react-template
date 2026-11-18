@@ -1,5 +1,5 @@
 use super::{ListQuery, Listed, Tx, Version, Versioned};
-use crate::domain::{Grant, GrantId, Role};
+use crate::domain::{Assignment, Grant, GrantId, Role};
 use app_authz::Rows;
 use app_error::AppResult;
 use chrono::{DateTime, Utc};
@@ -41,10 +41,10 @@ pub trait GrantRepository: Send + Sync {
     /// Only if the stored version is `expected`, else `PreconditionFailed`.
     async fn delete(&self, tx: &mut Tx, id: GrantId, expected: Version) -> AppResult<()>;
 
-    /// The revision of grants and roles alike: a change to either bumps it.
+    /// The revision of grants, roles and assignments alike: a change to any bumps it.
     async fn revision(&self) -> AppResult<i64>;
-    /// Holds the revision's row until `tx` ends, so changes to grants and roles commit one at a
-    /// time.
+    /// Holds the revision's row until `tx` ends, so changes to grants, roles and assignments
+    /// commit one at a time.
     async fn bump_revision(&self, tx: &mut Tx) -> AppResult<i64>;
 
     /// The keys of the default grants applied so far: the module whose they are, and the grant.
@@ -81,4 +81,25 @@ pub trait RoleRepository: Send + Sync {
     /// Only if the stored version is `expected`, else `PreconditionFailed`; `Conflict` while a
     /// grant names the role.
     async fn delete(&self, tx: &mut Tx, name: &str, expected: Version) -> AppResult<()>;
+}
+
+/// Assignments are made and removed, never changed. One assigned again after its removal
+/// continues from the version its removal reached, since its events are keyed by subject and role.
+#[async_trait::async_trait]
+pub trait AssignmentRepository: Send + Sync {
+    async fn get(&self, subject: &str, role: &str) -> AppResult<Option<Versioned<Assignment>>>;
+    /// Every assignment, as (subject, role), for the rule set.
+    async fn all(&self) -> AppResult<Vec<(String, String)>>;
+    /// `Conflict` when it exists; invalid on `role` when no role has that name.
+    async fn insert(&self, tx: &mut Tx, assignment: &Assignment) -> AppResult<Version>;
+    /// How many subjects `role` is assigned to.
+    async fn holders(&self, tx: &mut Tx, role: &str) -> AppResult<i64>;
+    /// Only if the stored version is `expected`, else `PreconditionFailed`.
+    async fn delete(
+        &self,
+        tx: &mut Tx,
+        subject: &str,
+        role: &str,
+        expected: Version,
+    ) -> AppResult<()>;
 }

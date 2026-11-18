@@ -62,6 +62,6 @@ pub fn module(users: fn(&Context) -> Arc<dyn UserDirectory>) -> Module {
         .with_handlers(move |ctx| handlers(ctx, users(ctx)))
         .with_migrations(migrations());
     #[cfg(feature = "seed")]
-    let module = module.with_seed(|pool| async move { crate::seed::standard(&pool).await });
+    let module = module.with_seed(|ctx| async move { crate::seed::standard(&ctx.pool()).await });
     module
 }

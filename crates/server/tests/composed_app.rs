@@ -28,7 +28,7 @@ const TEMPLATE: Template = Template::new("composed_app", |pool| {
             .await
             .expect("apply every module's default grants");
         for module in Registered::modules() {
-            module.seed(pool.clone()).await.expect("seed every module");
+            module.seed(&ctx).await.expect("seed every module");
         }
     })
 });
@@ -36,9 +36,12 @@ const TEMPLATE: Template = Template::new("composed_app", |pool| {
 const NIL_ID: &str = "00000000-0000-0000-0000-000000000000";
 
 /// As `main` builds it: every module's policies and the stored grants compiled
-/// into its authorizer.
+/// into its authorizer, with `NIL_ID` a bootstrap admin, so `access` reads its
+/// tables rather than refusing at its gate.
 async fn context(pool: PgPool) -> Context {
-    let authorizer = server::authorizer::<Registered>().expect("every module's policies load");
+    let authorizer = server::authorizer::<Registered>()
+        .expect("every module's policies load")
+        .with_bootstrap_admins([NIL_ID.to_owned()]);
     let ctx = Context::new(pool, Arc::new(SystemClock)).with_authorizer(Arc::new(authorizer));
     server::rules::<Registered>(&ctx)
         .expect("every module's policies load")
@@ -51,12 +54,9 @@ async fn context(pool: PgPool) -> Context {
 #[app_test_db::test(TEMPLATE)]
 async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
     let verifier = JwtVerifier::new("test-secret");
-    // An admin, so `access` reads its tables rather than refusing at its gate.
     let bearer = format!(
         "Bearer {}",
-        verifier
-            .issue(NIL_ID, &["user", "admin"], 60)
-            .expect("issue token")
+        verifier.issue(NIL_ID, 60).expect("issue token")
     );
     let ctx = context(pool).await;
     // A read module serving its own copy answers once the worker has caught it up.
@@ -132,6 +132,8 @@ const TOOLS: &[&str] = &[
     "list_roles",
     "create_role",
     "delete_role",
+    "assign_role",
+    "unassign_role",
     "register_user",
     "list_users",
     "get_me",
@@ -160,7 +162,7 @@ impl From<Refused> for Code {
 #[app_test_db::test(TEMPLATE)]
 async fn one_mcp_endpoint_offers_a_tool_per_operation(pool: PgPool) {
     let verifier = JwtVerifier::new("test-secret");
-    let token = verifier.issue(NIL_ID, &["user"], 60).expect("issue token");
+    let token = verifier.issue(NIL_ID, 60).expect("issue token");
     let ctx = context(pool).await;
     let api = TestApi::over(server::build_app::<Registered>(
         &ctx,

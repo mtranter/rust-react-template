@@ -52,6 +52,9 @@ pub struct AppConfig {
     /// against, in place of the public roots, for one signed by a private
     /// CA. Unset (or empty), the public roots, which ElastiCache's are under.
     pub redis_ca: Option<String>,
+    /// Subjects (the token's `sub`), comma-separated, that always hold `admin`
+    /// whatever `access` assigns: how a fresh app gets its first admin.
+    pub bootstrap_admins: String,
 }
 
 impl Default for AppConfig {
@@ -71,6 +74,7 @@ impl Default for AppConfig {
             outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
             redis_url: None,
             redis_ca: None,
+            bootstrap_admins: String::new(),
         }
     }
 }
@@ -120,6 +124,16 @@ impl AppConfig {
             ))),
             None => Ok(Arc::new(NoBus)),
         }
+    }
+
+    /// `APP_BOOTSTRAP_ADMINS`, each trimmed, without empty entries.
+    pub fn bootstrap_admins(&self) -> Vec<String> {
+        self.bootstrap_admins
+            .split(',')
+            .map(str::trim)
+            .filter(|subject| !subject.is_empty())
+            .map(str::to_owned)
+            .collect()
     }
 
     pub fn bind_addr(&self) -> String {
@@ -183,6 +197,16 @@ mod tests {
             ..AppConfig::default()
         };
         assert!(config.bus(true).is_err());
+    }
+
+    #[test]
+    fn bootstrap_admins_are_a_comma_separated_list() {
+        let config = AppConfig {
+            bootstrap_admins: " ada, ,auth0|bob ,".to_string(),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.bootstrap_admins(), ["ada", "auth0|bob"]);
+        assert!(AppConfig::default().bootstrap_admins().is_empty());
     }
 
     #[test]
