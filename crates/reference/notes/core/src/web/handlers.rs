@@ -72,7 +72,7 @@ impl NotesEndpoints {
 
     /// Edit a note's title and body. Requires `If-Match` with the version the
     /// client last read; a stale value is refused with `412` and changes nothing.
-    /// An archived note is refused with `409`.
+    /// An archived note is refused with `403`, and another user's with `404`.
     #[oai(path = "/:id", method = "patch", operation_id = "edit_note")]
     async fn edit(
         &self,
@@ -99,7 +99,8 @@ impl NotesEndpoints {
     }
 
     /// Delete a note. Requires `If-Match` with the version the client last read,
-    /// like an edit. An archived note is refused with `409`.
+    /// like an edit. An archived note is refused with `403`, and another user's
+    /// with `404`.
     #[oai(path = "/:id", method = "delete", operation_id = "delete_note")]
     async fn delete(
         &self,

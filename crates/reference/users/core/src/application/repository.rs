@@ -22,7 +22,7 @@ pub trait UserRepository: Send + Sync {
     async fn list(
         &self,
         query: &ListQuery<UserSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<User>>>;
     /// A stale [`Expected::Version`] is refused with `PreconditionFailed`.
     async fn save(&self, tx: &mut Tx, user: &User, expected: Expected) -> AppResult<Version>;

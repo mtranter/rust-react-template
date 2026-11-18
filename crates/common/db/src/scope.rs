@@ -136,7 +136,8 @@ fn push_joined<C: Columns>(
     sql.push(")");
 }
 
-/// The column's SQL, an expression parenthesised so a comparison applies to all of it, and kind.
+/// The column's SQL, anything but a plain identifier parenthesised so a comparison applies to all
+/// of it, and kind.
 fn column<C: Columns>(attr: &str) -> (String, Kind) {
     let column = C::column(attr).unwrap_or_else(|| {
         panic!(
@@ -144,10 +145,14 @@ fn column<C: Columns>(attr: &str) -> (String, Kind) {
             <C::Resource as Resource>::KIND
         )
     });
-    let sql = if column.sql.contains(char::is_whitespace) {
-        format!("({})", column.sql)
-    } else {
+    let identifier = column
+        .sql
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    let sql = if identifier {
         column.sql.to_owned()
+    } else {
+        format!("({})", column.sql)
     };
     (sql, column.kind)
 }
@@ -373,6 +378,27 @@ mod tests {
         assert_eq!(
             built.sql().as_str(),
             "SELECT id FROM docs.doc WHERE title <> '' AND (archived_at IS NOT NULL) = $1"
+        );
+    }
+
+    #[test]
+    fn an_expression_written_without_spaces_is_parenthesised_too() {
+        struct Joined;
+        impl Columns for Joined {
+            type Resource = Doc;
+            fn column(attr: &str) -> Option<Column> {
+                match attr {
+                    "title" => Some(Column::text("coalesce(title,'')||'x'")),
+                    _ => Some(Column::text("docs.doc.title")),
+                }
+            }
+        }
+        let mut built = QueryBuilder::new("SELECT id FROM docs.doc");
+        let filter = Filter::All(vec![eq("title", "a"), eq("ownerId", "b")]);
+        push_scope::<Joined>(&mut built, Clause::Where, &Rows::Where(filter));
+        assert_eq!(
+            built.sql().as_str(),
+            "SELECT id FROM docs.doc WHERE ((coalesce(title,'')||'x') = $1 AND docs.doc.title = $2)"
         );
     }
 

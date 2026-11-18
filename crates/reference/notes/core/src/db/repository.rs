@@ -108,14 +108,14 @@ impl NoteRepository for PgNoteRepository {
     async fn list(
         &self,
         query: &ListQuery<NoteSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<Note>>> {
         let mut sql = QueryBuilder::new(
             "SELECT id, author_id, title, body, created_at, archived_at, version FROM notes.note",
         );
-        push_scope::<NoteColumns>(&mut sql, Clause::Where, scope);
+        push_scope::<NoteColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
-        let rows: Vec<NoteRow> = sql
+        let found: Vec<NoteRow> = sql
             .build_query_as()
             .fetch_all(&self.pool)
             .await
@@ -124,7 +124,7 @@ impl NoteRepository for PgNoteRepository {
         let total = match query.page {
             Some(_) => {
                 let mut count = QueryBuilder::new("SELECT COUNT(*) FROM notes.note");
-                push_scope::<NoteColumns>(&mut count, Clause::Where, scope);
+                push_scope::<NoteColumns>(&mut count, Clause::Where, rows);
                 Some(
                     count
                         .build_query_scalar()
@@ -137,7 +137,7 @@ impl NoteRepository for PgNoteRepository {
         };
 
         Ok(Listed {
-            items: NoteRow::restore_all(&self.pool, rows).await?,
+            items: NoteRow::restore_all(&self.pool, found).await?,
             total,
         })
     }

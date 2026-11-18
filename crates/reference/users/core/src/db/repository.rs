@@ -100,14 +100,14 @@ impl UserRepository for PgUserRepository {
     async fn list(
         &self,
         query: &ListQuery<UserSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<User>>> {
         let mut sql = QueryBuilder::new(
             "SELECT id, email, display_name, created_at, version FROM users.account",
         );
-        push_scope::<UserColumns>(&mut sql, Clause::Where, scope);
+        push_scope::<UserColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
-        let rows: Vec<UserRow> = sql
+        let found: Vec<UserRow> = sql
             .build_query_as()
             .fetch_all(&self.pool)
             .await
@@ -116,7 +116,7 @@ impl UserRepository for PgUserRepository {
         let total = match query.page {
             Some(_) => {
                 let mut count = QueryBuilder::new("SELECT COUNT(*) FROM users.account");
-                push_scope::<UserColumns>(&mut count, Clause::Where, scope);
+                push_scope::<UserColumns>(&mut count, Clause::Where, rows);
                 Some(
                     count
                         .build_query_scalar()
@@ -129,7 +129,7 @@ impl UserRepository for PgUserRepository {
         };
 
         Ok(Listed {
-            items: rows.into_iter().map(UserRow::restore).collect(),
+            items: found.into_iter().map(UserRow::restore).collect(),
             total,
         })
     }

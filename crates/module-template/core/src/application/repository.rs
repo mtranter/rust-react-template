@@ -18,7 +18,7 @@ pub trait WidgetRepository: Send + Sync {
     async fn list(
         &self,
         query: &ListQuery<WidgetSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<Widget>>>;
     /// [`Expected::Version`] updates only if the stored version matches, else
     /// `PreconditionFailed`. Returns the new version.

@@ -78,12 +78,12 @@ impl WidgetRepository for PgWidgetRepository {
     async fn list(
         &self,
         query: &ListQuery<WidgetSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<Widget>>> {
         let mut sql = QueryBuilder::new("SELECT id, name, created_at, version FROM widgets.widget");
-        push_scope::<WidgetColumns>(&mut sql, Clause::Where, scope);
+        push_scope::<WidgetColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
-        let rows: Vec<WidgetRow> = sql
+        let found: Vec<WidgetRow> = sql
             .build_query_as()
             .fetch_all(&self.pool)
             .await
@@ -92,7 +92,7 @@ impl WidgetRepository for PgWidgetRepository {
         let total = match query.page {
             Some(_) => {
                 let mut count = QueryBuilder::new("SELECT COUNT(*) FROM widgets.widget");
-                push_scope::<WidgetColumns>(&mut count, Clause::Where, scope);
+                push_scope::<WidgetColumns>(&mut count, Clause::Where, rows);
                 Some(
                     count
                         .build_query_scalar()
@@ -105,7 +105,7 @@ impl WidgetRepository for PgWidgetRepository {
         };
 
         Ok(Listed {
-            items: rows.into_iter().map(WidgetRow::restore).collect(),
+            items: found.into_iter().map(WidgetRow::restore).collect(),
             total,
         })
     }

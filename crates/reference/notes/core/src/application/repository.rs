@@ -20,7 +20,7 @@ pub trait NoteRepository: Send + Sync {
     async fn list(
         &self,
         query: &ListQuery<NoteSortKey>,
-        scope: &Rows,
+        rows: &Rows,
     ) -> AppResult<Listed<Versioned<Note>>>;
     /// Oldest first.
     async fn unarchived_by(&self, author: AuthorId) -> AppResult<Vec<Versioned<Note>>>;
