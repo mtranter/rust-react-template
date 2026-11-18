@@ -31,3 +31,10 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 ### Comments
 
 Comments are the exception. Write one only when the code can't say it: a surprise (a workaround, a deliberate deviation, a non-obvious constraint), or the source or derivation of a value or algorithm. Don't restate the code, narrate steps or label sections; prefer a better name. Doc comments that only repeat the signature are the same noise.
+
+
+
+**Building**
+
+
+Run only `make check-changed` during normal build cycles to minmimise build times.
