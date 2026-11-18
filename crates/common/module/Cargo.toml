@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+app-authz.workspace = true
 app-bus.workspace = true
 app-db.workspace = true
 app-domain.workspace = true
@@ -15,3 +16,4 @@ app-events.workspace = true
 app-persistence.workspace = true
 app-web.workspace = true
 poem.workspace = true
+thiserror.workspace = true

@@ -2,7 +2,6 @@ import type {
   ErrorBody,
   ListResultNoteResponse,
   ListResultNoteSummaryResponse,
-  ListResultUserResponse,
   NoteResponse,
   NoteSummaryResponse,
   UserResponse,
@@ -77,10 +76,6 @@ function refusal(code: ErrorBody["code"], message: string, path?: string): Error
   return { code, message, ...(path && { fields: [{ path, message }] }), requestId: "screens" };
 }
 
-const usersListing = http.get("*/api/users", () =>
-  HttpResponse.json({ items: users } satisfies ListResultUserResponse),
-);
-
 /** Answers the list as the server does: a page of `items` by `limit`, `offset` and `sort`. */
 function listing(items: NoteResponse[]) {
   return http.get("*/api/notes", ({ request }) => {
@@ -104,15 +99,13 @@ function listing(items: NoteResponse[]) {
   });
 }
 
-const notesPage = [usersListing, listing(notes)];
+const notesPage = [listing(notes)];
 
 // The server's message: `MAX_TITLE_LEN` in crates/reference/notes/core/src/domain/note.rs.
 const titleTooLong = "title must be at most 200 characters";
 
-/** Chooses Bob as the author and types `title` into the New note form. */
+/** Types `title` into the New note form; the signed-in caller is its author. */
 async function fillNewNote(page: Page, title: string) {
-  await page.getByRole("combobox", { name: "Author" }).click();
-  await page.getByRole("option", { name: "Bob" }).click();
   await page.getByLabel("Title").fill(title);
 }
 
@@ -161,7 +154,7 @@ export const scenarios: Scenario[] = [
   {
     name: "notes-empty",
     route: "/",
-    handlers: [usersListing, listing([])],
+    handlers: [listing([])],
     shows: (page) => page.getByText("No notes yet."),
   },
   {

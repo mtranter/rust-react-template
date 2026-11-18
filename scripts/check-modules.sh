@@ -10,6 +10,10 @@
 #                                  if it has a seed (a module that owns no data has none)
 #   deny.toml                      both the `sqlx` and `poem` wrappers lists, registered or not
 #
+# A module with operations must have policies (ADR 0040): its `di.rs` registers
+# them with `Module::with_policies(..)`, with its gate, resources and default
+# grants, and its web layer's `OPERATIONS` with `.performing(..)`.
+#
 # It also checks that a module with a seed declares the number its seed ids are
 # built from (`pub const MODULE: u32 = N;` in its `-api` crate's `src/seed.rs` if
 # it has one, else its core's; ADR 0028), and that the numbers are unique.
@@ -54,6 +58,13 @@ for module in crates/modules/*/core crates/reference/*/core; do
   found=$(registrations "$module")
   if [[ $module == crates/modules/* ]] || grep -q '^1' <<<"$found"; then
     while IFS= read -r missing; do fail "${missing#0 }"; done < <(grep '^0' <<<"$found" || true)
+  fi
+
+  if grep -qE 'operation_id = ' "$module"/src/web/*.rs 2>/dev/null; then
+    grep -qE '\.with_policies\(' "$module/src/di.rs" ||
+      fail "$module/src/di.rs: it has operations but no policies: register them with \`Module::with_policies(..)\`"
+    grep -qE '\.performing\(' "$module/src/di.rs" ||
+      fail "$module/src/di.rs: it has operations but doesn't register its \`OPERATIONS\` with \`.performing(..)\`"
   fi
 
   for crate in sqlx poem; do

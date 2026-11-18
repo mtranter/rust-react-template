@@ -3,13 +3,14 @@
 //! derives the request data, migrations, seeds and worker handlers from that
 //! list, so none of them can be registered without the others.
 
+use app_authz::{Authorizer, Policies, PoliciesBuilder, PolicyError, RuleSet};
 use app_bus::{Bus, NoBus};
 use app_db::{ModuleMigrations, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool};
 use app_domain::Clock;
 use app_error::AppResult;
 use app_events::{PublishedTopic, Topic};
 use app_persistence::{EventPublisher, Handlers, Transactions};
-use app_web::{Accept, Idempotency, Provide};
+use app_web::{Accept, Idempotency, Performs, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
 use std::future::Future;
@@ -17,21 +18,35 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 /// What every module is built from, made once by the server (or a test driver)
-/// and passed to each provider, so they all share one pool, clock and bus.
+/// and passed to each provider, so they all share one pool, clock, bus and
+/// rule set.
 #[derive(Clone)]
 pub struct Context {
     pool: Pool,
     clock: Arc<dyn Clock>,
     bus: Arc<dyn Bus>,
+    authorizer: Arc<Authorizer>,
 }
 
 impl Context {
+    /// Its authorizer allows no user anything until [`with_authorizer`](Self::with_authorizer).
     pub fn new(pool: Pool, clock: Arc<dyn Clock>) -> Self {
         Self {
             pool,
             clock,
             bus: Arc::new(NoBus),
+            authorizer: Arc::new(Authorizer::new(RuleSet::default())),
         }
+    }
+
+    /// The rule set every service plans its actions with and every `Caller`
+    /// passes its gate by (ADR 0040), compiled from the modules' policies.
+    pub fn with_authorizer(self, authorizer: Arc<Authorizer>) -> Self {
+        Self { authorizer, ..self }
+    }
+
+    pub fn authorizer(&self) -> Arc<Authorizer> {
+        self.authorizer.clone()
     }
 
     /// What server instances and workers broadcast to each other over (ADR
@@ -82,6 +97,7 @@ impl Context {
 
 type Provider = Box<dyn Fn(&Context, BoxEndpoint<'static>) -> BoxEndpoint<'static> + Send + Sync>;
 type HandlersFn = Box<dyn Fn(&Context) -> Handlers + Send + Sync>;
+type PoliciesFn = Box<dyn Fn() -> PoliciesBuilder + Send + Sync>;
 type Seed = Box<dyn Fn(Pool) -> Pin<Box<dyn Future<Output = AppResult<()>> + Send>> + Send + Sync>;
 
 pub struct Module {
@@ -91,6 +107,18 @@ pub struct Module {
     migrations: Option<ModuleMigrations>,
     seed: Option<Seed>,
     broadcasts: bool,
+    policies: Option<PoliciesFn>,
+    operations: &'static [Performs],
+}
+
+/// A module's policy files that don't load: the server, worker and `migrate`
+/// refuse to start on one.
+#[derive(Debug, thiserror::Error)]
+#[error("the `{module}` module's policies don't load: {source}")]
+pub struct PoliciesError {
+    pub module: String,
+    #[source]
+    pub source: PolicyError,
 }
 
 impl Module {
@@ -104,7 +132,41 @@ impl Module {
             migrations: None,
             seed: None,
             broadcasts: false,
+            policies: None,
+            operations: &[],
         }
+    }
+
+    /// The module's gate, resources, scopes and default grants (ADR 0040),
+    /// built when the server, worker or `migrate` starts.
+    pub fn with_policies(
+        self,
+        policies: impl Fn() -> PoliciesBuilder + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            policies: Some(Box::new(policies)),
+            ..self
+        }
+    }
+
+    /// The action each of its guarded operations performs: its web layer's `OPERATIONS`.
+    pub fn performing(self, operations: &'static [Performs]) -> Self {
+        Self { operations, ..self }
+    }
+
+    /// `None` for a module with no policies, which may have no guarded operations.
+    pub fn policies(&self) -> Option<Result<Policies, PoliciesError>> {
+        let builder = (self.policies.as_ref()?)();
+        let module = builder.module().to_owned();
+        Some(
+            builder
+                .build()
+                .map_err(|source| PoliciesError { module, source }),
+        )
+    }
+
+    pub fn operations(&self) -> &'static [Performs] {
+        self.operations
     }
 
     /// The module's event subscriptions and jobs, for the worker.

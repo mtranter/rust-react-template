@@ -71,4 +71,12 @@ impl Principal {
             attr: BTreeMap::new(),
         }
     }
+
+    /// The user's id; `None` for `System`.
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Principal::User { id, .. } => Some(id),
+            Principal::System => None,
+        }
+    }
 }

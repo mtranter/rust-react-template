@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+app-authz.workspace = true
 app-domain.workspace = true
 app-error.workspace = true
 app-events.workspace = true
@@ -25,6 +26,7 @@ poem.workspace = true
 poem-openapi.workspace = true
 sqlx.workspace = true
 serde.workspace = true
+strum.workspace = true
 tracing.workspace = true
 
 [features]
@@ -32,6 +34,7 @@ tracing.workspace = true
 seed = ["notes-api/seed"]
 
 [dev-dependencies]
+app-authz.workspace = true
 app-test-db.workspace = true
 # Enables `seed` for this crate's integration tests.
 notes = { path = ".", features = ["seed"] }

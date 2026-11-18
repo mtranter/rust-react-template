@@ -1,4 +1,5 @@
 mod auth;
+mod caller;
 mod concurrency;
 mod error;
 mod health;
@@ -11,7 +12,9 @@ mod request_id;
 #[cfg(any(test, feature = "test"))]
 pub mod testing;
 
-pub use auth::{Claims, JwtAuth, JwtVerifier};
+pub use app_authz::Principal;
+pub use auth::{Claims, ClaimsResolver, JwtAuth, JwtVerifier, PrincipalResolver};
+pub use caller::{Caller, Gate, Performs};
 pub use concurrency::{WithETag, if_match_version};
 pub use error::{
     ApiError, ApiResult, ErrorBody, ErrorCode, FieldErrorBody, render_error, with_error_shape,

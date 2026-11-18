@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+derivedRoles:
+  name: notes_scopes
+  definitions:
+    - name: author
+      parentRoles: ["*"]
+      condition:
+        match:
+          expr: R.attr.authorId == P.id

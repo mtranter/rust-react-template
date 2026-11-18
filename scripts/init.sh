@@ -127,6 +127,7 @@ references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.to
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = []}' crates/server/Cargo.toml
 perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
 
 # 5. The UI down to a shell: the root layout and a placeholder home page.
 git rm -rq frontend/src/features/notes frontend/src/features/note-search \

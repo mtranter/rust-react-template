@@ -10,6 +10,9 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = server::config::AppConfig::load()?;
+    // Loaded before anything is migrated, so a build whose policies don't load changes nothing.
+    server::policies::<Registered>()
+        .inspect_err(|err| eprintln!("migrate refused to start: {err}"))?;
     server::telemetry::init(config.env);
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;

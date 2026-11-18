@@ -7,11 +7,10 @@ use app_persistence::{Direction, Sort};
 use app_web::SortParam;
 use poem_openapi::{Enum, Object};
 
+/// Its author is the caller.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct CreateNoteRequest {
-    /// Author id: the uuid of a registered user.
-    pub author_id: String,
     pub title: String,
     #[oai(default)]
     pub body: String,

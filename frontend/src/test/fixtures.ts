@@ -2,7 +2,6 @@ import type {
   EditNoteRequest,
   ErrorBody,
   ListResultNoteResponse,
-  ListResultUserResponse,
   NoteResponse,
   UserResponse,
 } from "@/api";
@@ -66,15 +65,12 @@ export function refusal(code: ErrorBody["code"], message: string, path?: string)
 
 /**
  * The API as the server answers it for `items` (changed in place by edits): the notes list,
- * each note with its `ETag`, edits guarded by `If-Match`, and Alice as the only user.
+ * each note with its `ETag`, edits guarded by `If-Match` and Alice as every note's author.
  * `ifMatches` records each edit's `If-Match`.
  */
 export function notesApi(items: NoteResponse[]) {
   const ifMatches: (string | null)[] = [];
   const handlers = [
-    http.get("*/api/users", () =>
-      HttpResponse.json({ items: [alice] } satisfies ListResultUserResponse),
-    ),
     http.get("*/api/notes", ({ request }) => {
       const sort = new URL(request.url).searchParams.get("sort");
       return HttpResponse.json(

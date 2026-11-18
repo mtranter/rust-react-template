@@ -36,6 +36,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app-authz"
 version = "0.1.0"
 dependencies = [
+ "app-error",
  "arc-swap",
  "saphyr",
  "strum",
@@ -110,6 +111,7 @@ dependencies = [
 name = "app-module"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-bus",
  "app-db",
  "app-domain",
@@ -118,6 +120,7 @@ dependencies = [
  "app-persistence",
  "app-web",
  "poem",
+ "thiserror",
 ]
 
 [[package]]
@@ -165,9 +168,11 @@ dependencies = [
 name = "app-web"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-domain",
  "app-error",
  "app-persistence",
+ "async-trait",
  "chrono",
  "jsonwebtoken",
  "percent-encoding",
@@ -2119,6 +2124,7 @@ dependencies = [
 name = "note-search"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-db",
  "app-domain",
  "app-error",
@@ -2135,6 +2141,7 @@ dependencies = [
  "poem-openapi",
  "serde_json",
  "sqlx",
+ "strum",
  "tokio",
  "users-api",
  "uuid",
@@ -2144,6 +2151,7 @@ dependencies = [
 name = "notes"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-db",
  "app-domain",
  "app-error",
@@ -2162,6 +2170,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "strum",
  "thiserror",
  "tokio",
  "tracing",
@@ -3074,6 +3083,7 @@ dependencies = [
 name = "reference-journeys"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-db",
  "app-domain",
  "app-events",
@@ -3618,6 +3628,7 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-bus",
  "app-db",
  "app-domain",
@@ -3637,6 +3648,7 @@ dependencies = [
  "serde_json",
  "server",
  "sqlx",
+ "strum",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -4610,6 +4622,7 @@ dependencies = [
 name = "users"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-db",
  "app-domain",
  "app-error",
@@ -4627,6 +4640,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "strum",
  "thiserror",
  "tokio",
  "tracing",
@@ -4820,6 +4834,7 @@ checksum = "626c4bac6755d76ffc12cb01b2eac751db1996b9e0041de9aa02c8c211ddc82c"
 name = "widgets"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-db",
  "app-domain",
  "app-error",
@@ -4835,6 +4850,7 @@ dependencies = [
  "poem-openapi",
  "serde_json",
  "sqlx",
+ "strum",
  "thiserror",
  "tokio",
  "uuid",

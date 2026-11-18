@@ -1,3 +1,4 @@
+use app_authz::Authorizer;
 use app_db::Worker;
 use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
@@ -5,16 +6,17 @@ use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::{PendingEvent, Version};
 use app_test_db::Template;
-use app_web::testing::{Answered, Page, Refused, TestApi};
-use app_web::{Accept, json_newtype};
+use app_web::testing::{Answered, Call, Page, Refused, TestApi};
+use app_web::{Accept, JwtVerifier, json_newtype};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use notes::{Note, NotesEndpoints, seed};
 use notes_api::events::v1 as notes_events;
+use poem::EndpointExt;
 use serde_json::json;
 use sqlx::{AssertSqlSafe, PgPool};
 use std::fmt::Display;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use users_api::UserDirectory;
 use users_api::events::v1::{self as users_events, UserTopic};
 use uuid::Uuid;
@@ -25,6 +27,9 @@ pub enum Refusal {
     Invalid(Vec<String>),
     /// The request couldn't be parsed.
     Malformed,
+    NotSignedIn,
+    /// Signed in, but the policies don't allow it.
+    Forbidden,
     NotFound,
     Conflict,
     PreconditionRequired,
@@ -44,6 +49,8 @@ impl From<Refused> for Refusal {
         match refused.code.as_str() {
             "validation_error" => Refusal::Invalid(refused.paths),
             "malformed_request" => Refusal::Malformed,
+            "unauthorized" => Refusal::NotSignedIn,
+            "forbidden" => Refusal::Forbidden,
             "not_found" => Refusal::NotFound,
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
@@ -122,34 +129,78 @@ impl UserDirectory for KnownUsers {
     }
 }
 
+/// The role every signed-in user has (ADR 0040), which notes' default grants name.
+pub const USER: &str = "user";
+
 pub struct Notes {
     api: TestApi,
     ctx: Context,
     clock: Arc<FixedClock>,
     worker: Worker,
     seeded_through: i64,
+    verifier: JwtVerifier,
+    /// The token later requests present, if any.
+    caller: Mutex<Option<String>>,
 }
 
 impl Notes {
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock.clone());
+        let policies = notes::policies().build().expect("notes' policies load");
+        let authorizer = Authorizer::from_policies(&[policies]).expect("notes' policies compile");
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
         let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
         app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
             .await
             .expect("register notes' subscriptions");
         let worker = ctx.worker(handlers);
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
+        let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(NotesEndpoints, ctx.idempotency(), |app| {
             app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
+                .data(verifier.clone())
+                .data(ctx.authorizer())
         });
-        Self {
+        let notes = Self {
             api,
             ctx,
             clock,
             worker,
             seeded_through,
+            verifier,
+            caller: Mutex::new(None),
+        };
+        notes.sign_in_as(users_api::seed::USER_ID_ALICE, &[USER]);
+        notes
+    }
+
+    /// Later requests are `user`'s, with a real token carrying `roles`. Every
+    /// test starts signed in as Alice, a `user`.
+    pub fn sign_in_as(&self, user: impl Display, roles: &[&str]) {
+        *self.caller.lock().unwrap() = Some(self.token(user, roles));
+    }
+
+    /// Later requests present no token.
+    pub fn sign_out(&self) {
+        *self.caller.lock().unwrap() = None;
+    }
+
+    fn token(&self, user: impl Display, roles: &[&str]) -> String {
+        self.verifier
+            .issue(user.to_string(), roles, 60)
+            .expect("issue token")
+    }
+
+    fn signed<'c>(&self, call: Call<'c>) -> Call<'c> {
+        match self.caller.lock().unwrap().as_ref() {
+            Some(token) => call.bearer(token),
+            None => call,
         }
+    }
+
+    /// As `author`, a `user`, signed in for this request alone.
+    fn by<'c>(&self, author: impl Display, call: Call<'c>) -> Call<'c> {
+        call.bearer(self.token(author, &[USER]))
     }
 
     pub fn now(&self) -> DateTime<Utc> {
@@ -244,7 +295,9 @@ impl Notes {
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<NoteJson> {
-        self.api.get(format!("/api/notes/{id}")).send().await
+        self.signed(self.api.get(format!("/api/notes/{id}")))
+            .send()
+            .await
     }
 
     pub async fn list(&self) -> NotesPage {
@@ -265,19 +318,47 @@ impl Notes {
             .expect("listing notes never fails")
     }
 
-    async fn list_with(&self, query: &[(&str, String)]) -> Outcome<NotesPage> {
-        self.api.get("/api/notes").queries(query).send().await
+    /// As whoever is signed in, which a listing by a `user` never refuses.
+    pub async fn try_list(&self) -> Outcome<NotesPage> {
+        self.list_with(&[]).await
     }
 
+    async fn list_with(&self, query: &[(&str, String)]) -> Outcome<NotesPage> {
+        self.signed(self.api.get("/api/notes").queries(query))
+            .send()
+            .await
+    }
+
+    /// Signed in as `author`: the author is the caller.
     pub async fn create(&self, author: impl Display, title: &str, body: &str) -> Outcome<NoteJson> {
-        let request = json!({ "authorId": author.to_string(), "title": title, "body": body });
-        self.api.post("/api/notes").json(&request).send().await
+        let request = json!({ "title": title, "body": body });
+        self.by(author, self.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
+    }
+
+    /// As whoever is signed in, the body naming `claimed` as its author, as
+    /// the request once did.
+    pub async fn create_claiming_to_be(
+        &self,
+        claimed: impl Display,
+        title: &str,
+    ) -> Outcome<NoteJson> {
+        let request = json!({ "authorId": claimed.to_string(), "title": title, "body": "" });
+        self.signed(self.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
     }
 
     /// The body omits `title` entirely, rather than sending it blank.
     pub async fn create_without_a_title(&self, author: impl Display) -> Outcome<NoteJson> {
-        let request = json!({ "authorId": author.to_string(), "body": "" });
-        self.api.post("/api/notes").json(&request).send().await
+        let request = json!({ "body": "" });
+        self.by(author, self.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
     }
 
     pub async fn edit(
@@ -288,8 +369,7 @@ impl Notes {
         body: &str,
     ) -> Outcome<NoteJson> {
         let request = json!({ "title": title, "body": body });
-        self.api
-            .patch(format!("/api/notes/{id}"))
+        self.signed(self.api.patch(format!("/api/notes/{id}")))
             .if_match(version)
             .json(&request)
             .send()
@@ -303,16 +383,14 @@ impl Notes {
         body: &str,
     ) -> Outcome<NoteJson> {
         let request = json!({ "title": title, "body": body });
-        self.api
-            .patch(format!("/api/notes/{id}"))
+        self.signed(self.api.patch(format!("/api/notes/{id}")))
             .json(&request)
             .send()
             .await
     }
 
     pub async fn delete(&self, id: impl Display, version: i64) -> Outcome<()> {
-        self.api
-            .delete(format!("/api/notes/{id}"))
+        self.signed(self.api.delete(format!("/api/notes/{id}")))
             .if_match(version)
             .send_empty()
             .await
@@ -330,8 +408,7 @@ impl Notes {
         version: i64,
         text: &str,
     ) -> Outcome<NoteJson> {
-        self.api
-            .post(format!("/api/notes/{note}/items"))
+        self.signed(self.api.post(format!("/api/notes/{note}/items")))
             .if_match(version)
             .json(&json!({ "text": text }))
             .send()
@@ -344,16 +421,14 @@ impl Notes {
         version: i64,
         item: impl Display,
     ) -> Outcome<NoteJson> {
-        self.api
-            .delete(format!("/api/notes/{note}/items/{item}"))
+        self.signed(self.api.delete(format!("/api/notes/{note}/items/{item}")))
             .if_match(version)
             .send()
             .await
     }
 
     pub async fn delete_without_precondition(&self, id: impl Display) -> Outcome<()> {
-        self.api
-            .delete(format!("/api/notes/{id}"))
+        self.signed(self.api.delete(format!("/api/notes/{id}")))
             .send_empty()
             .await
     }
@@ -366,10 +441,9 @@ pub struct Keyed<'a> {
 
 impl Keyed<'_> {
     pub async fn create(&self, author: impl Display, title: &str, body: &str) -> Answered {
-        let request = json!({ "authorId": author.to_string(), "title": title, "body": body });
+        let request = json!({ "title": title, "body": body });
         self.notes
-            .api
-            .post("/api/notes")
+            .by(author, self.notes.api.post("/api/notes"))
             .idempotency_key(self.key)
             .json(&request)
             .answered()
@@ -379,8 +453,7 @@ impl Keyed<'_> {
     pub async fn edit(&self, id: impl Display, version: i64, title: &str, body: &str) -> Answered {
         let request = json!({ "title": title, "body": body });
         self.notes
-            .api
-            .patch(format!("/api/notes/{id}"))
+            .signed(self.notes.api.patch(format!("/api/notes/{id}")))
             .idempotency_key(self.key)
             .if_match(version)
             .json(&request)
@@ -390,8 +463,7 @@ impl Keyed<'_> {
 
     pub async fn delete(&self, id: impl Display, version: i64) -> Answered {
         self.notes
-            .api
-            .delete(format!("/api/notes/{id}"))
+            .signed(self.notes.api.delete(format!("/api/notes/{id}")))
             .idempotency_key(self.key)
             .if_match(version)
             .answered()

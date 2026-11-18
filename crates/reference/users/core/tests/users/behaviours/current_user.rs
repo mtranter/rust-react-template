@@ -187,3 +187,15 @@ async fn a_change_from_a_stale_tab_is_refused_after_a_change_elsewhere(pool: PgP
     assert_json_matches!(from_two, "$.displayName", "Alice from tab two");
     assert_json_matches!(from_two, "$.version", "3");
 }
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn a_signed_in_identity_without_the_user_role_is_kept_out_of_users(pool: PgPool) {
+    let users = Users::seeded(pool).await;
+    let guest = users.signed_in_with_roles(USER_ID_ALICE, &["guest"]);
+    assert_eq!(guest.me().await, Err(Refusal::Forbidden));
+    assert_eq!(
+        guest.change_display_name(1, "Guest").await,
+        Err(Refusal::Forbidden)
+    );
+    assert!(users.announced::<UserDisplayNameChanged>().await.is_empty());
+}

@@ -7,6 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+app-authz.workspace = true
+strum.workspace = true
 app-domain.workspace = true
 app-error.workspace = true
 app-events.workspace = true
@@ -30,6 +32,7 @@ tracing.workspace = true
 seed = ["users-api/seed"]
 
 [dev-dependencies]
+app-authz.workspace = true
 app-test-db.workspace = true
 users = { path = ".", features = ["seed"] }
 chrono.workspace = true

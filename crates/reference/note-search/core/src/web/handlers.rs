@@ -1,3 +1,4 @@
+use super::Caller;
 use super::models::{NoteSummaryResponse, NoteSummarySort};
 use crate::application::NoteSearchService;
 use app_web::{ApiResult, ListResult, paged, sorts};
@@ -23,6 +24,7 @@ impl NoteSearchEndpoints {
     async fn search(
         &self,
         search: Data<&NoteSearchService>,
+        caller: Caller,
         q: Query<Option<String>>,
         limit: Query<Option<i64>>,
         offset: Query<Option<i64>>,
@@ -30,7 +32,7 @@ impl NoteSearchEndpoints {
     ) -> ApiResult<Json<ListResult<NoteSummaryResponse>>> {
         let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
         let page = query.page;
-        let found = search.0.search(q.0, query).await?;
+        let found = search.0.search(&caller, q.0, query).await?;
         Ok(Json(ListResult::new(found, page)))
     }
 }

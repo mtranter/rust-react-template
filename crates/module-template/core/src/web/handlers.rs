@@ -1,3 +1,4 @@
+use super::Caller;
 use super::models::{
     CreateWidgetRequest, RenameWidgetRequest, WidgetMatchResponse, WidgetResponse, WidgetSort,
 };
@@ -40,9 +41,13 @@ impl WidgetsEndpoints {
     async fn create(
         &self,
         widgets: Data<&WidgetService>,
+        caller: Caller,
         body: Json<CreateWidgetRequest>,
     ) -> ApiResult<WidgetResult> {
-        let widget = widgets.0.create(CreateWidget { name: body.0.name }).await?;
+        let widget = widgets
+            .0
+            .create(&caller, CreateWidget { name: body.0.name })
+            .await?;
         Ok(tagged(widget))
     }
 
@@ -52,9 +57,10 @@ impl WidgetsEndpoints {
     async fn get(
         &self,
         widgets: Data<&WidgetService>,
+        caller: Caller,
         id: Path<String>,
     ) -> ApiResult<WidgetResult> {
-        let widget = widgets.0.get(widget_id(&id.0)?).await?;
+        let widget = widgets.0.get(&caller, widget_id(&id.0)?).await?;
         Ok(tagged(widget))
     }
 
@@ -64,6 +70,7 @@ impl WidgetsEndpoints {
     async fn rename(
         &self,
         widgets: Data<&WidgetService>,
+        caller: Caller,
         id: Path<String>,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
         body: Json<RenameWidgetRequest>,
@@ -72,6 +79,7 @@ impl WidgetsEndpoints {
         let widget = widgets
             .0
             .rename(
+                &caller,
                 RenameWidget {
                     widget_id: widget_id(&id.0)?,
                     name: body.0.name,
@@ -88,13 +96,14 @@ impl WidgetsEndpoints {
     async fn list(
         &self,
         widgets: Data<&WidgetService>,
+        caller: Caller,
         limit: Query<Option<i64>>,
         offset: Query<Option<i64>>,
         sort: Query<Option<Vec<WidgetSort>>>,
     ) -> ApiResult<Json<ListResult<WidgetResponse>>> {
         let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
         let page = query.page;
-        let listed = widgets.0.list(query).await?;
+        let listed = widgets.0.list(&caller, query).await?;
         Ok(Json(ListResult::new(listed, page)))
     }
 
@@ -106,12 +115,13 @@ impl WidgetsEndpoints {
     async fn search(
         &self,
         widgets: Data<&WidgetService>,
+        caller: Caller,
         name: Query<String>,
         limit: Query<Option<i64>>,
         offset: Query<Option<i64>>,
     ) -> ApiResult<Json<ListResult<WidgetMatchResponse>>> {
         let page = PageRequest::new(limit.0, offset.0);
-        let found = widgets.0.search(&name.0, page).await?;
+        let found = widgets.0.search(&caller, &name.0, page).await?;
         Ok(Json(ListResult::new(found, Some(page))))
     }
 }

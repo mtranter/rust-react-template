@@ -26,7 +26,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "Register a new user.",
+        "summary": "Register a new user. Public: no token is needed.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -317,6 +317,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "list_users"
       }
     },
@@ -325,7 +330,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "The currently-authenticated user (JWT Bearer guarded — ADR 0025). The\nresponse carries the version in the `ETag` header (and body) — the token\na subsequent change must send back in `If-Match`.",
+        "summary": "The currently-authenticated user. The\nresponse carries the version in the `ETag` header (and body) — the token\na subsequent change must send back in `If-Match`.",
         "description": "Declared before `/:id` so the static segment wins in routing.",
         "responses": {
           "200": {
@@ -881,6 +886,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "get_user"
       }
     },
@@ -889,7 +899,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Create a note.",
+        "summary": "Create a note, written by the caller.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1034,6 +1044,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "create_note"
       },
       "get": {
@@ -1180,6 +1195,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "list_notes"
       }
     },
@@ -1312,6 +1332,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "get_note"
       },
       "patch": {
@@ -1483,6 +1508,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "edit_note"
       },
       "delete": {
@@ -1628,6 +1658,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "delete_note"
       }
     },
@@ -1801,6 +1836,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "add_note_item"
       }
     },
@@ -1974,6 +2014,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "remove_note_item"
       }
     },
@@ -2132,6 +2177,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
         "operationId": "search_notes"
       }
     }
@@ -2167,15 +2217,11 @@
       "CreateNoteRequest": {
         "type": "object",
         "title": "CreateNoteRequest",
+        "description": "Its author is the caller.",
         "required": [
-          "authorId",
           "title"
         ],
         "properties": {
-          "authorId": {
-            "type": "string",
-            "description": "Author id: the uuid of a registered user."
-          },
           "title": {
             "type": "string"
           },
@@ -2533,7 +2579,7 @@
     "securitySchemes": {
       "JwtAuth": {
         "type": "http",
-        "description": "JWT Bearer security scheme. Apply as an operation parameter to guard a route:\nthe extracted [`Claims`] identify the caller.",
+        "description": "JWT Bearer security scheme: the token verified, then resolved to the [`Principal`] acting. A\nModule's operations take its `Caller` instead, which passes its gate too.",
         "scheme": "bearer"
       }
     }

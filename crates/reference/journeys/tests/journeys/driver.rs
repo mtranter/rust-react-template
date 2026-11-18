@@ -25,6 +25,8 @@ pub enum Refusal {
     /// The request couldn't be parsed.
     Malformed,
     NotSignedIn,
+    /// Signed in, but the policies don't allow it.
+    Forbidden,
     NotFound,
     Conflict,
     PreconditionRequired,
@@ -39,6 +41,7 @@ impl From<Refused> for Refusal {
             "validation_error" => Refusal::Invalid(refused.paths),
             "malformed_request" => Refusal::Malformed,
             "unauthorized" => Refusal::NotSignedIn,
+            "forbidden" => Refusal::Forbidden,
             "not_found" => Refusal::NotFound,
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
@@ -82,6 +85,13 @@ impl NoteSummaryJson {
 
 pub type Found = Page<NoteSummaryJson>;
 
+/// The role every signed-in user has (ADR 0040), which every module's default
+/// grants name.
+pub const USER: &str = "user";
+
+/// Whom the journeys' own checks read as: a `user` who is none of the seeded ones.
+const READER: &str = "00000000-0000-0000-0000-000000000000";
+
 pub struct App {
     api: TestApi,
     verifier: JwtVerifier,
@@ -95,7 +105,8 @@ impl App {
     /// module, as `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock.clone());
+        let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
         server::register_topics::<Reference>(&ctx)
             .await
             .expect("register every module's topics");
@@ -162,7 +173,11 @@ impl App {
     }
 
     pub async fn note(&self, id: impl Display) -> Outcome<NoteJson> {
-        self.api.get(format!("/api/notes/{id}")).send().await
+        self.api
+            .get(format!("/api/notes/{id}"))
+            .bearer(self.token_of(READER, &[USER]))
+            .send()
+            .await
     }
 
     /// Once the worker has delivered what was announced: note-search answers
@@ -172,40 +187,45 @@ impl App {
         let found: Outcome<Found> = self
             .api
             .get("/api/note-search")
+            .bearer(self.token_of(READER, &[USER]))
             .query("q", text)
             .send()
             .await;
         found.expect("searching never fails")
     }
 
-    /// Signed in with a real token, which the server verifies.
+    /// Signed in with a real token, which the server verifies, as a `user`.
     pub fn as_user(&self, user: impl Display) -> Session<'_> {
-        let token = self.token_of(&user);
+        self.with_roles(user, &[USER])
+    }
+
+    /// Signed in, but holding only `roles`.
+    pub fn with_roles(&self, user: impl Display, roles: &[&str]) -> Session<'_> {
         Session {
             app: self,
-            user: user.to_string(),
-            token,
+            token: self.token_of(user, roles),
         }
     }
 
-    fn token_of(&self, user: impl Display) -> String {
+    fn token_of(&self, user: impl Display, roles: &[&str]) -> String {
         self.verifier
-            .issue(user.to_string(), 60)
+            .issue(user.to_string(), roles, 60)
             .expect("issue token")
     }
 
-    /// An AI agent acting as `user` over MCP, with a real token.
+    /// An AI agent acting as `user`, a `user`, over MCP, with a real token.
     pub async fn as_agent(&self, user: impl Display) -> Agent<'_> {
-        let token = self.token_of(&user);
+        self.as_agent_with_roles(user, &[USER]).await
+    }
+
+    pub async fn as_agent_with_roles(&self, user: impl Display, roles: &[&str]) -> Agent<'_> {
+        let token = self.token_of(&user, roles);
         let session = self
             .api
             .mcp_session::<Refusal>(Some(&token))
             .await
             .expect("an agent with a token opens a session");
-        Agent {
-            session,
-            user: user.to_string(),
-        }
+        Agent { session }
     }
 
     /// An agent opening an MCP session without a token.
@@ -217,7 +237,6 @@ impl App {
 /// An AI agent's MCP session: each verb a tool call.
 pub struct Agent<'a> {
     session: McpSession<'a>,
-    user: String,
 }
 
 impl Agent<'_> {
@@ -240,7 +259,7 @@ impl Agent<'_> {
         key: Option<&str>,
     ) -> Outcome<NoteJson> {
         let mut arguments = json!({
-            "body": { "authorId": self.user, "title": title, "body": body },
+            "body": { "title": title, "body": body },
         });
         if let Some(key) = key {
             arguments["idempotency_key"] = key.into();
@@ -270,7 +289,6 @@ impl Agent<'_> {
 
 pub struct Session<'a> {
     app: &'a App,
-    user: String,
     token: String,
 }
 
@@ -279,10 +297,31 @@ impl Session<'_> {
         self.signed(self.app.api.get("/api/users/me")).send().await
     }
 
-    /// Notes take their author from the request, not the token.
+    /// The note's author is the caller.
     pub async fn write_note(&self, title: &str, body: &str) -> Outcome<NoteJson> {
-        let request = json!({ "authorId": self.user, "title": title, "body": body });
-        self.app.api.post("/api/notes").json(&request).send().await
+        let request = json!({ "title": title, "body": body });
+        self.signed(self.app.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
+    }
+
+    /// At the version it reads at now.
+    pub async fn edit_note(&self, id: impl Display, title: &str, body: &str) -> Outcome<NoteJson> {
+        let note: Outcome<NoteJson> = self
+            .signed(self.app.api.get(format!("/api/notes/{id}")))
+            .send()
+            .await;
+        let note = note?;
+        self.signed(self.app.api.patch(format!("/api/notes/{id}")))
+            .if_match(note.version())
+            .json(&json!({ "title": title, "body": body }))
+            .send()
+            .await
+    }
+
+    pub async fn notes(&self) -> Outcome<Page<NoteJson>> {
+        self.signed(self.app.api.get("/api/notes")).send().await
     }
 
     /// At the version the user's profile reads at now.

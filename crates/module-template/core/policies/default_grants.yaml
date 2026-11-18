@@ -1,0 +1,6 @@
+apiVersion: auth.flagrante.io/v1
+defaultGrants:
+  - { role: user, resource: "module:widgets", action: use }
+  - { role: user, resource: widget, actions: ["*"] }
+  - { role: admin, resource: "module:widgets", action: use }
+  - { role: admin, resource: widget, actions: ["*"] }

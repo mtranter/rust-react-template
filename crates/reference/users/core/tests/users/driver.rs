@@ -1,5 +1,6 @@
 //! The only place in these tests that knows the transport (ADR 0004).
 
+use app_authz::Authorizer;
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, SystemClock, seed_time};
 use app_error::{AppError, AppResult};
@@ -28,6 +29,8 @@ pub enum Refusal {
     /// The request couldn't be parsed.
     Malformed,
     NotSignedIn,
+    /// Signed in, but the policies don't allow it.
+    Forbidden,
     NotFound,
     Conflict,
     PreconditionRequired,
@@ -47,6 +50,7 @@ impl From<Refused> for Refusal {
             "validation_error" => Refusal::Invalid(refused.paths),
             "malformed_request" => Refusal::Malformed,
             "unauthorized" => Refusal::NotSignedIn,
+            "forbidden" => Refusal::Forbidden,
             "not_found" => Refusal::NotFound,
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
@@ -105,9 +109,14 @@ impl Mailer for FakeMailer {
     }
 }
 
+/// The role every signed-in user has (ADR 0040), which users' default grants name.
+pub const USER: &str = "user";
+
 pub struct Users {
     api: TestApi,
     verifier: JwtVerifier,
+    /// What reads outside a session present: Alice's, a `user`.
+    reader: String,
     worker: Worker,
     clock: Arc<FixedClock>,
     mailer: Arc<FakeMailer>,
@@ -117,7 +126,9 @@ pub struct Users {
 impl Users {
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
-        let ctx = Context::new(pool, clock.clone());
+        let policies = users::policies().build().expect("users' policies load");
+        let authorizer = Authorizer::from_policies(&[policies]).expect("users' policies compile");
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
         let mailer = Arc::new(FakeMailer::default());
         let handlers = users::handlers(&ctx, mailer.clone());
         app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
@@ -127,11 +138,17 @@ impl Users {
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(UsersEndpoints, ctx.idempotency(), |app| {
-            app.accept(users::provider(&ctx)).data(verifier.clone())
+            app.accept(users::provider(&ctx))
+                .data(verifier.clone())
+                .data(ctx.authorizer())
         });
+        let reader = verifier
+            .issue(seed::USER_ID_ALICE.to_string(), &[USER], 60)
+            .expect("issue token");
         Self {
             api,
             verifier,
+            reader,
             worker,
             clock,
             mailer,
@@ -195,7 +212,11 @@ impl Users {
     }
 
     pub async fn get(&self, id: impl Display) -> Outcome<UserJson> {
-        self.api.get(format!("/api/users/{id}")).send().await
+        self.api
+            .get(format!("/api/users/{id}"))
+            .bearer(&self.reader)
+            .send()
+            .await
     }
 
     pub async fn list(&self) -> UsersPage {
@@ -217,14 +238,23 @@ impl Users {
     }
 
     async fn list_with(&self, query: &[(&str, String)]) -> Outcome<UsersPage> {
-        self.api.get("/api/users").queries(query).send().await
+        self.api
+            .get("/api/users")
+            .bearer(&self.reader)
+            .queries(query)
+            .send()
+            .await
     }
 
-    /// The user need not exist.
+    /// As a `user`, who need not exist.
     pub fn signed_in_as(&self, user: UserId) -> Session<'_> {
+        self.signed_in_with_roles(user, &[USER])
+    }
+
+    pub fn signed_in_with_roles(&self, user: UserId, roles: &[&str]) -> Session<'_> {
         let token = self
             .verifier
-            .issue(user.to_string(), 60)
+            .issue(user.to_string(), roles, 60)
             .expect("issue token");
         Session {
             users: self,

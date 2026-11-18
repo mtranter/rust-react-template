@@ -9,12 +9,19 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::load()?;
+    let authorizer = || {
+        server::authorizer::<Registered>().inspect_err(|err| {
+            eprintln!("server refused to start: {err}");
+        })
+    };
     let bus = config.bus(server::uses_bus::<Registered>())?;
     telemetry::init(config.env);
     tracing::info!(addr = %config.bind_addr(), env = ?config.env, "starting server");
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
-    let ctx = Context::new(pool, Arc::new(SystemClock)).with_bus(bus);
+    let ctx = Context::new(pool, Arc::new(SystemClock))
+        .with_bus(bus)
+        .with_authorizer(Arc::new(authorizer()?));
     let verifier = build_verifier(&config).await?;
     let discovery = Discovery::new(
         PublicUrl::new(config.public_url.clone()),

@@ -3,7 +3,10 @@
 
 use crate::application::{Mailer, UserService, Welcome};
 use crate::db::{PgUserRepository, migrations};
+use crate::domain::User;
 use crate::mail::LogMailer;
+use crate::web::OPERATIONS;
+use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_module::{Context, Module};
 use app_persistence::Handlers;
 use app_web::Provide;
@@ -31,7 +34,17 @@ fn service(ctx: &Context) -> UserService {
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
+        ctx.authorizer(),
     )
+}
+
+/// The users module's gate, its `user` resource and the `self` scope, and
+/// what `user` and `admin` are granted by default (ADR 0040).
+pub fn policies() -> PoliciesBuilder {
+    Policies::builder("users")
+        .resource::<User>(policy_file!("policies/user.yaml"))
+        .derived_roles(policy_file!("policies/derived_roles.yaml"))
+        .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
 pub fn directory(ctx: &Context) -> Arc<dyn UserDirectory> {
@@ -46,6 +59,8 @@ pub fn handlers(ctx: &Context, mailer: Arc<dyn Mailer>) -> Handlers {
 
 pub fn module() -> Module {
     let module = Module::new(provider)
+        .with_policies(policies)
+        .performing(OPERATIONS)
         .publishes::<UserTopic>()
         .with_handlers(|ctx| handlers(ctx, Arc::new(LogMailer)))
         .with_migrations(migrations());

@@ -1,7 +1,9 @@
 //! JWT Bearer authentication (ADR 0025): HS256 (dev/tests; can also issue) or
 //! verify-only JWKS discovered from an OIDC issuer (prod).
 
+use app_authz::Principal;
 use app_error::{AppError, AppResult};
+use async_trait::async_trait;
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{
     Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
@@ -20,6 +22,26 @@ pub struct Claims {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iat: Option<usize>,
     pub exp: usize,
+    /// The roles the identity provider gives the subject (ADR 0040): a token without the claim has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<String>,
+}
+
+/// Turns a verified token's claims into who is acting (ADR 0040). Held in request data as an
+/// `Arc<dyn PrincipalResolver>`; without one, [`ClaimsResolver`] is used.
+#[async_trait]
+pub trait PrincipalResolver: Send + Sync {
+    async fn resolve(&self, claims: &Claims) -> AppResult<Principal>;
+}
+
+/// The default resolver: the user's id is the token's `sub`, their roles its `roles` claim.
+pub struct ClaimsResolver;
+
+#[async_trait]
+impl PrincipalResolver for ClaimsResolver {
+    async fn resolve(&self, claims: &Claims) -> AppResult<Principal> {
+        Ok(Principal::user(claims.sub.clone(), claims.roles.clone()))
+    }
 }
 
 fn validation(
@@ -109,7 +131,12 @@ impl JwtVerifier {
     }
 
     /// Dev/test only: no issuance backend ships (ADR 0025). Fails in JWKS mode.
-    pub fn issue(&self, subject: impl Into<String>, ttl_secs: u64) -> AppResult<String> {
+    pub fn issue(
+        &self,
+        subject: impl Into<String>,
+        roles: &[&str],
+        ttl_secs: u64,
+    ) -> AppResult<String> {
         let Mode::Symmetric(s) = &*self.0 else {
             return Err(AppError::internal(AuthError::NotIssuable));
         };
@@ -121,6 +148,7 @@ impl JwtVerifier {
             sub: subject.into(),
             iat: Some(now),
             exp: now + ttl_secs as usize,
+            roles: roles.iter().map(|r| (*r).to_owned()).collect(),
         };
         encode(&Header::new(Algorithm::HS256), &claims, &s.encoding).map_err(AppError::internal)
     }
@@ -213,11 +241,11 @@ enum AuthError {
     NotIssuable,
 }
 
-/// JWT Bearer security scheme. Apply as an operation parameter to guard a route:
-/// the extracted [`Claims`] identify the caller.
+/// JWT Bearer security scheme: the token verified, then resolved to the [`Principal`] acting. A
+/// Module's operations take its `Caller` instead, which passes its gate too.
 #[derive(SecurityScheme)]
 #[oai(ty = "bearer", checker = "jwt_checker")]
-pub struct JwtAuth(pub Claims);
+pub struct JwtAuth(pub Principal);
 
 /// The token of `req`'s `Authorization: Bearer` header, if it has one.
 pub(crate) fn bearer_token(req: &Request) -> Option<&str> {
@@ -235,7 +263,12 @@ pub(crate) async fn verified_caller(req: &Request) -> Option<Claims> {
     verifier.verify(token).await.ok()
 }
 
-async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Claims> {
+async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
     let verifier = req.data::<JwtVerifier>()?;
-    verifier.verify(&bearer.token).await.ok()
+    let claims = verifier.verify(&bearer.token).await.ok()?;
+    let resolved = match req.data::<Arc<dyn PrincipalResolver>>() {
+        Some(resolver) => resolver.resolve(&claims).await,
+        None => ClaimsResolver.resolve(&claims).await,
+    };
+    resolved.ok()
 }

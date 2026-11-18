@@ -2,7 +2,10 @@ use crate::{API_BASE, Composition, Tools, build_service, spec};
 use app_db::Pool;
 use app_module::Context;
 use app_web::mcp::{self, Discovery};
-use app_web::{JwtVerifier, RequestIdMiddleware, health_routes, render_error};
+use app_web::{
+    ClaimsResolver, JwtVerifier, PrincipalResolver, RequestIdMiddleware, health_routes,
+    render_error,
+};
 use poem::{
     Endpoint, EndpointExt, IntoResponse, Response, Route,
     endpoint::{BoxEndpoint, make_sync},
@@ -58,7 +61,9 @@ pub fn build_app<C: Composition>(
 }
 
 /// The REST API as `/api` serves it, and as every MCP tool call reaches it
-/// in-process: with its error rendering, idempotency and each module's data.
+/// in-process: with its error rendering, idempotency and each module's data,
+/// and what a `Caller` needs: the verifier, the resolver from claims to a
+/// Principal, and the context's authorizer.
 /// Idempotency is inside the error rendering's catch, so its records keep the
 /// answer a client got.
 fn api<C: Composition>(
@@ -75,6 +80,8 @@ fn api<C: Composition>(
         .iter()
         .fold(api, |api, module| module.provide(ctx, api))
         .data(verifier)
+        .data(Arc::new(ClaimsResolver) as Arc<dyn PrincipalResolver>)
+        .data(ctx.authorizer())
         .boxed()
 }
 

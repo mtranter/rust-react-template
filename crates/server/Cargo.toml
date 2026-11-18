@@ -38,6 +38,7 @@ name = "composed_app"
 path = "tests/composed_app.rs"
 
 [dependencies]
+app-authz.workspace = true
 app-bus.workspace = true
 app-db.workspace = true
 app-domain.workspace = true
@@ -76,4 +77,5 @@ app-web = { workspace = true, features = ["test"] }
 poem = { workspace = true, features = ["test"] }
 serde_json.workspace = true
 sqlx.workspace = true
+strum.workspace = true
 tokio.workspace = true
