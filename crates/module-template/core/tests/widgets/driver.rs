@@ -1,7 +1,7 @@
 //! The only place in these tests that knows the transport (ADR 0004).
 
-use app_authz::Authorizer;
-use app_db::Worker;
+use app_authz::{Authorizer, Rows};
+use app_db::{Clause, Columns, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
@@ -11,7 +11,7 @@ use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
 use poem::EndpointExt;
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, QueryBuilder};
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 use widgets::{Widget, WidgetsEndpoints, seed};
@@ -96,6 +96,7 @@ pub const USER: &str = "user";
 
 pub struct Widgets {
     api: TestApi,
+    ctx: Context,
     worker: Worker,
     seeded_through: i64,
     verifier: JwtVerifier,
@@ -125,6 +126,7 @@ impl Widgets {
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let widgets = Self {
             api,
+            ctx,
             worker,
             seeded_through,
             verifier,
@@ -132,6 +134,22 @@ impl Widgets {
         };
         widgets.sign_in_with_roles(&[USER]);
         widgets
+    }
+
+    /// The rule set the endpoints are served under.
+    pub fn authorizer(&self) -> Arc<Authorizer> {
+        self.ctx.authorizer()
+    }
+
+    /// The ids of the stored widgets `rows` holds, queried as the repository's
+    /// list scopes it, through `C`'s columns.
+    pub async fn ids_where<C: Columns>(&self, rows: Rows) -> Vec<uuid::Uuid> {
+        let mut sql = QueryBuilder::new("SELECT id FROM widgets.widget");
+        app_db::push_scope::<C>(&mut sql, Clause::Where, &rows);
+        sql.build_query_scalar()
+            .fetch_all(&self.ctx.pool())
+            .await
+            .expect("query the widgets")
     }
 
     /// Later requests present a real token carrying `roles`. Every test

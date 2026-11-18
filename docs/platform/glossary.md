@@ -154,7 +154,7 @@ A Module's resource `module:<name>` and its one action, `use`, granted on roles 
 _Avoid_: Middleware, guard (for this)
 
 **Plan**:
-What the rule set answers for a Principal's action: `Allowed`, `Denied`, or `Where(filter)`, the conditions left once the Principal's roles are known, checked against a loaded row or pushed into a list's query.
+What the rule set answers for a Principal's action: `Allowed`, `Denied`, or `Where(filter)`, the conditions left once the Principal's roles are known, checked against a loaded row or pushed into a list's query. A list's repository takes it as `Rows` (`All` or `Where(filter)`), never `Denied`: the service has refused that already.
 _Avoid_: Decision (for a `Where`), verdict
 
 ## Testing

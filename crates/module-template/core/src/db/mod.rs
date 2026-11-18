@@ -7,5 +7,5 @@ mod repository;
 mod search;
 
 pub use migrations::{MIGRATOR, SCHEMA, migrations};
-pub use repository::PgWidgetRepository;
+pub use repository::{PgWidgetRepository, WidgetColumns};
 pub use search::{PgWidgetSearch, SEARCH, SearchRows};

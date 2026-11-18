@@ -160,8 +160,9 @@ impl NotesEndpoints {
         Ok(tagged(note))
     }
 
-    /// List notes, paginated. Most-recent first unless `sort` says otherwise:
-    /// repeat it to sort by several keys, `-` prefix for descending.
+    /// List the notes the caller may see, paginated. Most-recent first unless
+    /// `sort` says otherwise: repeat it to sort by several keys, `-` prefix for
+    /// descending.
     #[oai(path = "/", method = "get", operation_id = "list_notes")]
     async fn list(
         &self,

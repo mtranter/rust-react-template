@@ -14,6 +14,9 @@ mod yaml;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 pub use authorizer::Authorizer;
 pub use condition::Filter;
 pub use policies::{
@@ -22,7 +25,7 @@ pub use policies::{
 };
 pub use principal::{Principal, Value};
 pub use resource::{Action, Resource};
-pub use rule_set::{CompileError, Compiled, Plan, RuleSet};
+pub use rule_set::{CompileError, Compiled, Plan, Rows, RuleSet};
 
 /// A policy file refused when loading, naming its file and line.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

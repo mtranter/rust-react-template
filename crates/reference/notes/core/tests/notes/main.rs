@@ -14,4 +14,5 @@ mod behaviours {
     mod listing;
     mod reading;
     mod retrying;
+    mod scoping;
 }

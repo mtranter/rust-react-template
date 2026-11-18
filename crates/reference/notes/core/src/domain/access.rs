@@ -22,6 +22,7 @@ impl Resource for Note {
     const KIND: &'static str = "note";
     const ATTRS: &'static [&'static str] = &["authorId", "archived"];
     type Action = NoteAction;
+    const VIEW: Option<NoteAction> = Some(NoteAction::View);
 
     fn attr(&self, name: &str) -> Option<Value> {
         match name {

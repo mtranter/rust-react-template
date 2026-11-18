@@ -4,7 +4,7 @@ use super::{
     Version, Versioned,
 };
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserAction, UserId};
-use app_authz::{Authorizer, Principal};
+use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -38,12 +38,10 @@ impl UserService {
     }
 
     /// Asked first in every use case but `register`, before anything is loaded
-    /// or begun. A `Where` plan (the `self` scope) is allowed here until rows
-    /// are checked against it (platform ticket 0028).
-    fn authorize(&self, principal: &Principal, action: UserAction) -> AppResult<()> {
-        self.authorizer
-            .authorize::<User>(principal, action)
-            .map(|_| ())
+    /// or begun. A `Where` plan (the `self` scope) is checked against the
+    /// account once it is loaded ([`load_for`](Self::load_for)).
+    fn authorize(&self, principal: &Principal, action: UserAction) -> AppResult<Plan> {
+        self.authorizer.authorize::<User>(principal, action)
     }
 
     /// Public (`server::PUBLIC`), so it takes no Principal.
@@ -72,8 +70,8 @@ impl UserService {
         cmd: ChangeDisplayName,
         expected: Version,
     ) -> AppResult<Versioned<User>> {
-        self.authorize(principal, UserAction::Rename)?;
-        let mut user = self.load(cmd.user_id).await?.entity;
+        let plan = self.authorize(principal, UserAction::Rename)?;
+        let mut user = self.load_for(principal, &plan, cmd.user_id).await?.entity;
         let event = user.change_display_name(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -98,8 +96,8 @@ impl UserService {
         id: UserId,
         expected: Version,
     ) -> AppResult<()> {
-        self.authorize(principal, UserAction::Delete)?;
-        let current = self.load(id).await?;
+        let plan = self.authorize(principal, UserAction::Delete)?;
+        let current = self.load_for(principal, &plan, id).await?;
         // Checked here as well as by the delete, so the state announced is the
         // version deleted, not one read before a concurrent change. The event
         // announces the version after it, so it's the newest of its key.
@@ -121,15 +119,24 @@ impl UserService {
     }
 
     pub async fn get(&self, principal: &Principal, id: UserId) -> AppResult<Versioned<User>> {
-        self.authorize(principal, UserAction::View)?;
-        self.load(id).await
+        let plan = self.authorize(principal, UserAction::View)?;
+        self.load_for(principal, &plan, id).await
     }
 
-    async fn load(&self, id: UserId) -> AppResult<Versioned<User>> {
-        self.repo
+    /// The account, if `plan` allows it, checked before any domain action.
+    async fn load_for(
+        &self,
+        principal: &Principal,
+        plan: &Plan,
+        id: UserId,
+    ) -> AppResult<Versioned<User>> {
+        let user = self
+            .repo
             .get(id)
             .await?
-            .ok_or_else(|| AppError::not_found("user"))
+            .ok_or_else(|| AppError::not_found("user"))?;
+        self.authorizer.check(principal, plan, &user.entity)?;
+        Ok(user)
     }
 
     pub async fn exists(&self, id: UserId) -> AppResult<bool> {
@@ -141,7 +148,7 @@ impl UserService {
         principal: &Principal,
         query: ListQuery<UserSortKey>,
     ) -> AppResult<Listed<Versioned<User>>> {
-        self.authorize(principal, UserAction::List)?;
-        self.repo.list(&query).await
+        let rows = self.authorizer.rows::<User>(principal, UserAction::List)?;
+        self.repo.list(&query, &rows).await
     }
 }

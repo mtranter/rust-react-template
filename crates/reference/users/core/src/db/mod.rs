@@ -6,4 +6,4 @@ mod migrations;
 mod repository;
 
 pub use migrations::{MIGRATOR, SCHEMA, migrations};
-pub use repository::PgUserRepository;
+pub use repository::{PgUserRepository, UserColumns};

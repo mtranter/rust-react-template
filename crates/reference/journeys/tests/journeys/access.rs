@@ -30,17 +30,24 @@ async fn an_agent_without_the_user_role_is_refused_by_notes(pool: PgPool) {
     );
 }
 
-/// Rows aren't checked against the `author` scope until platform ticket 0028.
 #[app_test_db::test(crate::driver::TEMPLATE)]
-async fn a_user_who_is_not_the_author_may_still_edit_a_note_for_now(pool: PgPool) {
+async fn a_user_who_is_not_the_author_is_refused_a_note_as_if_it_did_not_exist(pool: PgPool) {
     let app = App::seeded(pool).await;
     let bob = app.as_user(USER_ID_BOB);
+    let before = app.note(ALICE_NOTE_ID_SHOPPING_LIST).await;
 
-    let edited = bob
-        .edit_note(ALICE_NOTE_ID_SHOPPING_LIST, "Bob's list", "")
-        .await
-        .unwrap();
-
-    assert_eq!(edited["authorId"], USER_ID_ALICE.to_string());
-    assert_eq!(app.note(ALICE_NOTE_ID_SHOPPING_LIST).await, Ok(edited));
+    assert_eq!(
+        bob.edit_note(ALICE_NOTE_ID_SHOPPING_LIST, "Bob's list", "")
+            .await,
+        Err(Refusal::NotFound)
+    );
+    assert!(
+        bob.notes()
+            .await
+            .unwrap()
+            .ids()
+            .iter()
+            .all(|id| *id != ALICE_NOTE_ID_SHOPPING_LIST.to_string())
+    );
+    assert_eq!(app.note(ALICE_NOTE_ID_SHOPPING_LIST).await, before);
 }

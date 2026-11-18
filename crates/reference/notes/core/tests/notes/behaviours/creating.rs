@@ -23,7 +23,7 @@ async fn a_created_note_is_kept_with_its_title_trimmed(pool: PgPool) {
     assert_json_matches!(created, "$.body", "hi");
     assert_json_matches!(created, "$.authorId", USER_ID_ALICE.to_string());
     assert_eq!(notes.get(created.id()).await, Ok(created));
-    assert_eq!(notes.list().await.total, 4);
+    assert_eq!(notes.list().await.total, 2);
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
@@ -59,7 +59,7 @@ async fn a_note_needs_a_title(pool: PgPool) {
         notes.create(USER_ID_ALICE, "   ", "").await,
         Err(Refusal::invalid(["title"]))
     );
-    assert_eq!(notes.list().await.total, 3);
+    assert_eq!(notes.list().await.total, 1);
     assert!(notes.announced::<NoteCreated>().await.is_empty());
 }
 
@@ -89,7 +89,7 @@ async fn a_note_by_someone_who_is_not_a_user_is_refused(pool: PgPool) {
         notes.create(AUTHOR_ID_UNKNOWN, "Title", "").await,
         Err(Refusal::invalid([]))
     );
-    assert_eq!(notes.list().await.total, 3);
+    assert_eq!(notes.list().await.total, 1);
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
@@ -99,7 +99,7 @@ async fn a_note_sent_without_its_title_is_malformed_and_changes_nothing(pool: Pg
         notes.create_without_a_title(USER_ID_ALICE).await,
         Err(Refusal::Malformed)
     );
-    assert_eq!(notes.list().await.total, 3);
+    assert_eq!(notes.list().await.total, 1);
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]

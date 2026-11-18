@@ -1055,7 +1055,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "List notes, paginated. Most-recent first unless `sort` says otherwise:\nrepeat it to sort by several keys, `-` prefix for descending.",
+        "summary": "List the notes the caller may see, paginated. Most-recent first unless\n`sort` says otherwise: repeat it to sort by several keys, `-` prefix for\ndescending.",
         "parameters": [
           {
             "name": "limit",

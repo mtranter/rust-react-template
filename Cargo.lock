@@ -64,6 +64,7 @@ dependencies = [
 name = "app-db"
 version = "0.1.0"
 dependencies = [
+ "app-authz",
  "app-domain",
  "app-error",
  "app-events",
@@ -74,6 +75,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "strum",
  "thiserror",
  "tokio",
  "tracing",

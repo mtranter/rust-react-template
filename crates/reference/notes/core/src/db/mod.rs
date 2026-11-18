@@ -7,4 +7,4 @@ mod migrations;
 mod repository;
 
 pub use migrations::{MIGRATOR, SCHEMA, migrations};
-pub use repository::PgNoteRepository;
+pub use repository::{NoteColumns, PgNoteRepository};

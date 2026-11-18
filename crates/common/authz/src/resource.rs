@@ -10,6 +10,9 @@ pub trait Resource {
     /// Every name `attr` answers, so loading can check a policy's without a row.
     const ATTRS: &'static [&'static str];
     type Action: Action;
+    /// The action that lets a principal see a row. A row they may not see is refused as not found,
+    /// so its existence isn't revealed; without one, every refused row is.
+    const VIEW: Option<Self::Action> = None;
 
     fn attr(&self, name: &str) -> Option<Value>;
 }

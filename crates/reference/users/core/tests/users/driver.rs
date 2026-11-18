@@ -1,7 +1,7 @@
 //! The only place in these tests that knows the transport (ADR 0004).
 
-use app_authz::Authorizer;
-use app_db::{DeadLetter, Worker};
+use app_authz::{Authorizer, Rows};
+use app_db::{Clause, Columns, DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, SystemClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, Event, EventPayload, NoContext, PayloadOf};
@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use poem::EndpointExt;
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, QueryBuilder};
 use std::fmt::Display;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -114,6 +114,7 @@ pub const USER: &str = "user";
 
 pub struct Users {
     api: TestApi,
+    ctx: Context,
     verifier: JwtVerifier,
     /// What reads outside a session present: Alice's, a `user`.
     reader: String,
@@ -147,6 +148,7 @@ impl Users {
             .expect("issue token");
         Self {
             api,
+            ctx,
             verifier,
             reader,
             worker,
@@ -154,6 +156,22 @@ impl Users {
             mailer,
             seeded_through,
         }
+    }
+
+    /// The rule set the endpoints are served under.
+    pub fn authorizer(&self) -> Arc<Authorizer> {
+        self.ctx.authorizer()
+    }
+
+    /// The ids of the stored accounts `rows` holds, queried as the
+    /// repository's list scopes it, through `C`'s columns.
+    pub async fn ids_where<C: Columns>(&self, rows: Rows) -> Vec<uuid::Uuid> {
+        let mut sql = QueryBuilder::new("SELECT id FROM users.account");
+        app_db::push_scope::<C>(&mut sql, Clause::Where, &rows);
+        sql.build_query_scalar()
+            .fetch_all(&self.ctx.pool())
+            .await
+            .expect("query the accounts")
     }
 
     /// Delivers the events announced so far, as the worker would.

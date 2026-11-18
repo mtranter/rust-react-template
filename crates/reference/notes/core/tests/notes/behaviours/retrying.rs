@@ -16,7 +16,7 @@ async fn a_retried_create_gets_the_original_answer_and_creates_nothing_more(pool
     let created: NoteJson = original.json();
     assert_eq!(notes.get(created.id()).await, Ok(created));
     assert_eq!(notes.announced::<NoteCreated>().await.len(), 1);
-    assert_eq!(notes.list().await.total, 4);
+    assert_eq!(notes.list().await.total, 2);
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
@@ -68,7 +68,7 @@ async fn a_key_sent_again_with_a_different_request_is_refused_and_changes_nothin
 
     assert_eq!(reused, Err(Refusal::KeyReused));
     assert_eq!(notes.announced::<NoteCreated>().await.len(), 1);
-    assert_eq!(notes.list().await.total, 4);
+    assert_eq!(notes.list().await.total, 2);
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]

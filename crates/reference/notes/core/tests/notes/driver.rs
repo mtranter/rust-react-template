@@ -1,5 +1,5 @@
-use app_authz::Authorizer;
-use app_db::Worker;
+use app_authz::{Authorizer, Rows};
+use app_db::{Clause, Columns, Worker};
 use app_domain::{Clock, FixedClock, seed_time};
 use app_error::AppResult;
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
@@ -14,7 +14,7 @@ use notes::{Note, NotesEndpoints, seed};
 use notes_api::events::v1 as notes_events;
 use poem::EndpointExt;
 use serde_json::json;
-use sqlx::{AssertSqlSafe, PgPool};
+use sqlx::{AssertSqlSafe, PgPool, QueryBuilder};
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 use users_api::UserDirectory;
@@ -201,6 +201,29 @@ impl Notes {
     /// As `author`, a `user`, signed in for this request alone.
     fn by<'c>(&self, author: impl Display, call: Call<'c>) -> Call<'c> {
         call.bearer(self.token(author, &[USER]))
+    }
+
+    /// The rule set the endpoints are served under.
+    pub fn authorizer(&self) -> Arc<Authorizer> {
+        self.ctx.authorizer()
+    }
+
+    /// Stores `notes` as they are, beside the seeds.
+    pub async fn stored(&self, notes: Vec<Note>) {
+        seed::save_missing(&self.ctx.pool(), notes)
+            .await
+            .expect("store the notes");
+    }
+
+    /// The ids of the stored notes `rows` holds, queried as the repository's list scopes it,
+    /// through `C`'s columns.
+    pub async fn ids_where<C: Columns>(&self, rows: Rows) -> Vec<Uuid> {
+        let mut sql = QueryBuilder::new("SELECT id FROM notes.note");
+        app_db::push_scope::<C>(&mut sql, Clause::Where, &rows);
+        sql.build_query_scalar()
+            .fetch_all(&self.ctx.pool())
+            .await
+            .expect("query the notes")
     }
 
     pub fn now(&self) -> DateTime<Utc> {

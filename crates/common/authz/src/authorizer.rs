@@ -4,7 +4,7 @@ use arc_swap::ArcSwap;
 
 use app_error::{AppError, AppResult};
 
-use crate::{CompileError, Plan, Policies, Principal, Resource, RuleSet};
+use crate::{CompileError, Plan, Policies, Principal, Resource, Rows, RuleSet};
 
 /// The rule set in force, replaced whole when grants change.
 #[derive(Debug)]
@@ -53,6 +53,29 @@ impl Authorizer {
             Plan::Denied => Err(AppError::Forbidden),
             plan => Ok(plan),
         }
+    }
+
+    /// The rows a list of `R` may hold, or `Forbidden` when it may hold none: what a list's use
+    /// case asks before it queries, handing the answer to its repository.
+    pub fn rows<R: Resource>(&self, principal: &Principal, action: R::Action) -> AppResult<Rows> {
+        self.plan::<R>(principal, action)
+            .rows()
+            .ok_or(AppError::Forbidden)
+    }
+
+    /// Whether `plan`, from [`authorize`](Self::authorize), allows the loaded `row`: asked before
+    /// any domain action on it. Refused, it is `NotFound` when the principal may not view the row
+    /// either, so its existence isn't revealed, and `Forbidden` when they may (ADR 0040).
+    pub fn check<R: Resource>(&self, principal: &Principal, plan: &Plan, row: &R) -> AppResult<()> {
+        if plan.allows(row) {
+            return Ok(());
+        }
+        let visible = R::VIEW.is_some_and(|view| self.plan::<R>(principal, view).allows(row));
+        Err(if visible {
+            AppError::Forbidden
+        } else {
+            AppError::not_found(R::KIND)
+        })
     }
 
     /// The Module's gate, `module:<name>` / `use`.

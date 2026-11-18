@@ -1,4 +1,4 @@
-use crate::driver::{NoteJson, Notes, Refusal, announced};
+use crate::driver::{NoteJson, Notes, Refusal, USER, announced};
 use app_events::EventPayload;
 use app_persistence::Version;
 use chrono::TimeDelta;
@@ -6,7 +6,7 @@ use notes::NoteId;
 use notes::seed::{self, ALICE_NOTE_ID_SHOPPING_LIST, BOB_NOTE_ID_BIKE_REPAIRS};
 use notes_api::events::v1::{self, NoteArchived};
 use sqlx::PgPool;
-use users_api::seed::USER_ID_ALICE;
+use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
 
 fn alices_note() -> NoteJson {
     seed::alices_note().into()
@@ -23,6 +23,7 @@ async fn a_deleted_authors_notes_are_archived(pool: PgPool) {
         notes.get(ALICE_NOTE_ID_SHOPPING_LIST).await,
         Ok(alices_note().archived(notes.now()))
     );
+    notes.sign_in_as(USER_ID_BOB, &[USER]);
     assert_eq!(
         notes.get(BOB_NOTE_ID_BIKE_REPAIRS).await,
         Ok(seed::bobs_note().into())
@@ -113,7 +114,7 @@ async fn an_archived_note_cannot_be_edited(pool: PgPool) {
         notes
             .edit(ALICE_NOTE_ID_SHOPPING_LIST, 2, "Renamed", "")
             .await,
-        Err(Refusal::Conflict)
+        Err(Refusal::Forbidden)
     );
     assert_eq!(notes.get(ALICE_NOTE_ID_SHOPPING_LIST).await, Ok(archived));
 }

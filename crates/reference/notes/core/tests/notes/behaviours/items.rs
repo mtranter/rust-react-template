@@ -1,4 +1,4 @@
-use crate::driver::{NoteJson, Notes, Refusal, announced};
+use crate::driver::{NoteJson, Notes, Refusal, USER, announced};
 use app_events::EventPayload;
 use app_persistence::Version;
 use notes::NoteId;
@@ -9,7 +9,7 @@ use notes::seed::{
 use notes_api::events::v1::{self, NoteItemAdded, NoteItemRemoved};
 use serde_json::json;
 use sqlx::PgPool;
-use users_api::seed::USER_ID_ALICE;
+use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
 
 fn texts(note: &NoteJson) -> Vec<&str> {
     note["items"]
@@ -105,6 +105,7 @@ async fn an_item_already_on_the_note_is_rejected_whatever_its_case(pool: PgPool)
 #[app_test_db::test(crate::driver::TEMPLATE)]
 async fn the_same_item_may_be_on_two_notes(pool: PgPool) {
     let notes = Notes::seeded(pool).await;
+    notes.sign_in_as(USER_ID_BOB, &[USER]);
 
     let added = notes
         .add_item(BOB_NOTE_ID_BIKE_REPAIRS, 1, "Milk")
@@ -218,13 +219,13 @@ async fn an_archived_notes_items_are_read_only(pool: PgPool) {
         notes
             .add_item(ALICE_NOTE_ID_SHOPPING_LIST, 2, "Bread")
             .await,
-        Err(Refusal::Conflict)
+        Err(Refusal::Forbidden)
     );
     assert_eq!(
         notes
             .remove_item(ALICE_NOTE_ID_SHOPPING_LIST, 2, SHOPPING_LIST_ITEM_ID_MILK)
             .await,
-        Err(Refusal::Conflict)
+        Err(Refusal::Forbidden)
     );
     assert_eq!(notes.get(ALICE_NOTE_ID_SHOPPING_LIST).await, Ok(archived));
 }

@@ -64,9 +64,14 @@ pub fn notes() -> Vec<Note> {
 /// note it saves, as of when it was created, so a copy kept from the topic
 /// (`note-search`'s) has it too.
 pub async fn standard(pool: &PgPool) -> AppResult<()> {
+    save_missing(pool, notes()).await
+}
+
+/// Saves each of `notes` that isn't already, announcing it as [`standard`] does.
+pub async fn save_missing(pool: &PgPool, notes: Vec<Note>) -> AppResult<()> {
     let repo = PgNoteRepository::new(pool.clone());
     let mut tx = PgTransactions::new(pool.clone()).begin().await?;
-    for note in notes() {
+    for note in notes {
         if repo.get(note.id()).await?.is_none() {
             let version = repo.save(&mut tx, &note, Expected::New).await?;
             PgEventPublisher::new(Arc::new(FixedClock::new(note.created_at())))

@@ -3,7 +3,8 @@ use crate::application::{
     Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Tx, Version, Versioned,
 };
 use crate::domain::{AuthorId, Item, Note, NoteId};
-use app_db::{conn, push_list_clauses};
+use app_authz::Rows;
+use app_db::{Clause, Column, Columns, conn, push_list_clauses, push_scope};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -23,6 +24,21 @@ fn sort_column(key: NoteSortKey) -> &'static str {
     match key {
         NoteSortKey::Title => "title",
         NoteSortKey::CreatedAt => "created_at",
+    }
+}
+
+/// Where a note's attributes are, for a plan's filter to become a list's `WHERE` (ADR 0040).
+pub struct NoteColumns;
+
+impl Columns for NoteColumns {
+    type Resource = Note;
+
+    fn column(attr: &str) -> Option<Column> {
+        match attr {
+            "authorId" => Some(Column::uuid("author_id")),
+            "archived" => Some(Column::boolean("archived_at IS NOT NULL")),
+            _ => None,
+        }
     }
 }
 
@@ -89,10 +105,15 @@ impl NoteRepository for PgNoteRepository {
             .pop())
     }
 
-    async fn list(&self, query: &ListQuery<NoteSortKey>) -> AppResult<Listed<Versioned<Note>>> {
+    async fn list(
+        &self,
+        query: &ListQuery<NoteSortKey>,
+        scope: &Rows,
+    ) -> AppResult<Listed<Versioned<Note>>> {
         let mut sql = QueryBuilder::new(
             "SELECT id, author_id, title, body, created_at, archived_at, version FROM notes.note",
         );
+        push_scope::<NoteColumns>(&mut sql, Clause::Where, scope);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
         let rows: Vec<NoteRow> = sql
             .build_query_as()
@@ -101,10 +122,17 @@ impl NoteRepository for PgNoteRepository {
             .map_err(AppError::internal)?;
 
         let total = match query.page {
-            Some(_) => sqlx::query_scalar!(r#"SELECT COUNT(*) FROM notes.note"#)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(AppError::internal)?,
+            Some(_) => {
+                let mut count = QueryBuilder::new("SELECT COUNT(*) FROM notes.note");
+                push_scope::<NoteColumns>(&mut count, Clause::Where, scope);
+                Some(
+                    count
+                        .build_query_scalar()
+                        .fetch_one(&self.pool)
+                        .await
+                        .map_err(AppError::internal)?,
+                )
+            }
             None => None,
         };
 

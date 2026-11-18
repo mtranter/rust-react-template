@@ -6,7 +6,7 @@ use super::{
 use crate::domain::{
     AuthorId, CreateNote, EditNote, ItemId, Note, NoteAction, NoteError, NoteEvent, NoteId,
 };
-use app_authz::{Authorizer, Principal};
+use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -44,12 +44,10 @@ impl NoteService {
     }
 
     /// Asked first in every use case, before anything is loaded or begun. A
-    /// `Where` plan (a scope, such as `author`) is allowed here until rows are
-    /// checked against it (platform ticket 0028).
-    fn authorize(&self, principal: &Principal, action: NoteAction) -> AppResult<()> {
-        self.authorizer
-            .authorize::<Note>(principal, action)
-            .map(|_| ())
+    /// `Where` plan (a scope, such as `author`) is checked against the note
+    /// once it is loaded ([`load_for`](Self::load_for)).
+    fn authorize(&self, principal: &Principal, action: NoteAction) -> AppResult<Plan> {
+        self.authorizer.authorize::<Note>(principal, action)
     }
 
     /// The caller is the author. The author check and the save aren't one
@@ -95,9 +93,11 @@ impl NoteService {
         cmd: EditNote,
         expected: Version,
     ) -> AppResult<Versioned<Note>> {
-        self.authorize(principal, NoteAction::Edit)?;
-        self.change(cmd.note_id, expected, |note| note.edit(cmd))
-            .await
+        let plan = self.authorize(principal, NoteAction::Edit)?;
+        self.change(principal, &plan, cmd.note_id, expected, |note| {
+            note.edit(cmd)
+        })
+        .await
     }
 
     /// An item is a child of its note: the note's version guards it, and its
@@ -109,10 +109,12 @@ impl NoteService {
         text: &str,
         expected: Version,
     ) -> AppResult<Versioned<Note>> {
-        self.authorize(principal, NoteAction::AddItem)?;
+        let plan = self.authorize(principal, NoteAction::AddItem)?;
         let id = ItemId::new();
-        self.change(note, expected, |note| note.add_item(id, text))
-            .await
+        self.change(principal, &plan, note, expected, |note| {
+            note.add_item(id, text)
+        })
+        .await
     }
 
     pub async fn remove_item(
@@ -122,20 +124,24 @@ impl NoteService {
         item: ItemId,
         expected: Version,
     ) -> AppResult<Versioned<Note>> {
-        self.authorize(principal, NoteAction::RemoveItem)?;
-        self.change(note, expected, |note| note.remove_item(item))
-            .await
+        let plan = self.authorize(principal, NoteAction::RemoveItem)?;
+        self.change(principal, &plan, note, expected, |note| {
+            note.remove_item(item)
+        })
+        .await
     }
 
     async fn change(
         &self,
+        principal: &Principal,
+        plan: &Plan,
         id: NoteId,
         expected: Version,
         change: impl FnOnce(&mut Note) -> Result<NoteEvent, NoteError>,
     ) -> AppResult<Versioned<Note>> {
         // Load first so a missing note is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
-        let mut note = self.load(id).await?.entity;
+        let mut note = self.load_for(principal, plan, id).await?.entity;
         let event = change(&mut note)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -159,8 +165,8 @@ impl NoteService {
         id: NoteId,
         expected: Version,
     ) -> AppResult<()> {
-        self.authorize(principal, NoteAction::Delete)?;
-        let current = self.load(id).await?;
+        let plan = self.authorize(principal, NoteAction::Delete)?;
+        let current = self.load_for(principal, &plan, id).await?;
         // Checked here as well as by the delete, so the state announced is the
         // version deleted; the event announces the version after it, so it's the
         // newest of its key.
@@ -189,13 +195,14 @@ impl NoteService {
         tx: &mut Tx,
         author: AuthorId,
     ) -> AppResult<()> {
-        self.authorize(principal, NoteAction::Archive)?;
+        let plan = self.authorize(principal, NoteAction::Archive)?;
         let now = self.clock.now();
         for Versioned {
             entity: mut note,
             version,
         } in self.repo.unarchived_by(author).await?
         {
+            self.authorizer.check(principal, &plan, &note)?;
             let Some(event) = note.archive(now) else {
                 continue;
             };
@@ -211,15 +218,26 @@ impl NoteService {
     }
 
     pub async fn get(&self, principal: &Principal, id: NoteId) -> AppResult<Versioned<Note>> {
-        self.authorize(principal, NoteAction::View)?;
-        self.load(id).await
+        let plan = self.authorize(principal, NoteAction::View)?;
+        self.load_for(principal, &plan, id).await
     }
 
-    async fn load(&self, id: NoteId) -> AppResult<Versioned<Note>> {
-        self.repo
+    /// The note, if `plan` allows it: checked before any domain action, so a
+    /// note the principal may not see is not found, and one they may see but
+    /// not change is forbidden.
+    async fn load_for(
+        &self,
+        principal: &Principal,
+        plan: &Plan,
+        id: NoteId,
+    ) -> AppResult<Versioned<Note>> {
+        let note = self
+            .repo
             .get(id)
             .await?
-            .ok_or_else(|| AppError::not_found("note"))
+            .ok_or_else(|| AppError::not_found("note"))?;
+        self.authorizer.check(principal, plan, &note.entity)?;
+        Ok(note)
     }
 
     pub async fn list(
@@ -227,7 +245,7 @@ impl NoteService {
         principal: &Principal,
         query: ListQuery<NoteSortKey>,
     ) -> AppResult<Listed<Versioned<Note>>> {
-        self.authorize(principal, NoteAction::List)?;
-        self.repo.list(&query).await
+        let rows = self.authorizer.rows::<Note>(principal, NoteAction::List)?;
+        self.repo.list(&query, &rows).await
     }
 }
