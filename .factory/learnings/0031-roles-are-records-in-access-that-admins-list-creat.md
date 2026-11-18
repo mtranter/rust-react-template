@@ -7,3 +7,4 @@
 - **New operations in `access` touch four lists**: `OPERATIONS` (web/access.rs), `TOOLS` in `crates/server/tests/composed_app.rs`, the `TOOLS` rewrite in `scripts/init.sh`, and `access_ops` (sorted) in `scripts/check-init.sh`.
 - **The SPA's `/access` tab is in the URL** (`?tab=roles`); the Tabs panels unmount when hidden, so the roles list is fetched when the tab or the grant dialog's role picker needs it (`useRoles`, limit 100: the server's max page).
 - Migrating `.sqlx` for this module applied `0002_roles.sql` to the shared dev database `app` (port 5432), which other worktrees on `main` share: their `make migrate` may then complain about an unknown applied migration until they pull it.
+- **`scripts/init.sh` rewrites `frontend/src/router.tsx` wholesale** (a heredoc): a change to the `/access` route's `validateSearch` must be made there too, or `make check-init` fails typechecking the initialised app. `make check-changed` doesn't catch it.
