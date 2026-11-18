@@ -13,3 +13,7 @@ arc-swap.workspace = true
 saphyr.workspace = true
 strum.workspace = true
 thiserror.workspace = true
+
+[features]
+# `testing`: the agreement check between a list's SQL and `Filter::matches`, for Modules' DB tests.
+testing = []

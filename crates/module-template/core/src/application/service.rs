@@ -4,7 +4,7 @@ use super::{
     WidgetMatch, WidgetRepository, WidgetSearch, WidgetSortKey,
 };
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetAction, WidgetId};
-use app_authz::{Authorizer, Principal};
+use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use std::sync::Arc;
@@ -39,12 +39,10 @@ impl WidgetService {
     }
 
     /// Asked first in every use case, before anything is loaded or begun. A
-    /// `Where` plan (a scope) is allowed here until rows are checked against
-    /// it (platform ticket 0028).
-    fn authorize(&self, principal: &Principal, action: WidgetAction) -> AppResult<()> {
-        self.authorizer
-            .authorize::<Widget>(principal, action)
-            .map(|_| ())
+    /// `Where` plan (a scope) is checked against the widget once it is loaded
+    /// ([`load_for`](Self::load_for)).
+    fn authorize(&self, principal: &Principal, action: WidgetAction) -> AppResult<Plan> {
+        self.authorizer.authorize::<Widget>(principal, action)
     }
 
     pub async fn create(
@@ -73,10 +71,10 @@ impl WidgetService {
         cmd: RenameWidget,
         expected: Version,
     ) -> AppResult<Versioned<Widget>> {
-        self.authorize(principal, WidgetAction::Rename)?;
+        let plan = self.authorize(principal, WidgetAction::Rename)?;
         // Load first so a missing widget is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
-        let mut widget = self.load(cmd.widget_id).await?.entity;
+        let mut widget = self.load_for(principal, &plan, cmd.widget_id).await?.entity;
         let event = widget.rename(cmd)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -94,15 +92,26 @@ impl WidgetService {
     }
 
     pub async fn get(&self, principal: &Principal, id: WidgetId) -> AppResult<Versioned<Widget>> {
-        self.authorize(principal, WidgetAction::View)?;
-        self.load(id).await
+        let plan = self.authorize(principal, WidgetAction::View)?;
+        self.load_for(principal, &plan, id).await
     }
 
-    async fn load(&self, id: WidgetId) -> AppResult<Versioned<Widget>> {
-        self.repo
+    /// The widget, if `plan` allows it: checked before any domain action, so a
+    /// widget the principal may not see is not found, and one they may see but
+    /// not change is forbidden.
+    async fn load_for(
+        &self,
+        principal: &Principal,
+        plan: &Plan,
+        id: WidgetId,
+    ) -> AppResult<Versioned<Widget>> {
+        let widget = self
+            .repo
             .get(id)
             .await?
-            .ok_or_else(|| AppError::not_found("widget"))
+            .ok_or_else(|| AppError::not_found("widget"))?;
+        self.authorizer.check(principal, plan, &widget.entity)?;
+        Ok(widget)
     }
 
     pub async fn list(
@@ -110,8 +119,10 @@ impl WidgetService {
         principal: &Principal,
         query: ListQuery<WidgetSortKey>,
     ) -> AppResult<Listed<Versioned<Widget>>> {
-        self.authorize(principal, WidgetAction::List)?;
-        self.repo.list(&query).await
+        let rows = self
+            .authorizer
+            .rows::<Widget>(principal, WidgetAction::List)?;
+        self.repo.list(&query, &rows).await
     }
 
     /// From the search copy, so a write shows here once the worker has
@@ -122,7 +133,11 @@ impl WidgetService {
         name: &str,
         page: PageRequest,
     ) -> AppResult<Listed<WidgetMatch>> {
-        self.authorize(principal, WidgetAction::Search)?;
+        // The copy has no columns for a scope to filter by, so a scoped search
+        // is refused rather than shown rows the caller may not see.
+        if self.authorize(principal, WidgetAction::Search)? != Plan::Allowed {
+            return Err(AppError::Forbidden);
+        }
         self.search.search(name, page).await
     }
 }

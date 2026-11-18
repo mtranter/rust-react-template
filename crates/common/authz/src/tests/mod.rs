@@ -4,6 +4,7 @@ mod adr;
 mod combining;
 mod grants;
 mod refusals;
+mod rows;
 mod swapping;
 
 use crate::{
@@ -29,18 +30,21 @@ pub struct Note {
     pub author_id: &'static str,
     pub archived: bool,
     pub status: &'static str,
+    pub visibility: &'static str,
 }
 
 impl Resource for Note {
     const KIND: &'static str = "note";
-    const ATTRS: &'static [&'static str] = &["authorId", "archived", "status"];
+    const ATTRS: &'static [&'static str] = &["authorId", "archived", "status", "visibility"];
     type Action = NoteAction;
+    const VIEW: Option<NoteAction> = Some(NoteAction::View);
 
     fn attr(&self, name: &str) -> Option<Value> {
         match name {
             "authorId" => Some(self.author_id.into()),
             "archived" => Some(self.archived.into()),
             "status" => Some(self.status.into()),
+            "visibility" => Some(self.visibility.into()),
             _ => None,
         }
     }
@@ -54,6 +58,7 @@ pub fn note(author_id: &'static str, archived: bool) -> Note {
         author_id,
         archived,
         status: "draft",
+        visibility: "private",
     }
 }
 

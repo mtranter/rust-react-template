@@ -2,7 +2,8 @@ use crate::application::{
     Expected, ListQuery, Listed, Tx, UserRepository, UserSortKey, Version, Versioned,
 };
 use crate::domain::{Email, User, UserId};
-use app_db::{conn, map_db_error, push_list_clauses};
+use app_authz::Rows;
+use app_db::{Clause, Column, Columns, conn, map_db_error, push_list_clauses, push_scope};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -24,6 +25,20 @@ fn map_sqlx(err: sqlx::Error) -> AppError {
         "account_email_key" => Some(AppError::conflict("a user with that email already exists")),
         _ => None,
     })
+}
+
+/// Where an account's attributes are, for a plan's filter to become a list's `WHERE` (ADR 0040).
+pub struct UserColumns;
+
+impl Columns for UserColumns {
+    type Resource = User;
+
+    fn column(attr: &str) -> Option<Column> {
+        match attr {
+            "id" => Some(Column::uuid("id")),
+            _ => None,
+        }
+    }
 }
 
 fn sort_column(key: UserSortKey) -> &'static str {
@@ -82,27 +97,39 @@ impl UserRepository for PgUserRepository {
         Ok(rec.map(|r| User::restore(r.id.into(), r.email, r.display_name, r.created_at)))
     }
 
-    async fn list(&self, query: &ListQuery<UserSortKey>) -> AppResult<Listed<Versioned<User>>> {
+    async fn list(
+        &self,
+        query: &ListQuery<UserSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Versioned<User>>> {
         let mut sql = QueryBuilder::new(
             "SELECT id, email, display_name, created_at, version FROM users.account",
         );
+        push_scope::<UserColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
-        let rows: Vec<UserRow> = sql
+        let found: Vec<UserRow> = sql
             .build_query_as()
             .fetch_all(&self.pool)
             .await
             .map_err(map_sqlx)?;
 
         let total = match query.page {
-            Some(_) => sqlx::query_scalar!(r#"SELECT COUNT(*) FROM users.account"#)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(map_sqlx)?,
+            Some(_) => {
+                let mut count = QueryBuilder::new("SELECT COUNT(*) FROM users.account");
+                push_scope::<UserColumns>(&mut count, Clause::Where, rows);
+                Some(
+                    count
+                        .build_query_scalar()
+                        .fetch_one(&self.pool)
+                        .await
+                        .map_err(map_sqlx)?,
+                )
+            }
             None => None,
         };
 
         Ok(Listed {
-            items: rows.into_iter().map(UserRow::restore).collect(),
+            items: found.into_iter().map(UserRow::restore).collect(),
             total,
         })
     }

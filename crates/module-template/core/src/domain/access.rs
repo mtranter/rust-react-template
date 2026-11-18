@@ -18,6 +18,7 @@ impl Resource for Widget {
     /// `attr` before a scope or rule uses it.
     const ATTRS: &'static [&'static str] = &["id"];
     type Action = WidgetAction;
+    const VIEW: Option<WidgetAction> = Some(WidgetAction::View);
 
     fn attr(&self, name: &str) -> Option<Value> {
         match name {

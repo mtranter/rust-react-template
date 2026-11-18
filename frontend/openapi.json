@@ -1055,7 +1055,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "List notes, paginated. Most-recent first unless `sort` says otherwise:\nrepeat it to sort by several keys, `-` prefix for descending.",
+        "summary": "List the notes the caller may see, paginated. Most-recent first unless\n`sort` says otherwise: repeat it to sort by several keys, `-` prefix for\ndescending.",
         "parameters": [
           {
             "name": "limit",
@@ -1343,7 +1343,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.\nAn archived note is refused with `409`.",
+        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.\nAn archived note is refused with `403`, and another user's with `404`.",
         "parameters": [
           {
             "name": "id",
@@ -1519,7 +1519,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Delete a note. Requires `If-Match` with the version the client last read,\nlike an edit. An archived note is refused with `409`.",
+        "summary": "Delete a note. Requires `If-Match` with the version the client last read,\nlike an edit. An archived note is refused with `403`, and another user's\nwith `404`.",
         "parameters": [
           {
             "name": "id",

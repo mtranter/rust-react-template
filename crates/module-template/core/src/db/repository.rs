@@ -2,7 +2,8 @@ use crate::application::{
     Expected, ListQuery, Listed, Tx, Version, Versioned, WidgetRepository, WidgetSortKey,
 };
 use crate::domain::{Widget, WidgetId};
-use app_db::{conn, push_list_clauses};
+use app_authz::Rows;
+use app_db::{Clause, Column, Columns, conn, push_list_clauses, push_scope};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, QueryBuilder};
@@ -22,6 +23,20 @@ fn sort_column(key: WidgetSortKey) -> &'static str {
     match key {
         WidgetSortKey::Name => "name",
         WidgetSortKey::CreatedAt => "created_at",
+    }
+}
+
+/// Where a widget's attributes are, for a plan's filter to become a list's `WHERE` (ADR 0040).
+pub struct WidgetColumns;
+
+impl Columns for WidgetColumns {
+    type Resource = Widget;
+
+    fn column(attr: &str) -> Option<Column> {
+        match attr {
+            "id" => Some(Column::uuid("id")),
+            _ => None,
+        }
     }
 }
 
@@ -60,25 +75,37 @@ impl WidgetRepository for PgWidgetRepository {
         }))
     }
 
-    async fn list(&self, query: &ListQuery<WidgetSortKey>) -> AppResult<Listed<Versioned<Widget>>> {
+    async fn list(
+        &self,
+        query: &ListQuery<WidgetSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Versioned<Widget>>> {
         let mut sql = QueryBuilder::new("SELECT id, name, created_at, version FROM widgets.widget");
+        push_scope::<WidgetColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
-        let rows: Vec<WidgetRow> = sql
+        let found: Vec<WidgetRow> = sql
             .build_query_as()
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::internal)?;
 
         let total = match query.page {
-            Some(_) => sqlx::query_scalar!(r#"SELECT COUNT(*) FROM widgets.widget"#)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(AppError::internal)?,
+            Some(_) => {
+                let mut count = QueryBuilder::new("SELECT COUNT(*) FROM widgets.widget");
+                push_scope::<WidgetColumns>(&mut count, Clause::Where, rows);
+                Some(
+                    count
+                        .build_query_scalar()
+                        .fetch_one(&self.pool)
+                        .await
+                        .map_err(AppError::internal)?,
+                )
+            }
             None => None,
         };
 
         Ok(Listed {
-            items: rows.into_iter().map(WidgetRow::restore).collect(),
+            items: found.into_iter().map(WidgetRow::restore).collect(),
             total,
         })
     }

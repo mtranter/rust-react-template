@@ -54,7 +54,32 @@ pub enum Plan {
     Where(Filter),
 }
 
+/// The rows a list may hold: a plan that isn't `Denied`, which the service has already refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Rows {
+    All,
+    Where(Filter),
+}
+
+impl Rows {
+    pub fn allows<R: Resource>(&self, resource: &R) -> bool {
+        match self {
+            Rows::All => true,
+            Rows::Where(filter) => filter.matches(resource),
+        }
+    }
+}
+
 impl Plan {
+    /// `None` when `Denied`.
+    pub fn rows(self) -> Option<Rows> {
+        match self {
+            Plan::Allowed => Some(Rows::All),
+            Plan::Denied => None,
+            Plan::Where(filter) => Some(Rows::Where(filter)),
+        }
+    }
+
     pub fn allows<R: Resource>(&self, resource: &R) -> bool {
         match self {
             Plan::Allowed => true,

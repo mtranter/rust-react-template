@@ -83,7 +83,7 @@ async fn an_archived_note_cannot_be_deleted(pool: PgPool) {
 
     assert_eq!(
         notes.delete(ALICE_NOTE_ID_SHOPPING_LIST, 2).await,
-        Err(Refusal::Conflict)
+        Err(Refusal::Forbidden)
     );
     assert_eq!(notes.get(ALICE_NOTE_ID_SHOPPING_LIST).await, Ok(archived));
     assert!(notes.announced::<NoteDeleted>().await.is_empty());

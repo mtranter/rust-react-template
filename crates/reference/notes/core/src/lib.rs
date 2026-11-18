@@ -8,7 +8,7 @@ mod domain;
 pub mod seed;
 mod web;
 
-pub use db::{MIGRATOR, SCHEMA, migrations};
+pub use db::{MIGRATOR, NoteColumns, SCHEMA, migrations};
 pub use di::{NotesProvider, handlers, module, policies, provider};
 pub use domain::{
     AuthorId, CreateNote, EditNote, Item, ItemId, Note, NoteAction, NoteError, NoteId,

@@ -32,7 +32,7 @@ tracing.workspace = true
 seed = ["users-api/seed"]
 
 [dev-dependencies]
-app-authz.workspace = true
+app-authz = { workspace = true, features = ["testing"] }
 app-test-db.workspace = true
 users = { path = ".", features = ["seed"] }
 chrono.workspace = true

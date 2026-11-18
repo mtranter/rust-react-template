@@ -30,7 +30,7 @@ strum.workspace = true
 seed = []
 
 [dev-dependencies]
-app-authz.workspace = true
+app-authz = { workspace = true, features = ["testing"] }
 app-test-db.workspace = true
 # Enables `seed` for this crate's integration tests.
 widgets = { path = ".", features = ["seed"] }

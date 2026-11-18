@@ -89,8 +89,10 @@ pub type Found = Page<NoteSummaryJson>;
 /// grants name.
 pub const USER: &str = "user";
 
-/// Whom the journeys' own checks read as: a `user` who is none of the seeded ones.
+/// Whom the journeys' own checks read as: an `admin`, who sees every note,
+/// and is none of the seeded users.
 const READER: &str = "00000000-0000-0000-0000-000000000000";
+const ADMIN: &str = "admin";
 
 pub struct App {
     api: TestApi,
@@ -175,7 +177,7 @@ impl App {
     pub async fn note(&self, id: impl Display) -> Outcome<NoteJson> {
         self.api
             .get(format!("/api/notes/{id}"))
-            .bearer(self.token_of(READER, &[USER]))
+            .bearer(self.token_of(READER, &[ADMIN]))
             .send()
             .await
     }

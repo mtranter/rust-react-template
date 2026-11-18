@@ -16,6 +16,7 @@ impl Resource for User {
     const KIND: &'static str = "user";
     const ATTRS: &'static [&'static str] = &["id"];
     type Action = UserAction;
+    const VIEW: Option<UserAction> = Some(UserAction::View);
 
     fn attr(&self, name: &str) -> Option<Value> {
         match name {

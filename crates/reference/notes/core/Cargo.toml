@@ -34,7 +34,7 @@ tracing.workspace = true
 seed = ["notes-api/seed"]
 
 [dev-dependencies]
-app-authz.workspace = true
+app-authz = { workspace = true, features = ["testing"] }
 app-test-db.workspace = true
 # Enables `seed` for this crate's integration tests.
 notes = { path = ".", features = ["seed"] }

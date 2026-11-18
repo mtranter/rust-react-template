@@ -1,5 +1,6 @@
 use super::{Expected, ListQuery, Listed, Tx, Version, Versioned};
 use crate::domain::{AuthorId, Note, NoteId};
+use app_authz::Rows;
 use app_error::AppResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,8 +15,13 @@ pub enum NoteSortKey {
 #[async_trait::async_trait]
 pub trait NoteRepository: Send + Sync {
     async fn get(&self, id: NoteId) -> AppResult<Option<Versioned<Note>>>;
-    /// Most-recent first unless sorted otherwise.
-    async fn list(&self, query: &ListQuery<NoteSortKey>) -> AppResult<Listed<Versioned<Note>>>;
+    /// Only the rows the caller may see, counted in the total too. Most-recent first unless
+    /// sorted otherwise.
+    async fn list(
+        &self,
+        query: &ListQuery<NoteSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Versioned<Note>>>;
     /// Oldest first.
     async fn unarchived_by(&self, author: AuthorId) -> AppResult<Vec<Versioned<Note>>>;
     /// [`Expected::Version`] updates only if the stored version matches, else
