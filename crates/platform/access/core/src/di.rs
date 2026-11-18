@@ -72,8 +72,8 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
 }
 
-/// Assigning roles, for another module's seed to give its seeded users theirs, as `System`
-/// (`users::module(access::assignments)`).
+/// Assigning roles, for another module's seed to give the accounts it seeds theirs, as `System`:
+/// that module's `module(..)` takes this constructor.
 pub fn assignments(ctx: &Context) -> Arc<dyn RoleAssignments> {
     // Assigning reads nothing of what modules can be granted.
     let modules = Modules {

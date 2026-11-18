@@ -206,7 +206,7 @@ impl Module {
 
     /// Call it only under the module's `seed` feature, which prod builds leave off. It is given
     /// the context, so it can build what it calls in another module's API (`access`, to assign
-    /// its seeded users' roles).
+    /// the roles of the accounts it seeds).
     pub fn with_seed<F, Fut>(self, seed: F) -> Self
     where
         F: Fn(Context) -> Fut + Send + Sync + 'static,
