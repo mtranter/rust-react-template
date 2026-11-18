@@ -9,15 +9,15 @@ fn roles(grants: &crate::driver::Grants) -> Vec<String> {
 async fn grants_are_filtered_by_role_resource_and_action(pool: PgPool) {
     let access = Access::seeded(pool).await;
 
-    let users = access.grants_where(&[("role", "user")]).await.unwrap();
+    let held_by_user = access.grants_where(&[("role", "user")]).await.unwrap();
     let making = access
         .grants_where(&[("resource", "gadget"), ("action", "make")])
         .await
         .unwrap();
 
-    assert_eq!(users.items.len(), 3);
-    assert!(users.items.iter().all(|g| g.rule().0 == "user"));
-    assert_eq!(users.total, 3);
+    assert_eq!(held_by_user.items.len(), 3);
+    assert!(held_by_user.items.iter().all(|g| g.rule().0 == "user"));
+    assert_eq!(held_by_user.total, 3);
     assert_eq!(roles(&making), ["admin", "user"]);
 }
 
