@@ -26,7 +26,7 @@ export function AccessPage() {
         {manages &&
           (current === "roles" ? (
             <CreateRoleDialog />
-          ) : current === "users" ? (
+          ) : current === "subjects" ? (
             <AssignRoleDialog />
           ) : (
             <GrantAccessDialog />
@@ -44,7 +44,7 @@ export function AccessPage() {
             navigate({
               search: (prev) => ({
                 ...prev,
-                tab: value === "roles" || value === "users" ? value : undefined,
+                tab: value === "roles" || value === "subjects" ? value : undefined,
               }),
             })
           }
@@ -52,7 +52,7 @@ export function AccessPage() {
           <TabsList>
             <TabsTrigger value="grants">Grants</TabsTrigger>
             <TabsTrigger value="roles">Roles</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="subjects">Users</TabsTrigger>
           </TabsList>
           <TabsContent value="grants">
             <GrantsTable
@@ -70,7 +70,7 @@ export function AccessPage() {
           <TabsContent value="roles">
             <RolesTable />
           </TabsContent>
-          <TabsContent value="users">
+          <TabsContent value="subjects">
             <SubjectsTable
               search={search}
               onSearch={(text) => navigate({ search: (prev) => ({ ...prev, search: text }) })}

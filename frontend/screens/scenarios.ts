@@ -441,13 +441,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-users",
-    route: "/access?tab=users",
+    route: "/access?tab=subjects",
     handlers: accessApi,
     shows: (page) => page.getByText("Bootstrap admin"),
   },
   {
     name: "access-users-assign-refused",
-    route: "/access?tab=users",
+    route: "/access?tab=subjects",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Assign a role to Ada Lovelace" }).click();
@@ -460,7 +460,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-add-user",
-    route: "/access?tab=users",
+    route: "/access?tab=subjects",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Add user" }).click();

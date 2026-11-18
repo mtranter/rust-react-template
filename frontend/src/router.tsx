@@ -49,8 +49,8 @@ const accessRoute = createRoute({
   path: "/access",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "roles" | "users"; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
-    tab: search.tab === "roles" || search.tab === "users" ? search.tab : undefined,
+  ): { tab?: "roles" | "subjects"; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
+    tab: search.tab === "roles" || search.tab === "subjects" ? search.tab : undefined,
     search: typeof search.search === "string" && search.search ? search.search : undefined,
     ...grantFilter(search),
     ...validateListSearch<GrantSort>(search, grantSortKeys),

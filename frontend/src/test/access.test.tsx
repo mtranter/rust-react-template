@@ -37,9 +37,9 @@ test("hides the access screen and its link from a caller who isn't an admin", as
   }
 });
 
-test("hides the users tab from a caller who isn't an admin, even linked to it", async () => {
+test("hides the Users tab from a caller who isn't an admin, even linked to it", async () => {
   server.use(...notAnAdmin);
-  renderAt("/access?tab=users");
+  renderAt("/access?tab=subjects");
 
   expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Users" })).not.toBeInTheDocument();
@@ -271,7 +271,7 @@ test("a role a grant still names isn't deleted: it says why", async () => {
   expect(screen.queryByText("Role deleted")).not.toBeInTheDocument();
 });
 
-async function usersTab(path = "/access?tab=users") {
+async function usersTab(path = "/access?tab=subjects") {
   const user = userEvent.setup();
   const rendered = renderAt(path);
   const table = await screen.findByRole("region", { name: "Users" });
@@ -283,7 +283,7 @@ function rolesOf(table: HTMLElement, label: string) {
   return within(table).getByRole("list", { name: `Roles of ${label}` });
 }
 
-test("lists the users on their tab, kept in the URL, with their roles", async () => {
+test("lists everyone on the Users tab, kept in the URL, with their roles", async () => {
   server.use(...accessApi([]).handlers);
   const { router } = renderAt("/access");
   const user = userEvent.setup();
@@ -297,10 +297,10 @@ test("lists the users on their tab, kept in the URL, with their roles", async ()
   expect(within(table).getByText("auth0|ada")).toBeInTheDocument();
   expect(within(rolesOf(table, "Ada Lovelace")).getByText("support")).toBeInTheDocument();
   expect(within(table).getByText("Never signed in")).toBeInTheDocument();
-  expect(router.state.location.search).toMatchObject({ tab: "users" });
+  expect(router.state.location.search).toMatchObject({ tab: "subjects" });
 });
 
-test("searches the users by name, email and subject, keeping the search in the URL", async () => {
+test("searches the Users tab by name, email and subject, keeping the search in the URL", async () => {
   const api = accessApi([]);
   server.use(...api.handlers);
   const { user, table, router } = await usersTab();
@@ -310,7 +310,7 @@ test("searches the users by name, email and subject, keeping the search in the U
     ["ENGINES.org", "Bob Babbage", "Ada Lovelace"],
     ["auth0|ada", "Ada Lovelace", "Bob Babbage"],
   ]) {
-    const search = screen.getByLabelText("Search users");
+    const search = screen.getByLabelText("Search by name, email or subject");
     await user.clear(search);
     await user.type(search, `${text}{Enter}`);
 
@@ -375,7 +375,7 @@ test("removes a role from a user once confirmed, sending the version listed", as
   expect(screen.getByText("Role removed")).toBeInTheDocument();
 });
 
-test("a role changed meanwhile isn't removed: it says so and reloads the users", async () => {
+test("a role changed meanwhile isn't removed: it says so and reloads the list", async () => {
   const subjects = [
     subject("auth0|bob", { name: "Bob Babbage", roles: [{ role: "support", version: "1" }] }),
   ];

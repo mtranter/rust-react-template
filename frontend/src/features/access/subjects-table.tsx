@@ -38,7 +38,7 @@ export function SubjectsTable({
     <section className="space-y-3" aria-label="Users">
       <Input
         key={search ?? ""}
-        aria-label="Search users"
+        aria-label="Search by name, email or subject"
         placeholder="Search by name, email or subject"
         className="max-w-sm"
         defaultValue={search ?? ""}
@@ -53,7 +53,7 @@ export function SubjectsTable({
       />
       {subjects.isError ? (
         <p role="alert" className="text-destructive">
-          Failed to load the users.
+          Failed to load the subjects.
         </p>
       ) : (
         <Table>
@@ -74,7 +74,7 @@ export function SubjectsTable({
             ) : subjects.data.items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-muted-foreground">
-                  No users.
+                  No one found.
                 </TableCell>
               </TableRow>
             ) : (
