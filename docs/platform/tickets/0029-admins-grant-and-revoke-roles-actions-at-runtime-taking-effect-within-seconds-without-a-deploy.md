@@ -5,7 +5,7 @@ status: in-progress
 priority: P1
 size: L
 blocked_by: [0026, 0027]
-blocks: []
+blocks: [docs/platform/tickets/0031-roles-are-records-in-access-that-admins-list-creat.md]
 source: conversation, 2026-11-17 (system admins associate roles with actions without waiting for a redeploy; single-tenant; groups out of scope; defaults applied as data)
 ---
 
