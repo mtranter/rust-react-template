@@ -1092,6 +1092,169 @@
         "operationId": "delete_role"
       }
     },
+    "/access/subjects": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "List the subjects roles can be assigned to (each a token's `sub`): everyone who has\nsigned in, with their name and email when their token carried them and when they were\nlast seen (to within an hour), and anyone assigned a role or in `APP_BOOTSTRAP_ADMINS`\nwho hasn't signed in yet. Each comes with the roles it holds beside `user`, and each\nrole with the version `unassign_role` takes; a bootstrap admin is marked `bootstrapAdmin`\nand holds `admin`, which can't be unassigned. `search` matches part of the subject, name\nor email, in any case. Paginated, ordered by subject unless `sort` says otherwise\n(`subject`, `name`, `email` or `lastSeen`, `-` prefix for descending). `403` unless the\ncaller is an `admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/SubjectSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_SubjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "list_subjects"
+      }
+    },
     "/access/assignments": {
       "post": {
         "tags": [
@@ -4068,6 +4231,36 @@
           }
         }
       },
+      "ListResult_SubjectResponse": {
+        "type": "object",
+        "title": "ListResult_SubjectResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubjectResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ListResult_UserResponse": {
         "type": "object",
         "title": "ListResult_UserResponse",
@@ -4250,6 +4443,78 @@
           "-name",
           "createdAt",
           "-createdAt"
+        ]
+      },
+      "SubjectResponse": {
+        "type": "object",
+        "title": "SubjectResponse",
+        "description": "Someone roles can be assigned to: a subject seen signing in, or one assigned a role or made a\nbootstrap admin before it ever has, which has no name, email or sightings.",
+        "required": [
+          "subject",
+          "bootstrapAdmin",
+          "roles"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "The token's `sub`: what `assign_role` and `unassign_role` take."
+          },
+          "name": {
+            "type": "string",
+            "description": "From the token's `name` claim, when it carried one."
+          },
+          "email": {
+            "type": "string",
+            "description": "From the token's `email` claim, when it carried one."
+          },
+          "firstSeen": {
+            "type": "string",
+            "description": "When it first signed in; absent if it never has."
+          },
+          "lastSeen": {
+            "type": "string",
+            "description": "When it last signed in, accurate to within an hour; absent if it never has."
+          },
+          "bootstrapAdmin": {
+            "type": "boolean",
+            "description": "In `APP_BOOTSTRAP_ADMINS`: it holds `admin` whatever is assigned, and it can't be\nunassigned."
+          },
+          "roles": {
+            "type": "array",
+            "description": "The roles it holds beside `user`, which every signed-in user holds, by name.",
+            "items": {
+              "$ref": "#/components/schemas/SubjectRoleResponse"
+            }
+          }
+        }
+      },
+      "SubjectRoleResponse": {
+        "type": "object",
+        "title": "SubjectRoleResponse",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "The assignment's version: echo it back in `If-Match` to unassign the role. Absent for a\nbootstrap admin's `admin` that isn't also assigned, which can't be unassigned."
+          }
+        }
+      },
+      "SubjectSort": {
+        "type": "string",
+        "enum": [
+          "subject",
+          "-subject",
+          "name",
+          "-name",
+          "email",
+          "-email",
+          "lastSeen",
+          "-lastSeen"
         ]
       },
       "UserResponse": {

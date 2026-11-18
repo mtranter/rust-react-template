@@ -1,4 +1,4 @@
-use super::{Assignment, Grant, Role};
+use super::{Assignment, Grant, Role, Subject};
 use app_authz::{Resource, Value};
 
 /// What can be done with grants. `admin` may do all of it by `access`' own policies, which no
@@ -56,6 +56,25 @@ impl Resource for Assignment {
     const ATTRS: &'static [&'static str] = &[];
     type Action = AssignmentAction;
     const VIEW: Option<AssignmentAction> = None;
+
+    fn attr(&self, _: &str) -> Option<Value> {
+        None
+    }
+}
+
+/// What can be done with subjects: `admin`'s by `access`' own policies, as with grants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray, strum::IntoStaticStr)]
+#[strum(serialize_all = "camelCase")]
+pub enum SubjectAction {
+    /// List them, with the roles assigned to each.
+    List,
+}
+
+impl Resource for Subject {
+    const KIND: &'static str = "subject";
+    const ATTRS: &'static [&'static str] = &[];
+    type Action = SubjectAction;
+    const VIEW: Option<SubjectAction> = Some(SubjectAction::List);
 
     fn attr(&self, _: &str) -> Option<Value> {
         None

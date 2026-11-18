@@ -1,5 +1,5 @@
 use super::{ListQuery, Listed, Tx, Version, Versioned};
-use crate::domain::{Assignment, Grant, GrantId, Role};
+use crate::domain::{Assignment, Grant, GrantId, Role, Sighting, Subject};
 use app_authz::Rows;
 use app_error::AppResult;
 use chrono::{DateTime, Utc};
@@ -92,6 +92,8 @@ pub trait AssignmentRepository: Send + Sync {
     async fn all(&self) -> AppResult<Vec<(String, String)>>;
     /// `Conflict` when it exists; invalid on `role` when no role has that name.
     async fn insert(&self, tx: &mut Tx, assignment: &Assignment) -> AppResult<Version>;
+    /// The assignments of each of `subjects`, ordered by subject and role.
+    async fn of_subjects(&self, subjects: &[String]) -> AppResult<Vec<Versioned<Assignment>>>;
     /// How many subjects `role` is assigned to.
     async fn holders(&self, tx: &mut Tx, role: &str) -> AppResult<i64>;
     /// Only if the stored version is `expected`, else `PreconditionFailed`.
@@ -102,4 +104,36 @@ pub trait AssignmentRepository: Send + Sync {
         role: &str,
         expected: Version,
     ) -> AppResult<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubjectSortKey {
+    Subject,
+    Name,
+    Email,
+    LastSeen,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SubjectFilter {
+    /// Part of the subject, name or email, in any case.
+    pub search: Option<String>,
+}
+
+/// Subjects seen signing in: a record of sightings, upserted rather than saved as an aggregate,
+/// since nothing decides on it and nothing follows from it.
+#[async_trait::async_trait]
+pub trait SubjectRepository: Send + Sync {
+    /// Inserts the subject first seen now, else updates it when the sighting says something new
+    /// or its last seen is `stale_before` or earlier: details the token didn't carry are kept.
+    async fn record(&self, sighting: &Sighting, stale_before: DateTime<Utc>) -> AppResult<()>;
+    /// Every subject seen, assigned a role, or in `bootstrap_admins`, ordered by subject unless
+    /// sorted otherwise.
+    async fn list(
+        &self,
+        filter: &SubjectFilter,
+        bootstrap_admins: &[String],
+        query: &ListQuery<SubjectSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Subject>>;
 }

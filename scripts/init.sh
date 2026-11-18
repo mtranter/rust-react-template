@@ -130,7 +130,7 @@ EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = []}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n];}s' crates/server/tests/composed_app.rs
 # No seed assigns the dev sign-in (frontend/vite.config.ts) `admin` once the
 # reference users are off the server: `make dev` makes it a bootstrap admin
 # instead, unless `.env` sets APP_BOOTSTRAP_ADMINS, and `.env.example` says so.
@@ -182,8 +182,9 @@ const accessRoute = createRoute({
   path: "/access",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "roles" } & GrantFilter & ListSearch<GrantSort> => ({
-    tab: search.tab === "roles" ? "roles" : undefined,
+  ): { tab?: "roles" | "subjects"; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
+    tab: search.tab === "roles" || search.tab === "subjects" ? search.tab : undefined,
+    search: typeof search.search === "string" && search.search ? search.search : undefined,
     ...grantFilter(search),
     ...validateListSearch<GrantSort>(search, grantSortKeys),
   }),

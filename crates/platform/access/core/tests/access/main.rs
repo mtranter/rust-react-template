@@ -14,4 +14,5 @@ mod behaviours {
     mod rebuilding;
     mod revoking;
     mod roles;
+    mod subjects;
 }

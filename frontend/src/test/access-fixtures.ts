@@ -1,12 +1,16 @@
 import type {
+  AssignmentRequest,
+  AssignmentResponse,
   CatalogResponse,
   ErrorBody,
   GrantRequest,
   GrantResponse,
   ListResultGrantResponse,
   ListResultRoleResponse,
+  ListResultSubjectResponse,
   RoleRequest,
   RoleResponse,
+  SubjectResponse,
 } from "@/api";
 import { http, HttpResponse } from "msw";
 
@@ -63,6 +67,34 @@ export function someRoles(): RoleResponse[] {
   return [role("admin"), role("support", { description: "Answers customers" }), role("user")];
 }
 
+export function subject(id: string, changes: Partial<SubjectResponse> = {}): SubjectResponse {
+  return {
+    subject: id,
+    firstSeen: new Date(Date.UTC(2026, 0, 1)).toISOString(),
+    lastSeen: new Date(Date.UTC(2026, 0, 2)).toISOString(),
+    bootstrapAdmin: false,
+    roles: [],
+    ...changes,
+  };
+}
+
+/** Ada, who supports; Bob, who holds nothing; and Root, a bootstrap admin never signed in. */
+export function someSubjects(): SubjectResponse[] {
+  return [
+    subject("auth0|ada", {
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      roles: [{ role: "support", version: "2" }],
+    }),
+    subject("auth0|bob", { name: "Bob Babbage", email: "bob@engines.org" }),
+    {
+      subject: "root",
+      bootstrapAdmin: true,
+      roles: [{ role: "admin" }],
+    },
+  ];
+}
+
 function refusal(code: ErrorBody["code"], message: string, path?: string): ErrorBody {
   return { code, message, ...(path && { fields: [{ path, message }] }), requestId: "test" };
 }
@@ -73,10 +105,17 @@ const forbidden = () => HttpResponse.json(refusal("forbidden", "forbidden"), { s
  * `access` as the server answers an admin for `items` and `roles` (changed in place): the
  * catalog, the grants filtered by role, resource and action, a grant checked against the roles
  * and the catalog and refused when equal to one made, revocations guarded by `If-Match`, and the
- * roles, created unless the name is taken and deleted unless built in or granted. `requests`
- * records each grant list's query and `ifMatches` each revocation's and deletion's `If-Match`.
+ * roles, created unless the name is taken and deleted unless built in or granted; and the
+ * `subjects`, searched by part of their subject, name or email, assigned roles that exist unless
+ * held already (an unseen subject added), and unassigned with `If-Match` unless it's a bootstrap
+ * admin's `admin`. `requests` records each grant and subject list's query and `ifMatches` each
+ * revocation's, deletion's and unassignment's `If-Match`.
  */
-export function accessApi(items: GrantResponse[], roles: RoleResponse[] = someRoles()) {
+export function accessApi(
+  items: GrantResponse[],
+  roles: RoleResponse[] = someRoles(),
+  subjects: SubjectResponse[] = someSubjects(),
+) {
   const requests: URLSearchParams[] = [];
   const ifMatches: (string | null)[] = [];
   const handlers = [
@@ -184,6 +223,77 @@ export function accessApi(items: GrantResponse[], roles: RoleResponse[] = someRo
       roles.splice(index, 1);
       return new HttpResponse(null, { status: 204 });
     }),
+    http.get("*/api/access/subjects", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      const search = params.get("search")?.toLowerCase();
+      const matching = subjects.filter(
+        (s) =>
+          !search ||
+          [s.subject, s.name, s.email].some((field) => field?.toLowerCase().includes(search)),
+      );
+      return HttpResponse.json({
+        items: matching,
+        total: matching.length,
+        limit: 100,
+        offset: 0,
+      } satisfies ListResultSubjectResponse);
+    }),
+    http.post("*/api/access/assignments", async ({ request }) => {
+      const body = (await request.json()) as AssignmentRequest;
+      if (!body.subject.trim()) {
+        return HttpResponse.json(refusal("validation_error", "a subject is named", "subject"), {
+          status: 400,
+        });
+      }
+      if (body.role === "user" || !roles.some((r) => r.name === body.role)) {
+        return HttpResponse.json(refusal("validation_error", "no role has that name", "role"), {
+          status: 400,
+        });
+      }
+      let held = subjects.find((s) => s.subject === body.subject);
+      if (held?.roles.some((r) => r.role === body.role)) {
+        return HttpResponse.json(
+          refusal("conflict", "that role is assigned to that subject already"),
+          { status: 409 },
+        );
+      }
+      if (!held) {
+        held = { subject: body.subject, bootstrapAdmin: false, roles: [] };
+        subjects.push(held);
+      }
+      held.roles.push({ role: body.role, version: "1" });
+      const made: AssignmentResponse = {
+        subject: body.subject,
+        role: body.role,
+        assignedBy: "an-admin",
+        assignedAt: new Date(Date.UTC(2026, 0, 3)).toISOString(),
+        version: "1",
+      };
+      return HttpResponse.json(made, { headers: { ETag: `"${made.version}"` } });
+    }),
+    http.delete("*/api/access/assignments", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const held = subjects.find((s) => s.subject === params.get("subject"));
+      const index = held?.roles.findIndex((r) => r.role === params.get("role")) ?? -1;
+      if (!held || index < 0) {
+        return HttpResponse.json(refusal("not_found", "assignment not found"), { status: 404 });
+      }
+      const ifMatch = request.headers.get("If-Match");
+      ifMatches.push(ifMatch);
+      if (held.bootstrapAdmin && held.roles[index].role === "admin") {
+        return HttpResponse.json(refusal("conflict", "a bootstrap admin always holds `admin`"), {
+          status: 409,
+        });
+      }
+      if (ifMatch !== `"${held.roles[index].version}"`) {
+        return HttpResponse.json(refusal("precondition_failed", "the assignment has changed"), {
+          status: 412,
+        });
+      }
+      held.roles.splice(index, 1);
+      return new HttpResponse(null, { status: 204 });
+    }),
   ];
   return { handlers, requests, ifMatches };
 }
@@ -193,4 +303,5 @@ export const notAnAdmin = [
   http.get("*/api/access/catalog", forbidden),
   http.get("*/api/access/grants", forbidden),
   http.get("*/api/access/roles", forbidden),
+  http.get("*/api/access/subjects", forbidden),
 ];

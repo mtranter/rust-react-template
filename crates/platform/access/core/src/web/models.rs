@@ -2,7 +2,8 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogResource, GrantSortKey, Listing, RoleSortKey, Versioned, scope_name,
+    CatalogAction, CatalogResource, GrantSortKey, HeldRole, Listing, RoleSortKey, SubjectListing,
+    SubjectSortKey, Versioned, scope_name,
 };
 use crate::domain::{Assignment, Grant, Role, Scope};
 use app_persistence::{Direction, Sort};
@@ -274,6 +275,104 @@ impl SortParam for RoleSort {
             Self::NameDesc => (RoleSortKey::Name, Direction::Desc),
             Self::CreatedAtAsc => (RoleSortKey::CreatedAt, Direction::Asc),
             Self::CreatedAtDesc => (RoleSortKey::CreatedAt, Direction::Desc),
+        };
+        Sort { key, direction }
+    }
+}
+
+/// Someone roles can be assigned to: a subject seen signing in, or one assigned a role or made a
+/// bootstrap admin before it ever has, which has no name, email or sightings.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct SubjectResponse {
+    /// The token's `sub`: what `assign_role` and `unassign_role` take.
+    pub subject: String,
+    /// From the token's `name` claim, when it carried one.
+    #[oai(skip_serializing_if_is_none)]
+    pub name: Option<String>,
+    /// From the token's `email` claim, when it carried one.
+    #[oai(skip_serializing_if_is_none)]
+    pub email: Option<String>,
+    /// When it first signed in; absent if it never has.
+    #[oai(skip_serializing_if_is_none)]
+    pub first_seen: Option<String>,
+    /// When it last signed in, accurate to within an hour; absent if it never has.
+    #[oai(skip_serializing_if_is_none)]
+    pub last_seen: Option<String>,
+    /// In `APP_BOOTSTRAP_ADMINS`: it holds `admin` whatever is assigned, and it can't be
+    /// unassigned.
+    pub bootstrap_admin: bool,
+    /// The roles it holds beside `user`, which every signed-in user holds, by name.
+    pub roles: Vec<SubjectRoleResponse>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct SubjectRoleResponse {
+    pub role: String,
+    /// The assignment's version: echo it back in `If-Match` to unassign the role. Absent for a
+    /// bootstrap admin's `admin` that isn't also assigned, which can't be unassigned.
+    #[oai(skip_serializing_if_is_none)]
+    pub version: Option<String>,
+}
+
+impl From<HeldRole> for SubjectRoleResponse {
+    fn from(held: HeldRole) -> Self {
+        Self {
+            role: held.role,
+            version: held.version.map(|v| v.as_i64().to_string()),
+        }
+    }
+}
+
+impl From<SubjectListing> for SubjectResponse {
+    fn from(listing: SubjectListing) -> Self {
+        let s = listing.subject;
+        Self {
+            subject: s.subject,
+            name: s.name,
+            email: s.email,
+            first_seen: s.first_seen.map(|at| at.to_rfc3339()),
+            last_seen: s.last_seen.map(|at| at.to_rfc3339()),
+            bootstrap_admin: listing.bootstrap_admin,
+            roles: listing.roles.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Enum)]
+pub enum SubjectSort {
+    #[oai(rename = "subject")]
+    SubjectAsc,
+    #[oai(rename = "-subject")]
+    SubjectDesc,
+    #[oai(rename = "name")]
+    NameAsc,
+    #[oai(rename = "-name")]
+    NameDesc,
+    #[oai(rename = "email")]
+    EmailAsc,
+    #[oai(rename = "-email")]
+    EmailDesc,
+    #[oai(rename = "lastSeen")]
+    LastSeenAsc,
+    #[oai(rename = "-lastSeen")]
+    LastSeenDesc,
+}
+
+impl SortParam for SubjectSort {
+    type Key = SubjectSortKey;
+
+    fn sort(self) -> Sort<SubjectSortKey> {
+        let (key, direction) = match self {
+            Self::SubjectAsc => (SubjectSortKey::Subject, Direction::Asc),
+            Self::SubjectDesc => (SubjectSortKey::Subject, Direction::Desc),
+            Self::NameAsc => (SubjectSortKey::Name, Direction::Asc),
+            Self::NameDesc => (SubjectSortKey::Name, Direction::Desc),
+            Self::EmailAsc => (SubjectSortKey::Email, Direction::Asc),
+            Self::EmailDesc => (SubjectSortKey::Email, Direction::Desc),
+            Self::LastSeenAsc => (SubjectSortKey::LastSeen, Direction::Asc),
+            Self::LastSeenDesc => (SubjectSortKey::LastSeen, Direction::Desc),
         };
         Sort { key, direction }
     }

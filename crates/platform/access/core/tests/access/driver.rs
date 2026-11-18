@@ -10,7 +10,8 @@ use app_module::Context;
 use app_persistence::{Handlers, Version};
 use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
-use app_web::{Accept, JwtVerifier, json_newtype};
+use app_web::{Accept, Claims, JwtVerifier, json_newtype};
+use chrono::TimeDelta;
 use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
@@ -82,6 +83,26 @@ impl RoleJson {
 
 pub type Roles = Page<RoleJson>;
 
+json_newtype!(pub SubjectJson);
+
+impl SubjectJson {
+    pub fn subject(&self) -> &str {
+        self["subject"].as_str().unwrap_or_default()
+    }
+
+    /// The names of the roles it holds beside `user`.
+    pub fn roles(&self) -> Vec<String> {
+        self["roles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| r["role"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+}
+
+pub type Subjects = Page<SubjectJson>;
+
 pub type Grants = Page<GrantJson>;
 
 /// Who administers the app in these tests: the template assigns them `admin`, the only subject
@@ -93,6 +114,7 @@ pub const ADMIN: &str = "admin";
 pub struct Access {
     api: TestApi,
     ctx: Context,
+    clock: Arc<FixedClock>,
     rules: Rules,
     release: Release,
     worker: Worker,
@@ -119,12 +141,13 @@ impl Access {
         let authorizer = app_authz::Authorizer::baseline(&modules.policies)
             .expect("the policies compile")
             .with_bootstrap_admins(subjects.iter().map(|s| (*s).to_owned()));
-        let ctx = Context::new(pool, clock).with_authorizer(Arc::new(authorizer));
+        let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
         let rules = access::rules(&ctx, modules.clone());
         rules.refresh().await.expect("the grants are read");
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(AccessEndpoints, ctx.idempotency(), |app| {
             app.accept(access::provider(&ctx, modules))
+                .data(access::sign_ins(&ctx))
                 .data(verifier.clone())
                 .data(ctx.authorizer())
         });
@@ -133,6 +156,7 @@ impl Access {
         let access = Self {
             api,
             ctx,
+            clock,
             rules,
             release,
             worker,
@@ -193,6 +217,58 @@ impl Access {
     pub fn sign_in_as(&self, subject: &str) {
         let token = self.verifier.issue(subject, 60).expect("issue token");
         *self.caller.lock().unwrap() = Some(token);
+    }
+
+    /// As [`Self::sign_in_as`], with a token carrying the subject's name and email.
+    pub fn sign_in_with_profile(&self, subject: &str, name: &str, email: &str) {
+        let claims = Claims::lasting(subject, 60)
+            .expect("claims")
+            .named(name)
+            .with_email(email);
+        let token = self.verifier.sign(&claims).expect("issue token");
+        *self.caller.lock().unwrap() = Some(token);
+    }
+
+    pub fn later(&self, by: TimeDelta) {
+        self.clock.advance(by);
+    }
+
+    /// A request of the signed-in subject's that `access` itself refuses nothing of.
+    pub async fn makes_a_request(&self) {
+        let _ = self.roles().await;
+    }
+
+    /// The physical version of `subject`'s record (Postgres' `xmin`), which every write to it
+    /// changes: `None` if it has none.
+    pub async fn subject_record_written(&self, subject: &str) -> Option<String> {
+        sqlx::query_scalar("SELECT xmin::text FROM access.subject WHERE subject = $1")
+            .bind(subject)
+            .fetch_optional(&self.ctx.pool())
+            .await
+            .expect("read the subject")
+    }
+
+    pub async fn subjects(&self) -> Outcome<Subjects> {
+        self.subjects_where(&[]).await
+    }
+
+    /// `query` as the API names its parameters: `search`, `sort`, `limit`, `offset`.
+    pub async fn subjects_where(&self, query: &[(&str, &str)]) -> Outcome<Subjects> {
+        let query: Vec<_> = query.iter().map(|(k, v)| (*k, v.to_string())).collect();
+        self.signed(self.api.get("/api/access/subjects").queries(&query))
+            .send()
+            .await
+    }
+
+    /// `subject` as an admin lists it, which must be listed.
+    pub async fn subject(&self, subject: &str) -> SubjectJson {
+        self.subjects()
+            .await
+            .expect("an admin lists the subjects")
+            .items
+            .into_iter()
+            .find(|s| s.subject() == subject)
+            .unwrap_or_else(|| panic!("{subject} is listed"))
     }
 
     pub fn sign_out(&self) {

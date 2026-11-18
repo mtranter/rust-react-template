@@ -1,9 +1,9 @@
 use super::Caller;
 use super::models::{
     AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
-    RoleRequest, RoleResponse, RoleSort,
+    RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
 };
-use crate::application::{AccessService, GrantFilter, Versioned};
+use crate::application::{AccessService, GrantFilter, SubjectFilter, Versioned};
 use crate::domain::{AssignRole, CreateRole, Grant, GrantAccess, GrantId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
@@ -199,6 +199,32 @@ impl AccessEndpoints {
         let expected = if_match_version(if_match.0)?;
         access.0.delete_role(&caller, &name.0, expected).await?;
         Ok(Deleted::Deleted)
+    }
+
+    /// List the subjects roles can be assigned to (each a token's `sub`): everyone who has
+    /// signed in, with their name and email when their token carried them and when they were
+    /// last seen (to within an hour), and anyone assigned a role or in `APP_BOOTSTRAP_ADMINS`
+    /// who hasn't signed in yet. Each comes with the roles it holds beside `user`, and each
+    /// role with the version `unassign_role` takes; a bootstrap admin is marked `bootstrapAdmin`
+    /// and holds `admin`, which can't be unassigned. `search` matches part of the subject, name
+    /// or email, in any case. Paginated, ordered by subject unless `sort` says otherwise
+    /// (`subject`, `name`, `email` or `lastSeen`, `-` prefix for descending). `403` unless the
+    /// caller is an `admin`, or holds a role granted it.
+    #[oai(path = "/subjects", method = "get", operation_id = "list_subjects")]
+    async fn list_subjects(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        search: Query<Option<String>>,
+        limit: Query<Option<i64>>,
+        offset: Query<Option<i64>>,
+        sort: Query<Option<Vec<SubjectSort>>>,
+    ) -> ApiResult<Json<ListResult<SubjectResponse>>> {
+        let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
+        let page = query.page;
+        let filter = SubjectFilter { search: search.0 };
+        let listed = access.0.list_subjects(&caller, filter, query).await?;
+        Ok(Json(ListResult::new(listed, page)))
     }
 
     /// Assign a role to a subject (the token's `sub`), whether or not they have signed in yet.
