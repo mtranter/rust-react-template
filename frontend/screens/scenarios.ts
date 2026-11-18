@@ -6,6 +6,7 @@ import type {
   ListResultNoteSummaryResponse,
   NoteResponse,
   NoteSummaryResponse,
+  RoleResponse,
   UserResponse,
 } from "@/api";
 import { http, HttpResponse, type RequestHandler } from "msw";
@@ -185,11 +186,33 @@ const grants: GrantResponse[] = [
   version: "1",
 }));
 
+const roles: RoleResponse[] = [
+  ["admin", "Administers the app: always reaches access, whatever is granted."],
+  ["support", "Answers customers"],
+  ["user", "Every signed-in user."],
+].map(([name, description]) => ({
+  name,
+  description,
+  builtIn: name !== "support",
+  ...(name === "support" && { createdBy: "an-admin" }),
+  createdAt: new Date(Date.UTC(2026, 0, 1, 9, 0)).toISOString(),
+  version: "1",
+}));
+
 /** `access` as the server answers an admin. */
 const accessApi = [
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
   http.get("*/api/access/grants", () =>
     HttpResponse.json({ items: grants, total: grants.length, limit: 20, offset: 0 }),
+  ),
+  http.get("*/api/access/roles", () =>
+    HttpResponse.json({ items: roles, total: roles.length, limit: 100, offset: 0 }),
+  ),
+  http.post("*/api/access/roles", () =>
+    HttpResponse.json(
+      { code: "conflict", message: "a role of that name exists already", requestId: "screens" },
+      { status: 409 },
+    ),
   ),
 ];
 
@@ -352,10 +375,29 @@ export const scenarios: Scenario[] = [
     steps: async (page) => {
       await page.getByRole("button", { name: "Grant access" }).click();
       const dialog = page.getByRole("dialog", { name: "Grant access" });
-      await dialog.getByLabel("Role").fill("support");
+      await dialog.getByLabel("Role").selectOption("support");
       await dialog.getByLabel("Resource").selectOption("gadget");
     },
     shows: (page) => page.getByRole("dialog", { name: "Grant access" }).getByLabel("Action"),
+  },
+  {
+    name: "access-roles",
+    route: "/access?tab=roles",
+    handlers: accessApi,
+    shows: (page) => page.getByText("Answers customers"),
+  },
+  {
+    name: "access-role-taken",
+    route: "/access?tab=roles",
+    handlers: accessApi,
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Create role" }).click();
+      const dialog = page.getByRole("dialog", { name: "Create role" });
+      await dialog.getByLabel("Name").fill("support");
+      await dialog.getByRole("button", { name: "Create" }).click();
+    },
+    shows: (page) =>
+      page.getByRole("dialog", { name: "Create role" }).getByText("a role of that name exists"),
   },
   {
     name: "access-not-an-admin",

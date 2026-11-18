@@ -16,7 +16,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { submitErrors } from "@/lib/api-errors";
@@ -24,6 +23,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { useRoles } from "./use-roles";
 
 const formFields = ["role", "resource", "action", "scope"] as const;
 
@@ -44,8 +44,8 @@ export function GrantAccessDialog() {
         <DialogHeader>
           <DialogTitle>Grant access</DialogTitle>
           <DialogDescription>
-            Every server allows it within seconds. The role is any your identity provider puts in
-            tokens.
+            Every server allows it within seconds. To grant a role not listed, create it on the
+            Roles tab first.
           </DialogDescription>
         </DialogHeader>
         <GrantAccessForm onGranted={() => setOpen(false)} />
@@ -57,6 +57,7 @@ export function GrantAccessDialog() {
 function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const queryClient = useQueryClient();
   const catalog = useQuery(getAccessCatalogOptions());
+  const roles = useRoles();
   const grant = useMutation({
     ...postAccessGrantsMutation(),
     meta: { formFields },
@@ -68,7 +69,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
     validators: {
       onSubmitAsync: async ({ value }) => {
         try {
-          await grant.mutateAsync({ body: { ...value, role: value.role.trim() } });
+          await grant.mutateAsync({ body: value });
         } catch (error) {
           return submitErrors(error);
         }
@@ -96,14 +97,21 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         {(field) => (
           <Field data-invalid={field.state.meta.errors.length > 0}>
             <FieldLabel htmlFor="grant-role">Role</FieldLabel>
-            <Input
+            <NativeSelect
               id="grant-role"
-              autoComplete="off"
+              className="w-full"
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
               aria-invalid={field.state.meta.errors.length > 0}
               aria-describedby="grant-role-error"
-            />
+            >
+              <NativeSelectOption value="">Choose a role</NativeSelectOption>
+              {roles.data?.items.map((r) => (
+                <NativeSelectOption key={r.name} value={r.name}>
+                  {r.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
             <FieldError id="grant-role-error" errors={errorsOf(field.state.meta.errors)} />
           </Field>
         )}
@@ -209,7 +217,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
           }
         >
           {([isSubmitting, role, action]) => (
-            <Button type="submit" disabled={isSubmitting || !role.trim() || !action}>
+            <Button type="submit" disabled={isSubmitting || !role || !action}>
               Grant
             </Button>
           )}
