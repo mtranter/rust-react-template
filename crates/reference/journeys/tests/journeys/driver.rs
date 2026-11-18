@@ -2,6 +2,7 @@
 //! module's driver it stubs nothing: it boots the reference modules' composed
 //! app as `server` does, with the composed worker and real JWT auth.
 
+use app_authz::Principal;
 use app_db::{DeadLetter, Worker};
 use app_domain::{Clock, FixedClock, seed_time};
 use app_events::Event;
@@ -70,6 +71,8 @@ impl NoteJson {
 
 json_newtype!(pub GrantJson);
 
+json_newtype!(pub AssignmentJson);
+
 json_newtype!(pub CatalogJson);
 
 json_newtype!(pub NoteSummaryJson);
@@ -89,14 +92,18 @@ impl NoteSummaryJson {
 
 pub type Found = Page<NoteSummaryJson>;
 
-/// The role every signed-in user has (ADR 0040), which every module's default
-/// grants name.
-pub const USER: &str = "user";
-
-/// Whom the journeys' own checks read as: an `admin`, who sees every note,
-/// and is none of the seeded users.
+/// Whom the journeys' own checks read as: an `admin` (`TEMPLATE` assigns it),
+/// who sees every note, and is none of the seeded users.
 const READER: &str = "00000000-0000-0000-0000-000000000000";
 const ADMIN: &str = "admin";
+
+/// Assigns `role` to `subject` through `access`' Module API, as a seed does.
+async fn assign(ctx: &Context, subject: &str, role: &str) {
+    access::assignments(ctx)
+        .ensure_assigned(&Principal::System, subject, role)
+        .await
+        .expect("assign the role");
+}
 
 pub struct App {
     api: TestApi,
@@ -157,7 +164,8 @@ impl App {
     }
 
     /// The instance's next poll of the grants' revision, as it makes every
-    /// `access::POLL_EVERY`: what bounds how long a change of grants takes to apply.
+    /// `access::POLL_EVERY`: what bounds how long a change of grants or
+    /// assignments takes to apply.
     pub async fn polls_the_grants(&self) {
         self.rules.refresh().await.expect("the grants are read");
     }
@@ -206,7 +214,7 @@ impl App {
     pub async fn note(&self, id: impl Display) -> Outcome<NoteJson> {
         self.api
             .get(format!("/api/notes/{id}"))
-            .bearer(self.token_of(READER, &[ADMIN]))
+            .bearer(self.token_of(READER))
             .send()
             .await
     }
@@ -218,47 +226,45 @@ impl App {
         let found: Outcome<Found> = self
             .api
             .get("/api/note-search")
-            .bearer(self.token_of(READER, &[USER]))
+            .bearer(self.token_of(READER))
             .query("q", text)
             .send()
             .await;
         found.expect("searching never fails")
     }
 
-    /// Signed in with a real token, which the server verifies, as a `user`.
+    /// Signed in with a real token, which the server verifies, holding `user`
+    /// and whatever `access` assigns them. The seeds assign Alice `admin` (she
+    /// is the dev sign-in), so a journey that needs a plain user uses Bob.
     pub fn as_user(&self, user: impl Display) -> Session<'_> {
-        self.with_roles(user, &[USER])
-    }
-
-    /// Signed in as an `admin`, who manages who may do what.
-    pub fn as_admin(&self, user: impl Display) -> Admin<'_> {
-        Admin {
-            app: self,
-            token: self.token_of(user, &[ADMIN]),
-        }
-    }
-
-    /// Signed in, but holding only `roles`.
-    pub fn with_roles(&self, user: impl Display, roles: &[&str]) -> Session<'_> {
         Session {
             app: self,
-            token: self.token_of(user, roles),
+            token: self.token_of(user),
         }
     }
 
-    fn token_of(&self, user: impl Display, roles: &[&str]) -> String {
+    /// Signed in as an `admin`, who manages who may do what: assigned `admin`
+    /// through `access`, as a seed does, from this instance's next poll.
+    pub async fn as_admin(&self, user: impl Display) -> Admin<'_> {
+        let user = user.to_string();
+        let ctx = Context::new(self.pool.clone(), self.clock.clone());
+        assign(&ctx, &user, ADMIN).await;
+        self.polls_the_grants().await;
+        Admin {
+            app: self,
+            token: self.token_of(user),
+        }
+    }
+
+    fn token_of(&self, user: impl Display) -> String {
         self.verifier
-            .issue(user.to_string(), roles, 60)
+            .issue(user.to_string(), 60)
             .expect("issue token")
     }
 
-    /// An AI agent acting as `user`, a `user`, over MCP, with a real token.
+    /// An AI agent acting as `user` over MCP, with a real token.
     pub async fn as_agent(&self, user: impl Display) -> Agent<'_> {
-        self.as_agent_with_roles(user, &[USER]).await
-    }
-
-    pub async fn as_agent_with_roles(&self, user: impl Display, roles: &[&str]) -> Agent<'_> {
-        let token = self.token_of(&user, roles);
+        let token = self.token_of(&user);
         let session = self
             .api
             .mcp_session::<Refusal>(Some(&token))
@@ -361,6 +367,30 @@ impl Admin<'_> {
             .await
     }
 
+    /// `role` to `subject`, the token's `sub`.
+    pub async fn assign(&self, subject: impl Display, role: &str) -> Outcome<AssignmentJson> {
+        self.app
+            .api
+            .post("/api/access/assignments")
+            .bearer(&self.token)
+            .json(&json!({ "subject": subject.to_string(), "role": role }))
+            .send()
+            .await
+    }
+
+    pub async fn unassign(&self, assignment: &AssignmentJson) -> Outcome<()> {
+        let field = |name: &str| assignment[name].as_str().unwrap_or_default().to_owned();
+        self.app
+            .api
+            .delete("/api/access/assignments")
+            .bearer(&self.token)
+            .query("subject", field("subject"))
+            .query("role", field("role"))
+            .if_match(assignment.version())
+            .send_empty()
+            .await
+    }
+
     pub async fn revoke(&self, grant: &GrantJson) -> Outcome<()> {
         self.app
             .api
@@ -435,6 +465,13 @@ impl Session<'_> {
         self.signed(self.app.api.get("/api/notes")).send().await
     }
 
+    /// The roles grants are made to: `access`' own, `admin`'s unless granted.
+    pub async fn roles(&self) -> Outcome<Page<serde_json::Value>> {
+        self.signed(self.app.api.get("/api/access/roles"))
+            .send()
+            .await
+    }
+
     /// At the version the user's profile reads at now.
     pub async fn rename_myself(&self, display_name: &str) -> Outcome<UserJson> {
         let me = self.me().await?;
@@ -460,7 +497,8 @@ impl Session<'_> {
 }
 
 /// Every journey's database starts as a copy of this: every module migrated,
-/// its default grants applied, and seeded, as `migrate` and `seed` leave it.
+/// its default grants applied, and seeded, as `migrate` and `seed` leave it,
+/// with `READER` assigned `admin`.
 pub const TEMPLATE: Template = Template::new("journeys", |pool| {
     Box::pin(async move {
         app_db::run_migrations(&pool, &server::module_migrations::<Reference>())
@@ -472,9 +510,11 @@ pub const TEMPLATE: Template = Template::new("journeys", |pool| {
         ))
         .await
         .expect("apply every module's default grants");
+        let ctx = Context::new(pool.clone(), Arc::new(app_domain::SystemClock));
         for module in Reference::modules() {
-            module.seed(pool.clone()).await.expect("seed every module");
+            module.seed(&ctx).await.expect("seed every module");
         }
+        assign(&ctx, READER, ADMIN).await;
         // As in an environment seeded before this build: its subscriptions
         // receive none of the seeds' events, but an `earliest` one's backfill does.
         app_db::Worker::new(

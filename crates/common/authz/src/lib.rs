@@ -27,6 +27,13 @@ pub use principal::{Principal, Value};
 pub use resource::{Action, Resource};
 pub use rule_set::{CompileError, Compiled, Plan, Rows, RuleSet};
 
+/// The role every signed-in user holds, which is never assigned (ADR 0040).
+pub const USER: &str = "user";
+
+/// The role that administers the app: `access`' own policies give it `access`, whatever is
+/// granted, and bootstrap admins hold it whatever is assigned.
+pub const ADMIN: &str = "admin";
+
 /// A policy file refused when loading, naming its file and line.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{file}:{line}: {reason}")]

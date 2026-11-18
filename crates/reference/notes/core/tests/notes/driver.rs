@@ -174,10 +174,14 @@ impl Notes {
         notes
     }
 
-    /// Later requests are `user`'s, with a real token carrying `roles`. Every
-    /// test starts signed in as Alice, a `user`.
+    /// Later requests are `user`'s, with a real token, holding `user` and
+    /// `roles`, assigned in the rule set in force as `access` would. Every test
+    /// starts signed in as Alice, a `user`. Roles are the subject's, not the
+    /// token's: a later `by(..)` verb for the same subject resets them to `user`.
     pub fn sign_in_as(&self, user: impl Display, roles: &[&str]) {
-        *self.caller.lock().unwrap() = Some(self.token(user, roles));
+        let user = user.to_string();
+        self.ctx.authorizer().assign_in_memory(&user, roles);
+        *self.caller.lock().unwrap() = Some(self.token(user));
     }
 
     /// Later requests present no token.
@@ -185,9 +189,9 @@ impl Notes {
         *self.caller.lock().unwrap() = None;
     }
 
-    fn token(&self, user: impl Display, roles: &[&str]) -> String {
+    fn token(&self, user: impl Display) -> String {
         self.verifier
-            .issue(user.to_string(), roles, 60)
+            .issue(user.to_string(), 60)
             .expect("issue token")
     }
 
@@ -198,9 +202,11 @@ impl Notes {
         }
     }
 
-    /// As `author`, a `user`, signed in for this request alone.
+    /// As `author`, holding only `user`, signed in for this request alone.
     fn by<'c>(&self, author: impl Display, call: Call<'c>) -> Call<'c> {
-        call.bearer(self.token(author, &[USER]))
+        let author = author.to_string();
+        self.ctx.authorizer().assign_in_memory(&author, &[]);
+        call.bearer(self.token(author))
     }
 
     /// The rule set the endpoints are served under.

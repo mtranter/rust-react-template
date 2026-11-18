@@ -1,4 +1,4 @@
-use crate::domain::{GrantError, RoleError};
+use crate::domain::{AssignmentError, GrantError, RoleError};
 use app_authz::{GrantRefusal, GrantRefused};
 use app_error::AppError;
 
@@ -23,6 +23,22 @@ impl From<RoleError> for AppError {
                 AppError::invalid_field("description", err.to_string())
             }
             RoleError::BuiltIn => AppError::conflict(err.to_string()),
+        }
+    }
+}
+
+impl From<AssignmentError> for AppError {
+    fn from(err: AssignmentError) -> Self {
+        match err {
+            AssignmentError::EmptySubject | AssignmentError::SubjectTooLong { .. } => {
+                AppError::invalid_field("subject", err.to_string())
+            }
+            AssignmentError::EmptyRole | AssignmentError::Implicit => {
+                AppError::invalid_field("role", err.to_string())
+            }
+            AssignmentError::BootstrapAdmin | AssignmentError::LastAdmin => {
+                AppError::conflict(err.to_string())
+            }
         }
     }
 }

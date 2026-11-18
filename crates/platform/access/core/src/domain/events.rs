@@ -14,3 +14,11 @@ pub enum RoleEvent {
     Created,
     Deleted { by: super::GrantedBy },
 }
+
+/// What happened to an [`Assignment`](super::Assignment).
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssignmentEvent {
+    Assigned,
+    Unassigned { by: super::GrantedBy },
+}

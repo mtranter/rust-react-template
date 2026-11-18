@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::condition::Condition;
 use crate::policies::GATE_ACTION;
 use crate::policy::Effect;
-use crate::{Action, Filter, Grant, Policies, Principal, Resource};
+use crate::{Action, Filter, Grant, Policies, Principal, Resource, USER};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Roles {
@@ -104,10 +104,12 @@ pub struct Compiled {
 }
 
 /// Every Module's policies and every grant, compiled into one set of rules keyed by resource and
-/// action. Rebuilt and swapped whole when grants change (`Authorizer`).
+/// action, with the roles assigned to each subject. Rebuilt and swapped whole when grants, roles
+/// or assignments change (`Authorizer`), so resolving a Principal reads no store.
 #[derive(Debug, Clone, Default)]
 pub struct RuleSet {
     rules: HashMap<String, HashMap<&'static str, Vec<Entry>>>,
+    assigned: HashMap<String, BTreeSet<String>>,
 }
 
 impl RuleSet {
@@ -136,6 +138,35 @@ impl RuleSet {
             }
         }
         Ok(Compiled { rule_set, stale })
+    }
+
+    /// These rules, with `assignments` (subject, role) as the roles each subject holds beside
+    /// [`USER`].
+    pub fn assigning(mut self, assignments: impl IntoIterator<Item = (String, String)>) -> Self {
+        self.assigned.clear();
+        for (subject, role) in assignments {
+            self.assign(subject, role);
+        }
+        self
+    }
+
+    pub(crate) fn assign(&mut self, subject: String, role: String) {
+        if role != USER {
+            self.assigned.entry(subject).or_default().insert(role);
+        }
+    }
+
+    pub(crate) fn unassign(&mut self, subject: &str) {
+        self.assigned.remove(subject);
+    }
+
+    /// The roles assigned to `subject`, by name; [`USER`] is implicit, so never among them.
+    pub fn assigned(&self, subject: &str) -> impl Iterator<Item = &str> {
+        self.assigned
+            .get(subject)
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
     }
 
     fn add(&mut self, kind: &str, rule: &Rule) {

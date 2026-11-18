@@ -6,6 +6,7 @@ use crate::db::{PgUserRepository, migrations};
 use crate::domain::User;
 use crate::mail::LogMailer;
 use crate::web::OPERATIONS;
+use access_api::RoleAssignments;
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_module::{Context, Module};
 use app_persistence::Handlers;
@@ -57,7 +58,8 @@ pub fn handlers(ctx: &Context, mailer: Arc<dyn Mailer>) -> Handlers {
     Handlers::new().on::<UserRegistered>("users.welcome_new_user", Welcome::new(repo, mailer))
 }
 
-pub fn module() -> Module {
+/// `assignments` is `access`', through which the seed gives its users their roles.
+pub fn module(assignments: fn(&Context) -> Arc<dyn RoleAssignments>) -> Module {
     let module = Module::new(provider)
         .with_policies(policies)
         .performing(OPERATIONS)
@@ -65,6 +67,11 @@ pub fn module() -> Module {
         .with_handlers(|ctx| handlers(ctx, Arc::new(LogMailer)))
         .with_migrations(migrations());
     #[cfg(feature = "seed")]
-    let module = module.with_seed(|pool| async move { crate::seed::standard(&pool).await });
+    let module = module.with_seed(move |ctx| async move {
+        crate::seed::standard(&ctx.pool()).await?;
+        crate::seed::assign_roles(assignments(&ctx).as_ref()).await
+    });
+    #[cfg(not(feature = "seed"))]
+    let _ = assignments;
     module
 }

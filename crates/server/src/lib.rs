@@ -78,8 +78,8 @@ pub fn access_modules<C: Composition>() -> Result<Arc<access::Modules>, Policies
     Ok(Arc::new(access::Modules::of(&C::modules())?))
 }
 
-/// What keeps `ctx.authorizer()` in step with the grants `access` stores: refresh
-/// it once before serving, then watch it.
+/// What keeps `ctx.authorizer()` in step with the grants and assignments `access`
+/// stores: refresh it once before serving, then watch it.
 pub fn rules<C: Composition>(ctx: &Context) -> Result<access::Rules, PoliciesError> {
     Ok(access::rules(ctx, access_modules::<C>()?))
 }

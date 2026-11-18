@@ -1,8 +1,9 @@
 use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
-    CatalogAction, CatalogResource, EventPublisher, GrantFilter, GrantRepository, GrantSortKey,
-    ListQuery, Listed, RoleRepository, Transactions, Version, Versioned,
+    AssignmentRepository, CatalogAction, CatalogResource, EventPublisher, GrantFilter,
+    GrantRepository, GrantSortKey, ListQuery, Listed, RoleRepository, Transactions, Version,
+    Versioned,
 };
 use crate::domain::{
     CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
@@ -41,6 +42,7 @@ pub struct Listing {
 pub struct AccessService {
     pub(super) repo: Arc<dyn GrantRepository>,
     pub(super) roles: Arc<dyn RoleRepository>,
+    pub(super) assignments: Arc<dyn AssignmentRepository>,
     pub(super) publisher: Arc<dyn EventPublisher>,
     pub(super) transactions: Arc<dyn Transactions>,
     pub(super) clock: Arc<dyn Clock>,
@@ -56,9 +58,12 @@ pub(super) fn acting(principal: &Principal) -> GrantedBy {
 }
 
 impl AccessService {
+    // One argument per port `di.rs` wires.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         repo: Arc<dyn GrantRepository>,
         roles: Arc<dyn RoleRepository>,
+        assignments: Arc<dyn AssignmentRepository>,
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
@@ -68,6 +73,7 @@ impl AccessService {
         Self {
             repo,
             roles,
+            assignments,
             publisher,
             transactions,
             clock,

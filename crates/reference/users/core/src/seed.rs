@@ -7,6 +7,8 @@
 use crate::application::{EventPublisher, Expected, Transactions, UserRepository, pending};
 use crate::db::PgUserRepository;
 use crate::domain::{RegisterUser, User, UserEvent, UserId};
+use access_api::RoleAssignments;
+use app_authz::{ADMIN, Principal};
 use app_db::{PgEventPublisher, PgTransactions};
 use app_domain::{FixedClock, seed_time};
 use app_error::AppResult;
@@ -58,4 +60,20 @@ pub async fn standard(pool: &PgPool) -> AppResult<()> {
         }
     }
     tx.commit().await
+}
+
+/// The roles each seeded user holds beside `user`: Alice administers the app, so the dev
+/// sign-in, which is hers, reaches the admin screen.
+pub fn roles() -> Vec<(UserId, &'static str)> {
+    vec![(USER_ID_ALICE, ADMIN)]
+}
+
+/// Assigns [`roles`] through `access`, as `System`, keeping what is assigned already.
+pub async fn assign_roles(assignments: &dyn RoleAssignments) -> AppResult<()> {
+    for (user, role) in roles() {
+        assignments
+            .ensure_assigned(&Principal::System, &user.to_string(), role)
+            .await?;
+    }
+    Ok(())
 }

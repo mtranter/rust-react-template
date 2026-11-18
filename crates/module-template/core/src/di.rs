@@ -57,6 +57,6 @@ pub fn module() -> Module {
         .with_handlers(handlers)
         .with_migrations(migrations());
     #[cfg(feature = "seed")]
-    let module = module.with_seed(|pool| async move { crate::seed::standard(&pool).await });
+    let module = module.with_seed(|ctx| async move { crate::seed::standard(&ctx.pool()).await });
     module
 }

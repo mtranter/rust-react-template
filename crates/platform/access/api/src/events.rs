@@ -1,5 +1,5 @@
-//! What `access` announces (ADR 0012): a topic per root, grants' and roles', each event carrying
-//! the grant or role.
+//! What `access` announces (ADR 0012): a topic per root, grants', roles' and assignments', each
+//! event carrying the grant, role or assignment.
 
 pub mod v1 {
     use chrono::{DateTime, Utc};
@@ -11,7 +11,7 @@ pub mod v1 {
     #[serde(rename_all = "camelCase")]
     pub struct Grant {
         pub id: Uuid,
-        /// As the identity provider names it in the token's `roles`.
+        /// The role's name (`access.role.v1`).
         pub role: String,
         pub resource: String,
         pub action: String,
@@ -74,6 +74,44 @@ pub mod v1 {
         }
     }
 
+    /// What every assignment event carries. Only gains fields, each `#[serde(default)]`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Assignment {
+        /// Whom the role is assigned to: the token's `sub`.
+        pub subject: String,
+        pub role: String,
+        /// The subject who assigned it; absent for one a seed assigned as `System`.
+        pub assigned_by: Option<String>,
+        pub assigned_at: DateTime<Utc>,
+    }
+
+    /// Who unassigned the role: the assignment's state can't say.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UnassignedBy {
+        pub unassigned_by: Option<String>,
+    }
+
+    /// The key of an assignment's events: its role and subject, which identify it. The role's
+    /// length leads, so no two pairs share a key whatever characters they hold.
+    pub fn assignment_key(subject: &str, role: &str) -> String {
+        format!("{}:{role}:{subject}", role.len())
+    }
+
+    app_events::topic! {
+        /// Every role assigned to a subject and unassigned, keyed by the role and subject.
+        pub topic AssignmentTopic("access.assignment.v1") {
+            source: "/access",
+            retention: app_events::TimeDelta::days(7),
+            entity: Assignment,
+            key: |assignment| assignment_key(&assignment.subject, &assignment.role),
+            events: AssignmentEvent, AssignmentEventKind;
+            RoleAssigned => Assigned: "access.role_assigned",
+            RoleUnassigned => Unassigned(UnassignedBy): "access.role_unassigned",
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -106,6 +144,24 @@ pub mod v1 {
                 assert_eq!(&RoleEvent::decode(event_type, context).unwrap(), event);
             }
             assert_eq!(events.len(), RoleEventKind::ALL.len());
+        }
+
+        #[test]
+        fn every_assignment_event_round_trips() {
+            let events = [
+                AssignmentEvent::Assigned,
+                AssignmentEvent::Unassigned(UnassignedBy {
+                    unassigned_by: Some("someone".into()),
+                }),
+            ];
+            for event in &events {
+                let (event_type, context) = event.encode().unwrap();
+                assert_eq!(
+                    &AssignmentEvent::decode(event_type, context).unwrap(),
+                    event
+                );
+            }
+            assert_eq!(events.len(), AssignmentEventKind::ALL.len());
         }
     }
 }

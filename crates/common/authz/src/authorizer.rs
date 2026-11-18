@@ -4,19 +4,65 @@ use arc_swap::ArcSwap;
 
 use app_error::{AppError, AppResult};
 
-use crate::{CompileError, Plan, Policies, Principal, Resource, Rows, RuleSet};
+use crate::{ADMIN, CompileError, Plan, Policies, Principal, Resource, Rows, RuleSet, USER};
 
-/// The rule set in force, replaced whole when grants change.
+/// The rule set in force, replaced whole when grants, roles or assignments change, and the
+/// bootstrap admins, fixed for the process's life.
 #[derive(Debug)]
 pub struct Authorizer {
     current: ArcSwap<RuleSet>,
+    bootstrap_admins: Vec<String>,
 }
 
 impl Authorizer {
     pub fn new(rule_set: RuleSet) -> Self {
         Self {
             current: ArcSwap::from_pointee(rule_set),
+            bootstrap_admins: Vec::new(),
         }
+    }
+
+    /// `subjects` hold [`ADMIN`] whatever is assigned (`APP_BOOTSTRAP_ADMINS`): how a fresh app
+    /// gets its first admin.
+    pub fn with_bootstrap_admins(self, subjects: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            bootstrap_admins: subjects.into_iter().collect(),
+            ..self
+        }
+    }
+
+    pub fn bootstrap_admins(&self) -> &[String] {
+        &self.bootstrap_admins
+    }
+
+    pub fn is_bootstrap_admin(&self, subject: &str) -> bool {
+        self.bootstrap_admins.iter().any(|s| s == subject)
+    }
+
+    /// The user `subject` acts as: [`USER`], the roles assigned to it in the rule set in force,
+    /// and [`ADMIN`] if it is a bootstrap admin. Reads no store.
+    pub fn principal(&self, subject: &str) -> Principal {
+        let current = self.current.load();
+        let mut roles = vec![USER];
+        roles.extend(current.assigned(subject));
+        if self.is_bootstrap_admin(subject) && !roles.contains(&ADMIN) {
+            roles.push(ADMIN);
+        }
+        Principal::user(subject, roles)
+    }
+
+    /// Assigns `subject` exactly `roles` (beside [`USER`]) in the rule set in force, until it is
+    /// next replaced: for a Module's own tests, which have no `access` to assign them.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn assign_in_memory(&self, subject: &str, roles: &[&str]) {
+        self.current.rcu(|current| {
+            let mut next = RuleSet::clone(current);
+            next.unassign(subject);
+            for role in roles {
+                next.assign(subject.to_owned(), (*role).to_owned());
+            }
+            next
+        });
     }
 
     /// Every Module's policies with their default grants, held in memory: for a Module's own

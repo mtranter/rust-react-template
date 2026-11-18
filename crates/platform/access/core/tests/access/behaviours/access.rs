@@ -13,7 +13,7 @@ async fn grants_are_refused_to_a_caller_who_is_not_signed_in(pool: PgPool) {
 async fn a_caller_who_is_not_an_admin_is_kept_out(pool: PgPool) {
     let access = Access::seeded(pool).await;
     let revision = access.revision().await;
-    access.sign_in_with_roles(&["user"]);
+    access.sign_in_as("a-user");
 
     assert_eq!(access.grants().await.err(), Some(Refusal::Forbidden));
     assert_eq!(access.catalog().await.err(), Some(Refusal::Forbidden));
@@ -41,8 +41,9 @@ async fn a_role_granted_access_to_grants_may_list_them(pool: PgPool) {
         .grant("auditor", "grant", "list", "any")
         .await
         .unwrap();
+    access.assign("an-auditor", "auditor").await.unwrap();
     access.polls().await;
-    access.sign_in_with_roles(&["auditor"]);
+    access.sign_in_as("an-auditor");
 
     assert!(access.grants().await.is_ok());
     assert_eq!(

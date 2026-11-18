@@ -144,7 +144,7 @@ impl Users {
                 .data(ctx.authorizer())
         });
         let reader = verifier
-            .issue(seed::USER_ID_ALICE.to_string(), &[USER], 60)
+            .issue(seed::USER_ID_ALICE.to_string(), 60)
             .expect("issue token");
         Self {
             api,
@@ -266,13 +266,9 @@ impl Users {
 
     /// As a `user`, who need not exist.
     pub fn signed_in_as(&self, user: UserId) -> Session<'_> {
-        self.signed_in_with_roles(user, &[USER])
-    }
-
-    pub fn signed_in_with_roles(&self, user: UserId, roles: &[&str]) -> Session<'_> {
         let token = self
             .verifier
-            .issue(user.to_string(), roles, 60)
+            .issue(user.to_string(), 60)
             .expect("issue token");
         Session {
             users: self,

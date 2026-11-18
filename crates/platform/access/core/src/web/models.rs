@@ -4,7 +4,7 @@
 use crate::application::{
     CatalogAction, CatalogResource, GrantSortKey, Listing, RoleSortKey, Versioned, scope_name,
 };
-use crate::domain::{Grant, Role, Scope};
+use crate::domain::{Assignment, Grant, Role, Scope};
 use app_persistence::{Direction, Sort};
 use app_web::SortParam;
 use poem_openapi::{Enum, Object};
@@ -212,6 +212,42 @@ impl From<Versioned<Role>> for RoleResponse {
             built_in: r.is_built_in(),
             created_by: r.created_by().subject().map(str::to_owned),
             created_at: r.created_at().to_rfc3339(),
+            version: version.as_i64().to_string(),
+        }
+    }
+}
+
+/// A role to assign to a subject.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AssignmentRequest {
+    /// Whom to assign it to: the token's `sub`, whether or not they have signed in yet.
+    pub subject: String,
+    /// A role that exists (`list_roles`), never `user`, which every signed-in user holds.
+    pub role: String,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AssignmentResponse {
+    pub subject: String,
+    pub role: String,
+    /// Who assigned it; absent for one a seed assigned.
+    #[oai(skip_serializing_if_is_none)]
+    pub assigned_by: Option<String>,
+    pub assigned_at: String,
+    /// Echo it back in `If-Match` to unassign the role.
+    pub version: String,
+}
+
+impl From<Versioned<Assignment>> for AssignmentResponse {
+    fn from(versioned: Versioned<Assignment>) -> Self {
+        let Versioned { entity: a, version } = versioned;
+        Self {
+            subject: a.subject().to_owned(),
+            role: a.role().to_owned(),
+            assigned_by: a.assigned_by().subject().map(str::to_owned),
+            assigned_at: a.assigned_at().to_rfc3339(),
             version: version.as_i64().to_string(),
         }
     }

@@ -1,9 +1,10 @@
 use super::Caller;
 use super::models::{
-    CatalogResponse, GrantRequest, GrantResponse, GrantSort, RoleRequest, RoleResponse, RoleSort,
+    AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
+    RoleRequest, RoleResponse, RoleSort,
 };
 use crate::application::{AccessService, GrantFilter, Versioned};
-use crate::domain::{CreateRole, Grant, GrantAccess, GrantId};
+use crate::domain::{AssignRole, CreateRole, Grant, GrantAccess, GrantId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
@@ -28,6 +29,12 @@ enum Revoked {
 enum Deleted {
     #[oai(status = 204)]
     Deleted,
+}
+
+#[derive(ApiResponse)]
+enum Unassigned {
+    #[oai(status = 204)]
+    Unassigned,
 }
 
 fn grant_id(raw: &str) -> ApiResult<GrantId> {
@@ -192,5 +199,55 @@ impl AccessEndpoints {
         let expected = if_match_version(if_match.0)?;
         access.0.delete_role(&caller, &name.0, expected).await?;
         Ok(Deleted::Deleted)
+    }
+
+    /// Assign a role to a subject (the token's `sub`), whether or not they have signed in yet.
+    /// They hold it, beside `user`, on every server instance within 5 seconds; the token's own
+    /// claims never give roles. `user`, which every signed-in user holds, is refused with `400`
+    /// naming `role`, as is a role that doesn't exist (`list_roles`, `create_role`); a role the
+    /// subject holds already is refused with `409`. `403` unless the caller is an `admin`, or
+    /// holds a role granted it.
+    #[oai(path = "/assignments", method = "post", operation_id = "assign_role")]
+    async fn assign_role(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        body: Json<AssignmentRequest>,
+    ) -> ApiResult<WithETag<AssignmentResponse>> {
+        let AssignmentRequest { subject, role } = body.0;
+        let assignment = access
+            .0
+            .assign_role(&caller, AssignRole { subject, role })
+            .await?;
+        let version = assignment.version;
+        Ok(WithETag::new(assignment.into(), version))
+    }
+
+    /// Unassign a role from a subject, taking effect on every server instance within 5 seconds.
+    /// Requires `If-Match` with the version `assign_role` answered; a stale value is refused with
+    /// `412`, and `404` when the subject doesn't hold that role by assignment. `user` is refused
+    /// with `400` naming `role`. `admin` is refused with `409` for a bootstrap admin
+    /// (`APP_BOOTSTRAP_ADMINS`), who always holds it, and for the last subject assigned it when
+    /// there are no bootstrap admins, so admins can't lock themselves out. `403` unless the caller
+    /// is an `admin`, or holds a role granted it.
+    #[oai(
+        path = "/assignments",
+        method = "delete",
+        operation_id = "unassign_role"
+    )]
+    async fn unassign_role(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        subject: Query<String>,
+        role: Query<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<Unassigned> {
+        let expected = if_match_version(if_match.0)?;
+        access
+            .0
+            .unassign_role(&caller, &subject.0, &role.0, expected)
+            .await?;
+        Ok(Unassigned::Unassigned)
     }
 }

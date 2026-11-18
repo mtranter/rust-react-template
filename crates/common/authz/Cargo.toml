@@ -15,5 +15,6 @@ strum.workspace = true
 thiserror.workspace = true
 
 [features]
-# `testing`: the agreement check between a list's SQL and `Filter::matches`, for Modules' DB tests.
+# `testing`: the agreement check between a list's SQL and `Filter::matches`, and
+# `Authorizer::assign_in_memory`, for Modules' DB tests.
 testing = []

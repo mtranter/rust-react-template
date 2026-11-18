@@ -186,7 +186,7 @@ impl Agent {
     }
 
     fn token_of(&self, subject: &str) -> String {
-        self.verifier.issue(subject, &[], 60).unwrap()
+        self.verifier.issue(subject, 60).unwrap()
     }
 
     async fn session(&self, subject: &str) -> McpSession<'_> {
@@ -378,7 +378,7 @@ async fn a_sessions_tools_act_as_the_subject_whose_token_opened_it() {
 async fn a_session_presents_the_token_its_latest_request_did() {
     let agent = Agent::new();
     let session = agent.session("ada").await;
-    let renewed = agent.verifier.issue("ada", &[], 3600).unwrap();
+    let renewed = agent.verifier.issue("ada", 3600).unwrap();
 
     let received = put(
         &session.presenting(Some(&renewed)),

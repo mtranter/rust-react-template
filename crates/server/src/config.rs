@@ -52,6 +52,9 @@ pub struct AppConfig {
     /// against, in place of the public roots, for one signed by a private
     /// CA. Unset (or empty), the public roots, which ElastiCache's are under.
     pub redis_ca: Option<String>,
+    /// Subjects (the token's `sub`), comma-separated, that always hold `admin`
+    /// whatever `access` assigns: how a fresh app gets its first admin.
+    pub bootstrap_admins: String,
 }
 
 impl Default for AppConfig {
@@ -71,6 +74,7 @@ impl Default for AppConfig {
             outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
             redis_url: None,
             redis_ca: None,
+            bootstrap_admins: String::new(),
         }
     }
 }
@@ -78,18 +82,28 @@ impl Default for AppConfig {
 impl AppConfig {
     /// The error is boxed: `figment::Error` is large, and this is a cold path.
     pub fn load() -> Result<Self, Box<figment::Error>> {
-        let config: Self = Figment::from(Serialized::defaults(AppConfig::default()))
-            .merge(Toml::file("config.toml"))
-            .merge(Env::prefixed("APP_"))
-            .merge(
-                Env::raw()
-                    .only(&["DATABASE_URL"])
-                    .map(|key| key.as_str().to_ascii_lowercase().into()),
-            )
+        let config: Self = Self::figment(Env::var("APP_BOOTSTRAP_ADMINS"))
             .extract()
             .map_err(Box::new)?;
         config.validate()?;
         Ok(config)
+    }
+
+    /// `APP_BOOTSTRAP_ADMINS` is taken raw, not through `Env`, which parses each value: an
+    /// all-digit subject (as Google issues) would be a number, and `true` a bool, neither a string.
+    fn figment(bootstrap_admins: Option<String>) -> Figment {
+        let figment = Figment::from(Serialized::defaults(AppConfig::default()))
+            .merge(Toml::file("config.toml"))
+            .merge(Env::prefixed("APP_").ignore(&["bootstrap_admins"]))
+            .merge(
+                Env::raw()
+                    .only(&["DATABASE_URL"])
+                    .map(|key| key.as_str().to_ascii_lowercase().into()),
+            );
+        match bootstrap_admins {
+            Some(subjects) => figment.merge(Serialized::default("bootstrap_admins", subjects)),
+            None => figment,
+        }
     }
 
     /// Without this, a copy-paste prod deploy would accept tokens anyone can forge.
@@ -120,6 +134,16 @@ impl AppConfig {
             ))),
             None => Ok(Arc::new(NoBus)),
         }
+    }
+
+    /// `APP_BOOTSTRAP_ADMINS`, each trimmed, without empty entries.
+    pub fn bootstrap_admins(&self) -> Vec<String> {
+        self.bootstrap_admins
+            .split(',')
+            .map(str::trim)
+            .filter(|subject| !subject.is_empty())
+            .map(str::to_owned)
+            .collect()
     }
 
     pub fn bind_addr(&self) -> String {
@@ -183,6 +207,26 @@ mod tests {
             ..AppConfig::default()
         };
         assert!(config.bus(true).is_err());
+    }
+
+    #[test]
+    fn bootstrap_admins_are_a_comma_separated_list() {
+        let config = AppConfig {
+            bootstrap_admins: " ada, ,auth0|bob ,".to_string(),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.bootstrap_admins(), ["ada", "auth0|bob"]);
+        assert!(AppConfig::default().bootstrap_admins().is_empty());
+    }
+
+    #[test]
+    fn a_bootstrap_admin_whose_subject_reads_as_a_number_or_bool_is_still_a_subject() {
+        for raw in ["12345", "true", "109876543210987654321", "12345,ada"] {
+            let config: AppConfig = AppConfig::figment(Some(raw.to_string()))
+                .extract()
+                .unwrap_or_else(|err| panic!("{raw}: {err}"));
+            assert_eq!(config.bootstrap_admins.as_str(), raw);
+        }
     }
 
     #[test]
