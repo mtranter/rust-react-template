@@ -1,10 +1,12 @@
 import { listSearch } from "@/components/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AssignRoleDialog,
   CreateRoleDialog,
   GrantAccessDialog,
   GrantsTable,
   RolesTable,
+  SubjectsTable,
   useManagesAccess,
 } from "@/features/access";
 import { getRouteApi } from "@tanstack/react-router";
@@ -12,7 +14,7 @@ import { getRouteApi } from "@tanstack/react-router";
 const route = getRouteApi("/access");
 
 export function AccessPage() {
-  const { tab, page = 1, sort, role, resource, action } = route.useSearch();
+  const { tab, page = 1, sort, role, resource, action, search } = route.useSearch();
   const navigate = route.useNavigate();
   const manages = useManagesAccess();
   const current = tab ?? "grants";
@@ -21,7 +23,14 @@ export function AccessPage() {
     <main className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="font-heading text-2xl font-semibold">Access</h1>
-        {manages && (current === "roles" ? <CreateRoleDialog /> : <GrantAccessDialog />)}
+        {manages &&
+          (current === "roles" ? (
+            <CreateRoleDialog />
+          ) : current === "users" ? (
+            <AssignRoleDialog />
+          ) : (
+            <GrantAccessDialog />
+          ))}
       </div>
       {manages === false && (
         <p role="alert" className="text-muted-foreground">
@@ -33,13 +42,17 @@ export function AccessPage() {
           value={current}
           onValueChange={(value) =>
             navigate({
-              search: (prev) => ({ ...prev, tab: value === "roles" ? "roles" : undefined }),
+              search: (prev) => ({
+                ...prev,
+                tab: value === "roles" || value === "users" ? value : undefined,
+              }),
             })
           }
         >
           <TabsList>
             <TabsTrigger value="grants">Grants</TabsTrigger>
             <TabsTrigger value="roles">Roles</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
           <TabsContent value="grants">
             <GrantsTable
@@ -56,6 +69,12 @@ export function AccessPage() {
           </TabsContent>
           <TabsContent value="roles">
             <RolesTable />
+          </TabsContent>
+          <TabsContent value="users">
+            <SubjectsTable
+              search={search}
+              onSearch={(text) => navigate({ search: (prev) => ({ ...prev, search: text }) })}
+            />
           </TabsContent>
         </Tabs>
       )}

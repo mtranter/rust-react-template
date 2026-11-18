@@ -7,6 +7,7 @@ import type {
   NoteResponse,
   NoteSummaryResponse,
   RoleResponse,
+  SubjectResponse,
   UserResponse,
 } from "@/api";
 import { http, HttpResponse, type RequestHandler } from "msw";
@@ -199,6 +200,32 @@ const roles: RoleResponse[] = [
   version: "1",
 }));
 
+const subjects: SubjectResponse[] = [
+  {
+    subject: "auth0|6650a1",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    firstSeen: new Date(Date.UTC(2026, 0, 1, 9, 0)).toISOString(),
+    lastSeen: new Date(Date.UTC(2026, 0, 5, 14, 0)).toISOString(),
+    bootstrapAdmin: false,
+    roles: [
+      { role: "admin", version: "1" },
+      { role: "support", version: "2" },
+    ],
+  },
+  {
+    subject: "auth0|6650b2",
+    name: "Bob Babbage",
+    email: "bob@engines.org",
+    firstSeen: new Date(Date.UTC(2026, 0, 2, 9, 0)).toISOString(),
+    lastSeen: new Date(Date.UTC(2026, 0, 2, 9, 0)).toISOString(),
+    bootstrapAdmin: false,
+    roles: [],
+  },
+  { subject: "auth0|6650c3", bootstrapAdmin: false, roles: [{ role: "support", version: "1" }] },
+  { subject: "ops@example.com", bootstrapAdmin: true, roles: [{ role: "admin" }] },
+];
+
 /** `access` as the server answers an admin. */
 const accessApi = [
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
@@ -207,6 +234,19 @@ const accessApi = [
   ),
   http.get("*/api/access/roles", () =>
     HttpResponse.json({ items: roles, total: roles.length, limit: 100, offset: 0 }),
+  ),
+  http.get("*/api/access/subjects", () =>
+    HttpResponse.json({ items: subjects, total: subjects.length, limit: 100, offset: 0 }),
+  ),
+  http.post("*/api/access/assignments", () =>
+    HttpResponse.json(
+      {
+        code: "conflict",
+        message: "that role is assigned to that subject already",
+        requestId: "screens",
+      },
+      { status: 409 },
+    ),
   ),
   http.post("*/api/access/roles", () =>
     HttpResponse.json(
@@ -398,6 +438,35 @@ export const scenarios: Scenario[] = [
     },
     shows: (page) =>
       page.getByRole("dialog", { name: "Create role" }).getByText("a role of that name exists"),
+  },
+  {
+    name: "access-users",
+    route: "/access?tab=users",
+    handlers: accessApi,
+    shows: (page) => page.getByText("Bootstrap admin"),
+  },
+  {
+    name: "access-users-assign-refused",
+    route: "/access?tab=users",
+    handlers: accessApi,
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Assign a role to Ada Lovelace" }).click();
+      const dialog = page.getByRole("dialog", { name: "Assign a role to Ada Lovelace" });
+      await dialog.getByLabel("Role").selectOption("support");
+      await dialog.getByRole("button", { name: "Assign" }).click();
+    },
+    shows: (page) =>
+      page.getByRole("dialog", { name: "Assign a role to Ada Lovelace" }).getByText("already"),
+  },
+  {
+    name: "access-add-user",
+    route: "/access?tab=users",
+    handlers: accessApi,
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Add user" }).click();
+      await page.getByRole("dialog", { name: "Add user" }).getByLabel("Subject").fill("auth0|new");
+    },
+    shows: (page) => page.getByRole("dialog", { name: "Add user" }).getByLabel("Role"),
   },
   {
     name: "access-not-an-admin",
