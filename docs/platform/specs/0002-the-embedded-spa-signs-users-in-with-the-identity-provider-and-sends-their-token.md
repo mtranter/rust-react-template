@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: ticketed
 ---
 
 # The embedded SPA signs users in with the identity provider and sends their token
