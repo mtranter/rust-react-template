@@ -156,6 +156,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-fake-oidc"
+version = "0.1.0"
+dependencies = [
+ "app-web",
+ "base64 0.22.1",
+ "jsonwebtoken",
+ "poem",
+ "rand 0.8.8",
+ "reqwest",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "app-module"
 version = "0.1.0"
 dependencies = [

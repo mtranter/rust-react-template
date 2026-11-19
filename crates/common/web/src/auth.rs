@@ -191,7 +191,16 @@ impl Jwks {
             }
         };
 
-        decode::<Claims>(token, &key, &self.validation)
+        if !self.validation.algorithms.contains(&header.alg) {
+            return Err(AppError::Unauthorized);
+        }
+        // jsonwebtoken refuses a validation listing algorithms of another
+        // family than the key's (RSA beside EC), so it names only the token's.
+        let validation = Validation {
+            algorithms: vec![header.alg],
+            ..self.validation.clone()
+        };
+        decode::<Claims>(token, &key, &validation)
             .map(|data| data.claims)
             .map_err(|_| AppError::Unauthorized)
     }

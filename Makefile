@@ -68,12 +68,12 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # Phony targets
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
-        check-backend check-frontend check-changed check-spec screens \
+        check-backend check-frontend check-changed check-spec screens e2e \
         build-backend-dev build-frontend db-up redis-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install repo-local Rust CLI tools (run once after cloning)
@@ -85,16 +85,17 @@ setup: ## Install repo-local Rust CLI tools (run once after cloning)
 _require-cargo-bin:
 	@command -v cargo-bin >/dev/null 2>&1 || { echo "cargo-run-bin missing — run 'make setup'"; exit 1; }
 
-db-up: ## Start local Postgres (docker compose)
-	docker compose up -d postgres
+# Another checkout's compose Postgres may already hold :5432 (worktrees each get a
+# compose project of their own); then this one's can't start, and that one serves.
+db-up: ## Start local Postgres (docker compose), or use the one already on :5432
+	@docker compose up -d --wait postgres || { \
+	  timeout 2 bash -c '</dev/tcp/localhost/5432' 2>/dev/null \
+	    && echo "using the Postgres already listening on :5432"; }
 
 redis-up: ## Start local Valkey (docker compose), the bus `make dev` broadcasts over
 	docker compose up -d --wait redis
 
-db-wait: db-up ## Wait until Postgres is healthy
-	@echo "waiting for postgres..."; \
-	until docker compose exec -T postgres pg_isready -U app -d app >/dev/null 2>&1; do sleep 1; done; \
-	echo "postgres ready"
+db-wait: db-up ## Wait until Postgres is healthy (db-up waits)
 
 db-down: ## Stop local Postgres
 	docker compose down
@@ -195,12 +196,15 @@ lint-frontend: frontend/node_modules ## Biome lint + format check, and feature i
 screens: frontend/src/api ## Screenshot every UI scenario → frontend/screens/out/ (needs Playwright's Chromium; not in check)
 	cd frontend && pnpm run screens
 
+e2e: build-frontend db-wait _require-cargo-bin ## Sign in to the debug binary's embedded SPA through a fake OIDC provider, open /access, sign out (Playwright; part of check)
+	./scripts/e2e.sh
+
 build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
 	cd frontend && pnpm run build
 
 # Every step CI runs, backend and frontend. A step added here is added to CI,
 # and the reverse.
-check: check-backend check-frontend check-init ## CI mirror (run before calling work done)
+check: check-backend check-frontend e2e check-init ## CI mirror (run before calling work done)
 
 check-backend: fmt clippy deny check-sql check-deps check-modules check-spec build-backend-dev test-backend ## The backend half of check
 

@@ -10,6 +10,10 @@
 # reference modules), so a module's change runs its own tests and the composed
 # app's. The platform's modules (`crates/platform/`) are modules like the app's. A change to what every crate shares (common, the lockfile, the .sqlx
 # cache) tests the whole workspace.
+#
+# The end-to-end check (`make e2e`) runs when what it signs in through can
+# break: the SPA, the server, `app-web` (the token's verification) or the fake
+# provider itself.
 set -euo pipefail
 
 base=${1:-main}
@@ -18,6 +22,7 @@ since=$(git merge-base "$base" HEAD)
 backend=false
 frontend=false
 all_tests=false
+e2e=false
 crates=()
 
 while IFS= read -r path; do
@@ -26,17 +31,19 @@ while IFS= read -r path; do
     docs/* | *.md) ;;
     # The client is generated from it, so a changed spec can break the frontend;
     # check-backend's check-spec proves it matches the backend that made it.
-    frontend/openapi.json) backend=true frontend=true ;;
-    frontend/*) frontend=true ;;
+    frontend/openapi.json) backend=true frontend=true e2e=true ;;
+    frontend/*) frontend=true e2e=true ;;
     crates/reference/journeys/*) backend=true crates+=(crates/reference/journeys) ;;
     crates/modules/*/*/* | crates/platform/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
     crates/module-template/*/*) backend=true crates+=("$(cut -d/ -f1-3 <<<"$path")") ;;
-    crates/server/*) backend=true crates+=(crates/server) ;;
+    crates/server/*) backend=true e2e=true crates+=(crates/server) ;;
+    crates/common/web/* | crates/common/fake-oidc/*) backend=true all_tests=true e2e=true ;;
+    scripts/e2e.sh) e2e=true ;;
     crates/* | .sqlx/* | Cargo.toml | Cargo.lock | deny.toml | rust-toolchain.toml | .cargo/* | \
       docker-compose.yml | scripts/check-*.sh | scripts/migrate-*.sh | scripts/new-module.sh | \
       scripts/rustc-wrapper.sh)
       backend=true all_tests=true ;;
-    *) backend=true frontend=true all_tests=true ;;
+    *) backend=true frontend=true all_tests=true e2e=true ;;
   esac
 done < <(
   git diff --name-only "$since"
@@ -76,6 +83,8 @@ if $frontend; then
   $backend || lanes+=(-o frontend/openapi.json)
   lanes+=(check-frontend)
 fi
+
+$e2e && lanes+=(e2e)
 
 if [ ${#lanes[@]} -eq 0 ]; then
   echo "check-changed: nothing since $base that make check covers"

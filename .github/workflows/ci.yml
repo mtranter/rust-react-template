@@ -116,6 +116,38 @@ jobs:
       - name: build
         run: cd frontend && pnpm run build
 
+  # `make e2e`: the debug server with the SPA embedded, signed in to through
+  # the fake OIDC provider (crates/common/fake-oidc) in Playwright's Chromium.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-run-bin
+        run: cargo binstall -y cargo-run-bin
+      - name: Cache repo-local tools (.bin)
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: cargo-bin-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: cd frontend && pnpm install --frozen-lockfile
+      - name: Install Playwright's Chromium
+        run: cd frontend && pnpm exec playwright install --with-deps chromium
+      - name: start Postgres (docker compose)
+        run: docker compose up -d --wait postgres
+      - name: sign in end to end
+        run: make e2e
+
   # --- template only: `make init` removes this job ---
   # `make init` on a scratch copy, as a factory runs it on a fresh clone: it
   # ends in `make check` there, and `check-init` then checks what that can't.
@@ -145,6 +177,9 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
+      # The app's `make check`, which `make init` ends in, runs `make e2e`.
+      - name: Install Playwright's Chromium
+        run: cd frontend && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
       - name: start Postgres (docker compose)
         run: docker compose up -d --wait postgres
       - name: init a scratch copy, and check what it made

@@ -33,6 +33,7 @@ app-persistence = { path = "crates/common/persistence" }
 app-web = { path = "crates/common/web" }
 app-db = { path = "crates/common/db" }
 app-test-support = { path = "crates/common/test-support" }
+app-fake-oidc = { path = "crates/common/fake-oidc" }
 app-test-db = { path = "crates/common/test-db" }
 app-test-db-macros = { path = "crates/common/test-db-macros" }
 app-module = { path = "crates/common/module" }
@@ -120,6 +121,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 
 # `rust_crypto`: no global crypto provider to install, no aws-lc-rs/cmake (ADR 0005).
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+# The versions jsonwebtoken's `rust_crypto` uses, for `app-fake-oidc`'s signing key.
+rand = "0.8"
+rsa = "0.9"
+sha2 = "0.10"
+base64 = "0.22"
+url = "2"
 # No default-tls: reuses the `ring` provider sqlx already brings, so no system
 # OpenSSL and no aws-lc-rs/cmake (ADR 0005).
 reqwest = { version = "0.12", default-features = false, features = [
@@ -153,6 +160,10 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# Unoptimised, `fake-oidc` (`make e2e`) takes 5-25s to make its RSA key; optimised, well under one.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
 
 [profile.release]
 lto = "thin"
