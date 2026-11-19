@@ -7,6 +7,8 @@ import { AccessPage } from "@/pages/access-page";
 import { HomePage } from "@/pages/home-page";
 import { RootLayout } from "@/pages/root-layout";
 import { SearchPage } from "@/pages/search-page";
+import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
+import { SignedOutPage } from "@/pages/signed-out-page";
 import {
   type RouterHistory,
   createRootRoute,
@@ -15,17 +17,35 @@ import {
   redirect,
 } from "@tanstack/react-router";
 
-const rootRoute = createRootRoute({ component: RootLayout });
+const rootRoute = createRootRoute();
+
+// Pathless: every screen but signing in and out, which a visitor reaches before they are signed in.
+const appRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "app",
+  component: RootLayout,
+});
+
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/callback",
+  component: SignInCallbackPage,
+});
+const signedOutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/signed-out",
+  component: SignedOutPage,
+});
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/",
   validateSearch: (search: Record<string, unknown>): ListSearch<NoteSort> =>
     validateListSearch<NoteSort>(search, noteSortKeys),
   component: HomePage,
 });
 const homeRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/home",
   beforeLoad: ({ search }) => {
     throw redirect({ to: "/", search });
@@ -33,7 +53,7 @@ const homeRoute = createRoute({
 });
 
 const searchRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/search",
   validateSearch: (
     search: Record<string, unknown>,
@@ -45,7 +65,7 @@ const searchRoute = createRoute({
 });
 
 const accessRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/access",
   validateSearch: (
     search: Record<string, unknown>,
@@ -58,7 +78,11 @@ const accessRoute = createRoute({
   component: AccessPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, homeRoute, searchRoute, accessRoute]);
+const routeTree = rootRoute.addChildren([
+  appRoute.addChildren([indexRoute, homeRoute, searchRoute, accessRoute]),
+  callbackRoute,
+  signedOutRoute,
+]);
 
 function grantFilter(search: Record<string, unknown>): GrantFilter {
   const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);

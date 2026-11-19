@@ -133,6 +133,10 @@ _Avoid_: Endpoint, command (for a tool)
 
 ## Authorization
 
+**Sign-in**:
+How the embedded SPA gets a user's token: it sends them to the identity provider's hosted page (authorization code with PKCE, as a public client), and keeps the tokens it comes back with in the tab's `sessionStorage`, sending the access token on every request. The app has no sign-in screen or session of its own; with no `/auth/config`, as in dev, the SPA signs no one in (ADR 0042).
+_Avoid_: Login, session (the server keeps none)
+
 **Principal**:
 Who is acting: a user, with an id (the token's `sub`) and roles, `user` plus their Assignments, or `System`, the worker's and seeds' caller, acting on facts already decided, which policies don't apply to. Built on every guarded request from the token's subject and the rule set in force, never the token's own `roles` claim (ADR 0040, 0041).
 _Avoid_: User (for the caller), identity, Subject (that is whom it acts for, as `access` records them)

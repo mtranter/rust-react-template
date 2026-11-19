@@ -11,7 +11,7 @@ import {
 } from "@/features/access";
 import { getRouteApi } from "@tanstack/react-router";
 
-const route = getRouteApi("/access");
+const route = getRouteApi("/app/access");
 
 export function AccessPage() {
   const { tab, page = 1, sort, role, resource, action, search } = route.useSearch();

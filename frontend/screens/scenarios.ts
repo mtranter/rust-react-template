@@ -10,11 +10,13 @@ import type {
   SubjectResponse,
   UserResponse,
 } from "@/api";
+import type { SignInProvider } from "@/lib/sign-in";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
+import { signInScenarios } from "./sign-in-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
-// runs it with Node's type stripping: so only package imports, and types from `@/`.
+// runs it with Node's type stripping: so only package imports, types from `@/`, and other scenarios.
 
 export type Scenario = {
   /** The screenshot's file name: `<name>.<width>.png`. */
@@ -25,6 +27,8 @@ export type Scenario = {
   steps?: (page: Page) => Promise<void>;
   /** What the shot must show; the run fails if it never appears. */
   shows: (page: Page) => Locator;
+  /** The identity provider, when the app signs people in; with none it signs no one in, as in dev. */
+  signIn?: () => SignInProvider;
 };
 
 const users: UserResponse[] = [
@@ -474,4 +478,5 @@ export const scenarios: Scenario[] = [
     handlers: [],
     shows: (page) => page.getByRole("alert"),
   },
+  ...signInScenarios,
 ];

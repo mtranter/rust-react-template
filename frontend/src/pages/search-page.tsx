@@ -2,7 +2,7 @@ import { listSearch } from "@/components/data-table";
 import { NoteSearch } from "@/features/note-search";
 import { Link, getRouteApi } from "@tanstack/react-router";
 
-const route = getRouteApi("/search");
+const route = getRouteApi("/app/search");
 
 export function SearchPage() {
   const { q, page = 1, sort } = route.useSearch();
