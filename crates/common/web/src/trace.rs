@@ -25,8 +25,8 @@ pub struct TraceRequests {
 
 impl TraceRequests {
     /// Names each of `T`'s operations' spans by its route as the spec writes
-    /// it (`/api/notes/{id}`), served under `base`. poem's own route for an
-    /// operation renames its parameters (`/api/notes/:param0`).
+    /// it (`/api/access/roles/{name}`), served under `base`. poem's own route for an
+    /// operation renames its parameters (`/api/access/roles/:param0`).
     pub fn of<T: OpenApi>(base: &str) -> Self {
         let routes = T::meta()
             .into_iter()
