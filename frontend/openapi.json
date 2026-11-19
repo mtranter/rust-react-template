@@ -2451,7 +2451,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Create a note, written by the caller.",
+        "summary": "Create a note, written by the caller. With an `archiveAt`, it archives\nitself then.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -2895,7 +2895,7 @@
         "tags": [
           "Notes"
         ],
-        "summary": "Edit a note's title and body. Requires `If-Match` with the version the\nclient last read; a stale value is refused with `412` and changes nothing.\nAn archived note is refused with `403`, and another user's with `404`.",
+        "summary": "Edit a note's title, body and `archiveAt`: a new `archiveAt` reschedules\nits archive, and leaving it out cancels it. Requires `If-Match` with the\nversion the client last read; a stale value is refused with `412` and\nchanges nothing.\nAn archived note is refused with `403`, and another user's with `404`.",
         "parameters": [
           {
             "name": "id",
@@ -3902,6 +3902,10 @@
           "body": {
             "type": "string",
             "default": ""
+          },
+          "archiveAt": {
+            "type": "string",
+            "description": "When to archive the note (RFC 3339), if ever: from then on it is\nread-only."
           }
         }
       },
@@ -3925,7 +3929,7 @@
       "EditNoteRequest": {
         "type": "object",
         "title": "EditNoteRequest",
-        "description": "Replaces a note's title and body. Carries no version: the concurrency token\ntravels only in the `If-Match` header, never the body (see the handlers).",
+        "description": "Replaces a note's title, body and `archiveAt`: one left out is cleared,\ncancelling the archive. Carries no version: the concurrency token travels\nonly in the `If-Match` header, never the body (see the handlers).",
         "required": [
           "title",
           "body"
@@ -3936,6 +3940,10 @@
           },
           "body": {
             "type": "string"
+          },
+          "archiveAt": {
+            "type": "string",
+            "description": "When to archive the note (RFC 3339), if ever; a new time reschedules\nit."
           }
         }
       },
@@ -4323,9 +4331,13 @@
           "createdAt": {
             "type": "string"
           },
+          "archiveAt": {
+            "type": "string",
+            "description": "When the note is due to archive itself, as its author chose."
+          },
           "archivedAt": {
             "type": "string",
-            "description": "When the note was archived, because its author was deleted. An archived\nnote can't be edited or deleted."
+            "description": "When the note was archived: at its `archiveAt`, or because its author\nwas deleted. An archived note can't be edited or deleted."
           },
           "items": {
             "type": "array",

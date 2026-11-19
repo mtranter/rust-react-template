@@ -1,5 +1,7 @@
 # No jobs or scheduled work
 
+Superseded by [ADR 0043](0043-modules-defer-and-schedule-work-on-the-job-queue.md): modules now defer work and declare schedules on `messaging.job`. Kept for the reasoning below, which still holds: a command isn't dressed as an event.
+
 A Module that has to do something does it in reaction to an Event, its own or another Module's. A Module may subscribe to its own Events: `users` welcomes a registered user by reacting to its `UserRegistered`, rather than the registration ordering the email.
 
 A job queue for a Module's own deferred or scheduled work was built and removed. Its only use, a welcome email, was a command dressed as an Event (`UserRegistered` replaced it), and nothing needed scheduling.

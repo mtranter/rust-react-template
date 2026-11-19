@@ -367,6 +367,34 @@ impl Notes {
             .await
     }
 
+    /// As [`create`](Self::create), the note to archive itself `at`.
+    pub async fn create_archiving_at(
+        &self,
+        author: impl Display,
+        title: &str,
+        at: DateTime<Utc>,
+    ) -> Outcome<NoteJson> {
+        let request = json!({ "title": title, "body": "", "archiveAt": at.to_rfc3339() });
+        self.by(author, self.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
+    }
+
+    /// As [`create`](Self::create), with `archiveAt` as sent, parseable or not.
+    pub async fn create_archiving_at_raw(
+        &self,
+        author: impl Display,
+        title: &str,
+        at: &str,
+    ) -> Outcome<NoteJson> {
+        let request = json!({ "title": title, "body": "", "archiveAt": at });
+        self.by(author, self.api.post("/api/notes"))
+            .json(&request)
+            .send()
+            .await
+    }
+
     /// As whoever is signed in, the body naming `claimed` as its author, as
     /// the request once did.
     pub async fn create_claiming_to_be(
@@ -398,6 +426,26 @@ impl Notes {
         body: &str,
     ) -> Outcome<NoteJson> {
         let request = json!({ "title": title, "body": body });
+        self.signed(self.api.patch(format!("/api/notes/{id}")))
+            .if_match(version)
+            .json(&request)
+            .send()
+            .await
+    }
+
+    /// As [`edit`](Self::edit), the note to archive itself `at`, or never.
+    pub async fn edit_archiving_at(
+        &self,
+        id: impl Display,
+        version: i64,
+        title: &str,
+        at: Option<DateTime<Utc>>,
+    ) -> Outcome<NoteJson> {
+        let request = json!({
+            "title": title,
+            "body": "",
+            "archiveAt": at.map(|at| at.to_rfc3339()),
+        });
         self.signed(self.api.patch(format!("/api/notes/{id}")))
             .if_match(version)
             .json(&request)

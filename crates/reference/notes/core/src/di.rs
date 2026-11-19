@@ -1,7 +1,7 @@
 // Naming the pool to wire the repository is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
-use crate::application::NoteService;
+use crate::application::{ArchiveNote, NoteService};
 use crate::db::{PgNoteRepository, migrations};
 use crate::domain::Note;
 use crate::web::OPERATIONS;
@@ -33,6 +33,7 @@ fn service(ctx: &Context, users: Arc<dyn UserDirectory>) -> NoteService {
         Arc::new(PgNoteRepository::new(ctx.pool())),
         users,
         ctx.publisher(),
+        ctx.deferred_jobs(),
         ctx.transactions(),
         ctx.clock(),
         ctx.authorizer(),
@@ -48,9 +49,13 @@ pub fn policies() -> PoliciesBuilder {
         .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
-/// What the worker runs for notes: its reactions to other modules' events.
+/// What the worker runs for notes: its reactions to other modules' events,
+/// and the archives its notes defer to their `archiveAt`.
 pub fn handlers(ctx: &Context, users: Arc<dyn UserDirectory>) -> Handlers {
-    Handlers::new().on::<UserDeleted>("notes.archive_deleted_authors_notes", service(ctx, users))
+    let service = service(ctx, users);
+    Handlers::new()
+        .on::<UserDeleted>("notes.archive_deleted_authors_notes", service.clone())
+        .runs::<ArchiveNote>(service)
 }
 
 /// `users` is the users module's `directory`, passed in by the server (ADR 0008).

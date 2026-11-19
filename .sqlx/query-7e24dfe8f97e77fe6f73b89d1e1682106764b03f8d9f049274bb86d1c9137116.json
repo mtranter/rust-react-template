@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM messaging.job\n            WHERE queue = $1 AND key = $2 AND deferred AND dead_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7e24dfe8f97e77fe6f73b89d1e1682106764b03f8d9f049274bb86d1c9137116"
+}

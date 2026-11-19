@@ -5,11 +5,13 @@
 
 use app_authz::{Authorizer, Policies, PoliciesBuilder, PolicyError, RuleSet};
 use app_bus::{Bus, NoBus};
-use app_db::{ModuleMigrations, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool};
+use app_db::{
+    ModuleMigrations, PgDeferredJobs, PgEventPublisher, PgIdempotencyRecords, PgTransactions, Pool,
+};
 use app_domain::Clock;
 use app_error::AppResult;
 use app_events::{PublishedTopic, Topic};
-use app_persistence::{EventPublisher, Handlers, Transactions};
+use app_persistence::{DeferredJobs, EventPublisher, Handlers, Transactions};
 use app_web::{Accept, Idempotency, Performs, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
@@ -77,6 +79,12 @@ impl Context {
     /// stamped by the clock.
     pub fn publisher(&self) -> Arc<dyn EventPublisher> {
         Arc::new(PgEventPublisher::new(self.clock()))
+    }
+
+    /// Defers jobs into a unit of work begun by
+    /// [`transactions`](Self::transactions), due by the clock.
+    pub fn deferred_jobs(&self) -> Arc<dyn DeferredJobs> {
+        Arc::new(PgDeferredJobs::new(self.clock()))
     }
 
     /// The `Idempotency-Key` middleware, keeping its records in the pool and

@@ -13,6 +13,7 @@ pub struct Note {
     title: String,
     body: String,
     created_at: DateTime<Utc>,
+    archive_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
     items: Vec<Item>,
 }
@@ -29,6 +30,7 @@ impl Note {
             title: title(&cmd.title)?,
             body: cmd.body,
             created_at: now,
+            archive_at: cmd.archive_at,
             archived_at: None,
             items: Vec::new(),
         };
@@ -40,6 +42,7 @@ impl Note {
         self.writable()?;
         self.title = title(&cmd.title)?;
         self.body = cmd.body;
+        self.archive_at = cmd.archive_at;
         Ok(NoteEvent::Edited)
     }
 
@@ -101,12 +104,14 @@ impl Note {
     }
 
     /// Skips invariants: for repositories rebuilding persisted state only.
+    #[allow(clippy::too_many_arguments)] // one per persisted field
     pub fn restore(
         id: NoteId,
         author_id: AuthorId,
         title: String,
         body: String,
         created_at: DateTime<Utc>,
+        archive_at: Option<DateTime<Utc>>,
         archived_at: Option<DateTime<Utc>>,
         items: Vec<Item>,
     ) -> Self {
@@ -116,6 +121,7 @@ impl Note {
             title,
             body,
             created_at,
+            archive_at,
             archived_at,
             items,
         }
@@ -139,6 +145,11 @@ impl Note {
 
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
+    }
+
+    /// When it is due to archive itself: its author's choice, kept once it has.
+    pub fn archive_at(&self) -> Option<DateTime<Utc>> {
+        self.archive_at
     }
 
     pub fn archived_at(&self) -> Option<DateTime<Utc>> {
@@ -174,6 +185,7 @@ mod tests {
                 author_id: AuthorId::from_uuid(Uuid::new_v4()),
                 title: title.into(),
                 body: String::new(),
+                archive_at: None,
             },
             Utc::now(),
         )
@@ -198,6 +210,7 @@ mod tests {
                 author_id: AuthorId::from_uuid(Uuid::new_v4()),
                 title: "First".into(),
                 body: String::new(),
+                archive_at: None,
             },
             Utc::now(),
         )
@@ -206,6 +219,7 @@ mod tests {
             note_id: note.id(),
             title: "Second".into(),
             body: String::new(),
+            archive_at: None,
         });
         assert_eq!(created, NoteEvent::Created);
         assert_eq!(edited, Ok(NoteEvent::Edited));
@@ -221,6 +235,7 @@ mod tests {
             note_id: note.id(),
             title: "".into(),
             body: "changed".into(),
+            archive_at: None,
         });
         assert_eq!(result, Err(NoteError::EmptyTitle));
         assert_eq!(note, before);
@@ -287,6 +302,7 @@ mod tests {
             note_id: note.id(),
             title: "Second".into(),
             body: String::new(),
+            archive_at: None,
         });
         assert_eq!(result, Err(NoteError::Archived));
         assert_eq!(note, before);

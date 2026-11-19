@@ -11,10 +11,10 @@ app-error.workspace = true
 app-events.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-serde.workspace = true
 tokio.workspace = true

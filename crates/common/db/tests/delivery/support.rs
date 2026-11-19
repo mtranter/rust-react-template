@@ -1,8 +1,10 @@
-use app_db::{PgEventPublisher, PgTransactions, SubscriptionError, Worker};
+use app_db::{PgDeferredJobs, PgEventPublisher, PgTransactions, SubscriptionError, Worker};
 use app_domain::{FixedClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, PublishedTopic, TopicEnvelope};
-use app_persistence::{EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version};
+use app_persistence::{
+    DeferredJobs, EventPublisher, Handle, Handlers, PendingEvent, Transactions, Tx, Version,
+};
 use app_test_db::Template;
 use async_trait::async_trait;
 use chrono::TimeDelta;
@@ -84,6 +86,10 @@ pub struct Log(Arc<Mutex<Vec<String>>>);
 impl Log {
     pub fn handled(&self) -> Vec<String> {
         self.0.lock().unwrap().clone()
+    }
+
+    pub fn push(&self, line: String) {
+        self.0.lock().unwrap().push(line);
     }
 }
 
@@ -226,6 +232,22 @@ impl Messaging {
 
     pub fn later(&self, by: TimeDelta) {
         self.clock.advance(by);
+    }
+
+    pub fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        use app_domain::Clock;
+        self.clock.now()
+    }
+
+    pub fn deferred_jobs(&self) -> Arc<dyn DeferredJobs> {
+        Arc::new(PgDeferredJobs::new(self.clock.clone()))
+    }
+
+    pub async fn begin(&self) -> Tx {
+        PgTransactions::new(self.pool.clone())
+            .begin()
+            .await
+            .expect("begin")
     }
 
     /// A build's handlers: one for each of `queues`, subscribed to `Pinged`.

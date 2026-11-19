@@ -542,8 +542,8 @@ impl Worker {
         let now = self.clock.now();
         let (queues, event_types): (Vec<_>, Vec<_>) = self
             .handlers
-            .subscriptions()
-            .map(|s| (s.queue, s.event_type))
+            .claims()
+            .map(|c| (c.queue, c.event_type))
             .unzip();
         let claimed = sqlx::query_as!(
             Claimed,
@@ -609,22 +609,28 @@ impl Worker {
     /// if this run removes the job, so a handler that only writes to the
     /// database takes effect exactly once, even past its lease: a run another
     /// worker completed first rolls its writes back. The removal ignores
-    /// `dead_at`, so a dead letter whose slow handler succeeds is removed.
+    /// `dead_at`, so a dead letter whose slow handler succeeds is removed. A
+    /// deferred job rescheduled or cancelled while it ran (a new `version`, or
+    /// no row) is not removed, so that run's writes roll back too.
     async fn complete(&self, job: &Claimed) -> AppResult<()> {
         let mut tx = begin(&self.pool).await?;
         self.handlers
             .handle(&job.queue, &mut tx, job.payload.clone())
             .await?;
-        let removed = sqlx::query!("DELETE FROM messaging.job WHERE id = $1", job.id)
-            .execute(conn(&mut tx))
-            .await
-            .map_err(AppError::internal)?
-            .rows_affected();
+        let removed = sqlx::query!(
+            "DELETE FROM messaging.job WHERE id = $1 AND version = $2",
+            job.id,
+            job.version,
+        )
+        .execute(conn(&mut tx))
+        .await
+        .map_err(AppError::internal)?
+        .rows_affected();
         if removed == 0 {
             tracing::warn!(
                 queue = job.queue,
-                "delivery already completed by another worker: its lease ran out, \
-                 so this run's writes are rolled back"
+                "job already completed by another worker (its lease ran out), or \
+                 rescheduled or cancelled while it ran, so this run's writes are rolled back"
             );
             return Ok(());
         }
@@ -633,7 +639,8 @@ impl Worker {
 
     /// A job dead-lettered while its handler ran (retired, or abandoned as
     /// unfinished) stays dead with the reason it was given, rather than
-    /// being revived to retry.
+    /// being revived to retry; a deferred job rescheduled while it ran keeps
+    /// its new time and attempts.
     async fn fail(&self, job: &Claimed, err: &AppError) -> AppResult<()> {
         let now = self.clock.now();
         let error = describe(err);
@@ -641,12 +648,13 @@ impl Worker {
         let recorded = sqlx::query!(
             r#"
             UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4
-            WHERE id = $1 AND dead_at IS NULL
+            WHERE id = $1 AND version = $5 AND dead_at IS NULL
             "#,
             job.id,
             error,
             now + backoff(job.attempts),
             dead.then_some(now),
+            job.version,
         )
         .execute(&self.pool)
         .await
@@ -656,7 +664,7 @@ impl Worker {
             tracing::warn!(
                 queue = job.queue,
                 error,
-                "job failed after it was dead-lettered; left dead"
+                "job failed after it was dead-lettered, rescheduled or cancelled; left as it is"
             );
         } else if dead {
             tracing::error!(

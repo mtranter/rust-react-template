@@ -7,6 +7,7 @@ mod support;
 mod clock;
 mod compaction;
 mod contract;
+mod deferred;
 mod deploys;
 mod earliest;
 mod effects;

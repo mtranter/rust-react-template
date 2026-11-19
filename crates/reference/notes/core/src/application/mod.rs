@@ -3,14 +3,17 @@
 
 mod error;
 mod events;
+mod jobs;
 mod reactions;
 mod repository;
 mod service;
 
 pub use app_persistence::{
-    EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
+    DeferredJobs, EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx,
+    Version, Versioned,
 };
 #[cfg(feature = "seed")]
 pub(crate) use events::pending;
+pub use jobs::ArchiveNote;
 pub use repository::{NoteRepository, NoteSortKey};
 pub use service::NoteService;

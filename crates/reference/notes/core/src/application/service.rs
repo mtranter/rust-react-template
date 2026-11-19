@@ -1,7 +1,7 @@
 use super::events;
 use super::{
-    EventPublisher, Expected, ListQuery, Listed, NoteRepository, NoteSortKey, Transactions, Tx,
-    Version, Versioned,
+    ArchiveNote, DeferredJobs, EventPublisher, Expected, ListQuery, Listed, NoteRepository,
+    NoteSortKey, Transactions, Tx, Version, Versioned,
 };
 use crate::domain::{
     AuthorId, CreateNote, EditNote, ItemId, Note, NoteAction, NoteError, NoteEvent, NoteId,
@@ -9,6 +9,7 @@ use crate::domain::{
 use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use users_api::UserDirectory;
 
@@ -19,6 +20,7 @@ pub struct NoteService {
     repo: Arc<dyn NoteRepository>,
     users: Arc<dyn UserDirectory>,
     publisher: Arc<dyn EventPublisher>,
+    deferred: Arc<dyn DeferredJobs>,
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
     authorizer: Arc<Authorizer>,
@@ -29,6 +31,7 @@ impl NoteService {
         repo: Arc<dyn NoteRepository>,
         users: Arc<dyn UserDirectory>,
         publisher: Arc<dyn EventPublisher>,
+        deferred: Arc<dyn DeferredJobs>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
         authorizer: Arc<Authorizer>,
@@ -37,6 +40,7 @@ impl NoteService {
             repo,
             users,
             publisher,
+            deferred,
             transactions,
             clock,
             authorizer,
@@ -58,6 +62,7 @@ impl NoteService {
         principal: &Principal,
         title: String,
         body: String,
+        archive_at: Option<DateTime<Utc>>,
     ) -> AppResult<Versioned<Note>> {
         self.authorize(principal, NoteAction::Create)?;
         let not_a_user = || AppError::validation("only a registered user can write a note");
@@ -69,6 +74,7 @@ impl NoteService {
             author_id: author,
             title,
             body,
+            archive_at,
         };
         let (note, event) = Note::create(NoteId::new(), cmd, self.clock.now())?;
         if !self.users.exists(author.as_uuid()).await? {
@@ -79,6 +85,7 @@ impl NoteService {
         self.publisher
             .publish(&mut tx, events::pending(&note, version, event))
             .await?;
+        self.schedule_archive(&mut tx, &note, None).await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -142,6 +149,7 @@ impl NoteService {
         // Load first so a missing note is a not-found rather than a stale-version
         // conflict; the version check itself is atomic in the repository's update.
         let mut note = self.load_for(principal, plan, id).await?.entity;
+        let archive_at = note.archive_at();
         let event = change(&mut note)?;
         let mut tx = self.transactions.begin().await?;
         let version = self
@@ -151,6 +159,7 @@ impl NoteService {
         self.publisher
             .publish(&mut tx, events::pending(&note, version, event))
             .await?;
+        self.schedule_archive(&mut tx, &note, archive_at).await?;
         tx.commit().await?;
         Ok(Versioned {
             entity: note,
@@ -184,7 +193,68 @@ impl NoteService {
                 events::pending(&current.entity, expected.next(), event),
             )
             .await?;
+        self.deferred
+            .cancel::<ArchiveNote>(&mut tx, ArchiveNote::key(id))
+            .await?;
         tx.commit().await
+    }
+
+    /// Defers the note's archive to its `archive_at` in `tx`, replacing the
+    /// one deferred before, or cancels it once cleared; nothing when it
+    /// hasn't changed from `before`.
+    async fn schedule_archive(
+        &self,
+        tx: &mut Tx,
+        note: &Note,
+        before: Option<DateTime<Utc>>,
+    ) -> AppResult<()> {
+        if note.archive_at() == before {
+            return Ok(());
+        }
+        let key = ArchiveNote::key(note.id());
+        match note.archive_at() {
+            Some(at) => {
+                let job = ArchiveNote {
+                    note_id: note.id().as_uuid(),
+                };
+                self.deferred.defer(tx, key, at, &job).await
+            }
+            None => self.deferred.cancel::<ArchiveNote>(tx, key).await,
+        }
+    }
+
+    /// Archives the note once its `archive_at` has come, in `tx`. A note
+    /// already archived, gone, or no longer due (its time cleared or moved
+    /// later) is left as it is, so a stale job does nothing.
+    pub async fn archive_when_due(
+        &self,
+        principal: &Principal,
+        tx: &mut Tx,
+        id: NoteId,
+    ) -> AppResult<()> {
+        let plan = self.authorize(principal, NoteAction::Archive)?;
+        let now = self.clock.now();
+        let Some(Versioned {
+            entity: mut note,
+            version,
+        }) = self.repo.get(id).await?
+        else {
+            return Ok(());
+        };
+        self.authorizer.check(principal, &plan, &note)?;
+        if !note.archive_at().is_some_and(|at| at <= now) {
+            return Ok(());
+        }
+        let Some(event) = note.archive(now) else {
+            return Ok(());
+        };
+        let version = self
+            .repo
+            .save(tx, &note, Expected::Version(version))
+            .await?;
+        self.publisher
+            .publish(tx, events::pending(&note, version, event))
+            .await
     }
 
     /// Saves every note in `tx`, so a failure archives none of them. A note

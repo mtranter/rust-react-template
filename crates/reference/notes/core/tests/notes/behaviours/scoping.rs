@@ -15,6 +15,7 @@ fn archived(author: Uuid, title: &str, notes: &Notes) -> Note {
             author_id: AuthorId::from_uuid(author),
             title: title.into(),
             body: String::new(),
+            archive_at: None,
         },
         notes.now(),
     )
