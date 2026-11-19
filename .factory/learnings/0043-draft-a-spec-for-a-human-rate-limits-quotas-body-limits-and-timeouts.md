@@ -6,3 +6,9 @@
 - **One unsafe request verifies its token twice:** once in idempotency (`verified_caller`, `crates/common/web/src/auth.rs`) and once in its `Caller`. So a token with an unknown `kid` makes two JWKS fetches. The same `verified_caller` is the seam for any middleware that needs the caller before the handler.
 - MCP tool calls reach `api` (`crates/server/src/app.rs`) in-process, so a middleware inside `api` applies to REST and MCP alike; one on `build_app` would see only `POST /mcp`.
 - Refusal codes an MCP client should know are listed in the instructions in `crates/server/src/tools.rs`; a new status (`429`, `413`) needs a line there.
+- Checked 2026-11-19:
+  - CloudFront's origin response timeout defaults to 30 s and can be set from 1 to 120 s without asking AWS; 60 s is not the maximum.
+  - CloudFront now has flat-rate plans with WAF included: $0, $15, $200 and $1,000 a month.
+  - API Gateway usage plans are for REST APIs only, and AWS calls their limits "best-effort".
+  - A WAF rate rule keyed on a header doesn't limit requests that lack that header at all.
+- Start the web fact-check as early as you can and wait for it before returning: an Implementor that returned before its fact-check agent reported had to commit afterwards.
