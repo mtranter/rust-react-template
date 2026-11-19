@@ -11,3 +11,4 @@
   - AWS's official price-list JSON files (`pricing.us-east-1.amazonaws.com/offers/v1.0/aws/<Service>/current/us-east-1/index.json`) were the most reliable source; the marketing pages are rendered by JavaScript.
 - A periodic worker tick on Lambda would keep a scale-to-zero database awake; wake on commit and at the next due time instead.
 - Return the structured output only once the work is committed: a background research agent finishing after it means redoing the wrap-up.
+- **Review round 1:** every price needs its own source URL, container prices included (Fargate, RDS, ELB, Lightsail), and so does every outside crate. State the sizing assumptions (hours awake, CU/ACU) above a cost table so a reviewer can redo the sums, and mark the table itself with the question it depends on.
