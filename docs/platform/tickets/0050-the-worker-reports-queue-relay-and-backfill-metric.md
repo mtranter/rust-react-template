@@ -1,7 +1,7 @@
 ---
 id: 0050
 name: "The worker reports queue, relay and backfill metrics read from Postgres every 15 seconds"
-status: in-progress
+status: needs-info
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0049-request-side-metrics-are-exported-over-otlp-http-m.md]
 blocks: [docs/platform/tickets/0052-adr-otlp-and-the-standard-variables-trace-context.md]
@@ -25,3 +25,7 @@ Have the worker export the delivery metrics. Exactly one worker at a time reads 
 - [ ] A test using the in-memory metric exporter checks that every one of these metrics is registered.
 - [ ] A test checks that the figures reflect seeded queue state (e.g. a due job, a future job, a dead letter, an undispatched outbox row).
 - [ ] `make check-changed` passes.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: implementor did not complete the Ticket: no structured output (session 01cb4786-1234-4176-b2c7-3cad3d3dca22)
