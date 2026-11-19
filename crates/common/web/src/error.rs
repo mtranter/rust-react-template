@@ -4,8 +4,8 @@
 
 use crate::request_id::current_request_id;
 use app_error::AppError;
-use poem::{IntoResponse, Response, http::StatusCode};
-use poem_openapi::{ApiResponse, Enum, Object, payload::Json};
+use poem::{IntoResponse, PathPattern, Response, http::StatusCode};
+use poem_openapi::{ApiResponse, Enum, Object, OperationId, payload::Json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 #[oai(rename_all = "snake_case")]
@@ -171,6 +171,13 @@ pub async fn render_error(err: poem::Error) -> Response {
     };
     let mut resp = Json(ErrorBody::new(code, message)).into_response();
     resp.set_status(status);
+    // What the request's span is named and labelled by (`TraceRequests`).
+    if let Some(route) = err.data::<PathPattern>() {
+        resp.set_data(route.clone());
+    }
+    if let Some(operation) = err.data::<OperationId>() {
+        resp.set_data(*operation);
+    }
     resp
 }
 

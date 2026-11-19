@@ -1,12 +1,11 @@
 //! Honours an inbound `x-request-id` (e.g. from a load balancer) before minting one.
 //! Put it outermost, so every response carries the header (errors included) and
-//! every log line inside, `Tracing`'s access log too, carries the id.
+//! the request's span (`TraceRequests`), and so every log line inside, carries the id.
 
 use poem::{
     Endpoint, IntoResponse, Middleware, Request, Response, Result,
     http::{HeaderValue, header::HeaderName},
 };
-use tracing::Instrument;
 use uuid::Uuid;
 
 const HEADER: &str = "x-request-id";
@@ -51,11 +50,7 @@ impl<E: Endpoint> Endpoint for RequestIdEndpoint<E> {
 
         req.extensions_mut().insert(RequestId(id.clone()));
 
-        let span = tracing::info_span!("http_request", request_id = %id);
-        let result = CURRENT
-            .scope(id.clone(), self.inner.call(req))
-            .instrument(span)
-            .await;
+        let result = CURRENT.scope(id.clone(), self.inner.call(req)).await;
         let mut resp = match result {
             Ok(resp) => resp.into_response(),
             Err(err) => err.into_response(),

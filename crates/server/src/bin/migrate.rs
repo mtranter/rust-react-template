@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Loaded before anything is migrated, so a build whose policies don't load changes nothing.
     server::policies::<Registered>()
         .inspect_err(|err| eprintln!("migrate refused to start: {err}"))?;
-    server::telemetry::init(config.env);
+    let telemetry = server::telemetry::init(config.env, "migrate");
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
     app_db::run_migrations(&pool, &server::module_migrations::<Registered>()).await?;
@@ -25,5 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(granted, "default grants applied");
 
     tracing::info!("migrations complete");
+    // Also on an early return, when `telemetry` drops.
+    telemetry.shutdown();
     Ok(())
 }

@@ -3,7 +3,11 @@
 //! module's own: domain verbs, JSON newtypes built from aggregates, and a
 //! `Refusal` declaring only the codes the module produces.
 
-use crate::{IDEMPOTENCY_KEY, Idempotency, RequestIdMiddleware, mcp, render_error};
+mod traces;
+
+pub use traces::Traces;
+
+use crate::{IDEMPOTENCY_KEY, Idempotency, RequestIdMiddleware, TraceRequests, mcp, render_error};
 use poem::endpoint::BoxEndpoint;
 use poem::test::{TestClient, TestRequestBuilder};
 use poem::{Endpoint, EndpointExt, Route};
@@ -20,7 +24,7 @@ pub struct TestApi {
 
 impl TestApi {
     /// Mounts `endpoints` under `/api` as the server does: with its error
-    /// rendering, `idempotency` and request ids; `wire` adds the data they read
+    /// rendering, `idempotency`, request ids and spans; `wire` adds the data they read
     /// (a provider, a verifier) outermost, as the server does.
     pub fn new<T, E>(
         endpoints: T,
@@ -36,6 +40,7 @@ impl TestApi {
             .nest("/api", api)
             .catch_all_error(render_error)
             .with(idempotency)
+            .with(TraceRequests::of::<T>("/api"))
             .with(RequestIdMiddleware)
             .boxed();
         Self::over(wire(app))

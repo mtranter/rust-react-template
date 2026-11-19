@@ -10,7 +10,7 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::load()?;
-    server::telemetry::init(config.env);
+    let telemetry = server::telemetry::init(config.env, "seed");
     if config.env == Environment::Prod {
         return Err("refusing to seed a prod environment".into());
     }
@@ -22,5 +22,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     tracing::info!("seed complete");
+    telemetry.shutdown();
     Ok(())
 }

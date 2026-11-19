@@ -37,6 +37,8 @@ pub trait Composition: Send + Sync + 'static {
     fn modules() -> Vec<Module>;
 }
 
+/// The app's name, `make init`'s `NAME`: its traces' `service.namespace`.
+pub const APP_NAME: &str = "rust-vite-template";
 pub const API_TITLE: &str = "rust-vite-template API";
 pub const API_VERSION: &str = "0.1.0";
 /// Also the generated client's `baseUrl`.

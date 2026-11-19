@@ -6,13 +6,15 @@ use crate::{
 use app_db::Pool;
 use app_module::Context;
 use app_web::mcp::{self, Discovery};
-use app_web::{JwtVerifier, RequestIdMiddleware, health_routes, render_error};
+use app_web::{
+    Idempotent, JwtVerifier, RequestIdMiddleware, TraceRequests, health_routes, render_error,
+};
 use poem::{
     Endpoint, EndpointExt, IntoResponse, Response, Route,
     endpoint::{BoxEndpoint, make_sync},
     get, handler,
     http::StatusCode,
-    middleware::{Cors, Tracing},
+    middleware::Cors,
     web::{Data, Json},
 };
 use poem_openapi::OpenApiService;
@@ -49,13 +51,13 @@ pub fn build_app<C: Composition>(
             discovery.metadata(),
         );
 
-    // Errors become `ErrorBody` responses innermost, so CORS and the access
-    // log see them; the request id is outermost, so the access log and every
-    // refusal carry it.
+    // Errors become `ErrorBody` responses innermost, so CORS and the request's
+    // span (and its access log) see them; the request id is outermost, so the
+    // span and every refusal carry it.
     mount_frontend(app)
         .catch_all_error(render_error)
         .with(Cors::new().allow_origin(cors_origin))
-        .with(Tracing)
+        .with(TraceRequests::of::<Idempotent<C::Endpoints>>(API_BASE))
         .with(RequestIdMiddleware)
         // For the readiness probe.
         .data(ctx.pool())

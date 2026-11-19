@@ -11,6 +11,7 @@ mod public_url;
 mod request_id;
 #[cfg(any(test, feature = "test"))]
 pub mod testing;
+mod trace;
 
 pub use app_authz::Principal;
 pub use auth::{Claims, JwtAuth, JwtVerifier, PrincipalResolver};
@@ -25,3 +26,4 @@ pub use listing::{ListResult, SortParam, paged, sorts};
 pub use provide::{Accept, Provide};
 pub use public_url::PublicUrl;
 pub use request_id::{RequestId, RequestIdMiddleware};
+pub use trace::TraceRequests;
