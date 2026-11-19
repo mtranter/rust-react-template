@@ -36,7 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         PublicUrl::new(config.public_url.clone()),
         config.jwt_issuer.clone(),
     );
-    let app = build_app::<Registered>(&ctx, verifier, discovery, &config.cors_origin);
+    let app = build_app::<Registered>(
+        &ctx,
+        verifier,
+        discovery,
+        config.sign_in(),
+        &config.cors_origin,
+    );
 
     Server::new(TcpListener::bind(config.bind_addr()))
         .run_with_graceful_shutdown(app, shutdown_signal(), None)

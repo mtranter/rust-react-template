@@ -1,0 +1,8 @@
+# Learnings: 0034 /auth/config and the prod client-id refusal
+
+- `AppConfig` reads some `APP_*` settings raw (the `RAW` list in `crates/server/src/config.rs`), not through figment's `Env`, which parses values: an all-digit client id would become a number and fail to extract as a string. Add a free-text setting there.
+- `AppConfig::validate` checks `cfg!(feature = "embed-frontend")`; its tests call `validate_serving(spa_embedded)` directly, so they pass whether or not the crate is built with the feature. A test calling `validate()` for a prod config with an issuer would fail under `embed-frontend`.
+- `build_app` takes `Option<SignIn>` (from `AppConfig::sign_in()`); its callers are `main.rs`, `crates/server/tests/composed_app.rs` and `crates/reference/journeys/tests/journeys/driver.rs`.
+- `/auth/config` is a plain poem route; its `404` becomes an `ErrorBody` through `catch_all_error(render_error)` with a `poem::Error::from_string(.., NOT_FOUND)`. No spec or snapshot change follows.
+- The `scopes` served are the full list to request (`openid profile email` first, then `APP_OIDC_SCOPES`, deduplicated); `clientId` is `null` when unset (only allowed outside prod or without the SPA embedded).
+- The Vite dev server proxies only `/api`, so in `make dev` the SPA's fetch of `/auth/config` hits Vite (index.html), not the backend: ticket 0035 must treat a non-JSON or 404 answer as "no sign-in", or proxy `/auth/config`.

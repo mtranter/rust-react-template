@@ -169,6 +169,6 @@ Deliberate gaps: build one only when a module needs it.
 - Enrichment: no `-api` trait has a display lookup yet (`UserDirectory` has only `exists`). The first screen to show another module's column adds one, with its stub in the consumer's driver.
 - Waking the worker other than by polling.
 - Ending long-lived responses (streams) on shutdown: nothing streams yet.
-- A sign-in flow in the SPA against the identity provider: in dev the Vite proxy signs requests (see "Auth"); a production build sends no token yet.
+- A sign-in flow in the SPA against the identity provider: in dev the Vite proxy signs requests (see "Auth"); a production build sends no token yet. The server half is built: `GET /auth/config` (`crates/server/src/sign_in.rs`, outside `/api`, so no operation or tool) serves the SPA the issuer, `APP_OIDC_CLIENT_ID`, scopes and extra parameters, `404` without `APP_JWT_ISSUER`, and a prod server built with `embed-frontend` refuses to start with an issuer but no client id.
 - An OpenTelemetry exporter (a seam in `server::telemetry`), Playwright end-to-end tests, and static hosting for the SPA apart from the binary.
 - More external dependencies as docker-compose services, or testcontainers for those a test must own.

@@ -145,6 +145,7 @@ impl App {
             &ctx,
             verifier.clone(),
             Discovery::default(),
+            None,
             "http://localhost",
         ));
         Self {

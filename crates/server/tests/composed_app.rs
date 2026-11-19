@@ -11,6 +11,7 @@ use app_web::testing::{Refused, TestApi};
 use app_web::{JwtVerifier, Provide, PublicUrl};
 use poem::test::TestClient;
 use serde_json::Value;
+use server::sign_in::{self, SignIn};
 use server::{Composition, PUBLIC, Registered};
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet};
@@ -71,6 +72,7 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
         &ctx,
         verifier,
         Discovery::default(),
+        None,
         "http://localhost",
     ));
 
@@ -169,6 +171,7 @@ async fn one_mcp_endpoint_offers_a_tool_per_operation(pool: PgPool) {
         &ctx,
         verifier,
         Discovery::default(),
+        None,
         "http://localhost",
     ));
     let session = api.mcp_session::<Code>(Some(&token)).await.unwrap();
@@ -238,6 +241,7 @@ async fn with_an_issuer_mcp_clients_are_told_where_to_sign_in(pool: PgPool) {
         &ctx,
         JwtVerifier::new("test-secret"),
         discovery,
+        None,
         "http://localhost",
     ));
 
@@ -258,6 +262,67 @@ async fn with_an_issuer_mcp_clients_are_told_where_to_sign_in(pool: PgPool) {
         .send()
         .await
         .assert_header_exist("www-authenticate");
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn with_an_issuer_the_spa_is_told_how_to_sign_in(pool: PgPool) {
+    let ctx = context(pool).await;
+    let sign_in = SignIn {
+        issuer: "https://issuer.example/".into(),
+        client_id: Some("spa".into()),
+        scopes: vec!["openid".into(), "offline_access".into()],
+        extra_params: BTreeMap::from([("audience".into(), "https://api.example".into())]),
+    };
+    let client = TestClient::new(server::build_app::<Registered>(
+        &ctx,
+        JwtVerifier::new("test-secret"),
+        Discovery::default(),
+        Some(sign_in),
+        "http://localhost",
+    ));
+
+    let response = client.get(sign_in::PATH).send().await;
+    response.assert_status_is_ok();
+    response
+        .assert_json(serde_json::json!({
+            "issuer": "https://issuer.example/",
+            "clientId": "spa",
+            "scopes": ["openid", "offline_access"],
+            "extraParams": { "audience": "https://api.example" },
+        }))
+        .await;
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn without_an_issuer_there_is_no_sign_in_for_the_spa(pool: PgPool) {
+    let ctx = context(pool).await;
+    let client = TestClient::new(server::build_app::<Registered>(
+        &ctx,
+        JwtVerifier::new("test-secret"),
+        Discovery::default(),
+        None,
+        "http://localhost",
+    ));
+
+    let response = client.get(sign_in::PATH).send().await;
+    response.assert_status(poem::http::StatusCode::NOT_FOUND);
+    let body = response.json().await;
+    body.value().object().get("code").assert_string("not_found");
+    body.value()
+        .object()
+        .get("message")
+        .assert_string("no sign-in is configured: APP_JWT_ISSUER is unset");
+}
+
+#[test]
+fn the_spas_sign_in_settings_are_no_operation() {
+    let spec: Value = serde_json::from_str(&server::spec::<Registered>()).expect("spec is JSON");
+    let paths = spec["paths"].as_object().expect("spec lists its paths");
+    assert!(
+        paths.keys().all(|path| !path.starts_with("/auth")),
+        "{:?}",
+        paths.keys()
+    );
 }
 
 #[test]

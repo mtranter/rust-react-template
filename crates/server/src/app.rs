@@ -1,4 +1,8 @@
-use crate::{API_BASE, Composition, Tools, build_service, spec};
+use crate::{
+    API_BASE, Composition, Tools, build_service,
+    sign_in::{self, SignIn},
+    spec,
+};
 use app_db::Pool;
 use app_module::Context;
 use app_web::mcp::{self, Discovery};
@@ -19,6 +23,7 @@ pub fn build_app<C: Composition>(
     ctx: &Context,
     verifier: JwtVerifier,
     discovery: Discovery,
+    sign_in: Option<SignIn>,
     cors_origin: &str,
 ) -> impl Endpoint + use<C> {
     let service = build_service::<C>();
@@ -36,6 +41,7 @@ pub fn build_app<C: Composition>(
         )
         .nest("/docs", ui)
         .nest("/health", health_routes(get(readiness)))
+        .at(sign_in::PATH, sign_in::endpoint(sign_in))
         .at(mcp::PATH, mcp::endpoint::<Tools<C>>(api, discovery.clone()))
         .at(mcp::METADATA_PATH, discovery.metadata())
         .at(

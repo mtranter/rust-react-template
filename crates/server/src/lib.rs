@@ -8,6 +8,7 @@ pub mod config;
 mod modules;
 mod public;
 mod shutdown;
+pub mod sign_in;
 pub mod telemetry;
 mod tools;
 
