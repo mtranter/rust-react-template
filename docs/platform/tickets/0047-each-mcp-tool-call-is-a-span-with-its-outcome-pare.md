@@ -1,7 +1,7 @@
 ---
 id: 0047
 name: "Each MCP tool call is a span with its outcome, parent of its in-process REST call"
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0044-the-server-worker-and-migrate-export-traces-over-o.md]
 blocks: [docs/platform/tickets/0052-adr-otlp-and-the-standard-variables-trace-context.md]
