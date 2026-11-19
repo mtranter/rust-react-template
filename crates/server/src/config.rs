@@ -1,12 +1,14 @@
 //! Layering (later wins): defaults → optional `config.toml` → `APP_*` env vars →
 //! `DATABASE_URL` (its conventional name, not `APP_DATABASE_URL`).
 
+use crate::sign_in::{BASE_SCOPES, SignIn};
 use app_bus::{Bus, NoBus, RedisBus};
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,6 +18,15 @@ pub enum Environment {
     Test,
     Prod,
 }
+
+/// Taken raw, not through `Env`, which parses each value: an all-digit subject
+/// or client id (as Google issues) would be a number, and `true` a bool.
+const RAW: [&str; 4] = [
+    "bootstrap_admins",
+    "oidc_client_id",
+    "oidc_scopes",
+    "oidc_extra_params",
+];
 
 /// [`AppConfig::validate`] refuses to start in prod while this is in effect.
 const DEV_JWT_SECRET: &str = "dev-only-insecure-secret-change-me";
@@ -55,6 +66,14 @@ pub struct AppConfig {
     /// Subjects (the token's `sub`), comma-separated, that always hold `admin`
     /// whatever `access` assigns: how a fresh app gets its first admin.
     pub bootstrap_admins: String,
+    /// The embedded SPA's public client id at the `jwt_issuer`.
+    pub oidc_client_id: Option<String>,
+    /// Scopes the SPA requests beyond `openid profile email`, space-separated
+    /// as in OAuth's `scope` (`offline_access api://app/.default`).
+    pub oidc_scopes: String,
+    /// Parameters the SPA adds to its authorization request, space-separated
+    /// `key=value` pairs (`audience=https://api.example.com`).
+    pub oidc_extra_params: String,
 }
 
 impl Default for AppConfig {
@@ -75,6 +94,9 @@ impl Default for AppConfig {
             redis_url: None,
             redis_ca: None,
             bootstrap_admins: String::new(),
+            oidc_client_id: None,
+            oidc_scopes: String::new(),
+            oidc_extra_params: String::new(),
         }
     }
 }
@@ -82,40 +104,93 @@ impl Default for AppConfig {
 impl AppConfig {
     /// The error is boxed: `figment::Error` is large, and this is a cold path.
     pub fn load() -> Result<Self, Box<figment::Error>> {
-        let config: Self = Self::figment(Env::var("APP_BOOTSTRAP_ADMINS"))
-            .extract()
-            .map_err(Box::new)?;
+        let raw = RAW.into_iter().filter_map(|key| {
+            std::env::var(format!("APP_{}", key.to_ascii_uppercase()))
+                .ok()
+                .map(|value| (key, value))
+        });
+        let config: Self = Self::figment(raw).extract().map_err(Box::new)?;
         config.validate()?;
         Ok(config)
     }
 
-    /// `APP_BOOTSTRAP_ADMINS` is taken raw, not through `Env`, which parses each value: an
-    /// all-digit subject (as Google issues) would be a number, and `true` a bool, neither a string.
-    fn figment(bootstrap_admins: Option<String>) -> Figment {
+    fn figment<'a>(raw: impl IntoIterator<Item = (&'a str, String)>) -> Figment {
         let figment = Figment::from(Serialized::defaults(AppConfig::default()))
             .merge(Toml::file("config.toml"))
-            .merge(Env::prefixed("APP_").ignore(&["bootstrap_admins"]))
+            .merge(Env::prefixed("APP_").ignore(&RAW))
             .merge(
                 Env::raw()
                     .only(&["DATABASE_URL"])
                     .map(|key| key.as_str().to_ascii_lowercase().into()),
             );
-        match bootstrap_admins {
-            Some(subjects) => figment.merge(Serialized::default("bootstrap_admins", subjects)),
-            None => figment,
-        }
+        raw.into_iter().fold(figment, |figment, (key, value)| {
+            figment.merge(Serialized::default(key, value))
+        })
     }
 
-    /// Without this, a copy-paste prod deploy would accept tokens anyone can forge.
     pub fn validate(&self) -> Result<(), Box<figment::Error>> {
+        self.validate_serving(cfg!(feature = "embed-frontend"))
+    }
+
+    fn validate_serving(&self, spa_embedded: bool) -> Result<(), Box<figment::Error>> {
+        let refuse = |message: &str| Err(Box::new(figment::Error::from(message.to_string())));
+        // Without this, a copy-paste prod deploy would accept tokens anyone can forge.
         if self.is_prod() && self.jwt_issuer.is_none() && self.jwt_secret == DEV_JWT_SECRET {
-            return Err(Box::new(figment::Error::from(
+            return refuse(
                 "refusing to start in prod with the built-in dev JWT secret: \
-                 set APP_JWT_SECRET, or configure APP_JWT_ISSUER for JWKS verification"
-                    .to_string(),
-            )));
+                 set APP_JWT_SECRET, or configure APP_JWT_ISSUER for JWKS verification",
+            );
         }
-        Ok(())
+        // Without this, the SPA could sign no one in, and every guarded screen would be a 401.
+        if self.is_prod() && spa_embedded && self.jwt_issuer.is_some() && self.client_id().is_none()
+        {
+            return refuse(
+                "refusing to start in prod with APP_JWT_ISSUER set but APP_OIDC_CLIENT_ID unset: \
+                 the embedded SPA signs in at the issuer as that client",
+            );
+        }
+        self.extra_params().map(|_| ()).map_err(|message| {
+            Box::new(figment::Error::from(format!(
+                "refusing to start: APP_OIDC_EXTRA_PARAMS {message}"
+            )))
+        })
+    }
+
+    /// The SPA's sign-in settings, which `/auth/config` serves: `None` without
+    /// an issuer, when there is nothing to sign in with.
+    pub fn sign_in(&self) -> Option<SignIn> {
+        let issuer = self.jwt_issuer.clone()?;
+        let mut scopes: Vec<String> = BASE_SCOPES.map(str::to_owned).to_vec();
+        for scope in self.oidc_scopes.split_whitespace() {
+            if !scopes.iter().any(|s| s == scope) {
+                scopes.push(scope.to_owned());
+            }
+        }
+        Some(SignIn {
+            issuer,
+            client_id: self.client_id(),
+            scopes,
+            extra_params: self.extra_params().unwrap_or_default(),
+        })
+    }
+
+    fn client_id(&self) -> Option<String> {
+        self.oidc_client_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+    }
+
+    /// `APP_OIDC_EXTRA_PARAMS`' `key=value` pairs; the error says which isn't one.
+    fn extra_params(&self) -> Result<BTreeMap<String, String>, String> {
+        self.oidc_extra_params
+            .split_whitespace()
+            .map(|pair| match pair.split_once('=') {
+                Some((key, value)) if !key.is_empty() => Ok((key.to_owned(), value.to_owned())),
+                _ => Err(format!("has `{pair}`, which isn't a `key=value` pair")),
+            })
+            .collect()
     }
 
     /// A `RedisBus` when `APP_REDIS_URL` is set. Unset, nothing is broadcast,
@@ -191,7 +266,136 @@ mod tests {
             jwt_issuer: Some("https://issuer.example.com".to_string()),
             ..prod()
         };
-        assert!(config.validate().is_ok());
+        assert!(config.validate_serving(false).is_ok());
+    }
+
+    fn with_issuer(config: AppConfig) -> AppConfig {
+        AppConfig {
+            jwt_issuer: Some(ISSUER.to_string()),
+            ..config
+        }
+    }
+
+    const ISSUER: &str = "https://issuer.example.com/";
+
+    #[test]
+    fn prod_with_the_spa_embedded_refuses_an_issuer_without_a_client_id() {
+        for client_id in [None, Some("  ".to_string())] {
+            let config = AppConfig {
+                oidc_client_id: client_id,
+                ..with_issuer(prod())
+            };
+            let error = config.validate_serving(true).expect_err("refused");
+            assert!(error.to_string().contains("APP_JWT_ISSUER"), "{error}");
+            assert!(error.to_string().contains("APP_OIDC_CLIENT_ID"), "{error}");
+        }
+    }
+
+    #[test]
+    fn an_issuer_without_a_client_id_starts_outside_prod_or_without_the_spa() {
+        assert!(with_issuer(prod()).validate_serving(false).is_ok());
+        for env in [Environment::Dev, Environment::Test] {
+            let config = AppConfig {
+                env,
+                ..with_issuer(AppConfig::default())
+            };
+            assert!(config.validate_serving(true).is_ok());
+        }
+    }
+
+    #[test]
+    fn prod_with_the_spa_embedded_starts_with_an_issuer_and_a_client_id() {
+        let config = AppConfig {
+            oidc_client_id: Some("spa".to_string()),
+            ..with_issuer(prod())
+        };
+        assert!(config.validate_serving(true).is_ok());
+    }
+
+    #[test]
+    fn without_an_issuer_there_is_no_sign_in() {
+        let config = AppConfig {
+            oidc_client_id: Some("spa".to_string()),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.sign_in(), None);
+    }
+
+    #[test]
+    fn sign_in_requests_the_base_scopes_then_the_extra_ones_once_each() {
+        let config = AppConfig {
+            oidc_client_id: Some("spa".to_string()),
+            oidc_scopes: " offline_access  email api://app/.default ".to_string(),
+            oidc_extra_params: "audience=https://api.example.com prompt=login".to_string(),
+            ..with_issuer(AppConfig::default())
+        };
+        assert_eq!(
+            config.sign_in(),
+            Some(SignIn {
+                issuer: ISSUER.to_string(),
+                client_id: Some("spa".to_string()),
+                scopes: [
+                    "openid",
+                    "profile",
+                    "email",
+                    "offline_access",
+                    "api://app/.default"
+                ]
+                .map(str::to_owned)
+                .to_vec(),
+                extra_params: BTreeMap::from([
+                    (
+                        "audience".to_string(),
+                        "https://api.example.com".to_string()
+                    ),
+                    ("prompt".to_string(), "login".to_string()),
+                ]),
+            })
+        );
+    }
+
+    #[test]
+    fn an_extra_param_that_isnt_a_key_value_pair_refuses_to_start() {
+        for params in ["audience", "=value", "audience=x prompt"] {
+            let config = AppConfig {
+                oidc_extra_params: params.to_string(),
+                ..AppConfig::default()
+            };
+            let error = config.validate().expect_err(params);
+            assert!(
+                error.to_string().contains("APP_OIDC_EXTRA_PARAMS"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_value_may_hold_an_equals_sign() {
+        let config = AppConfig {
+            oidc_extra_params: "claims={\"a\":1}=x".to_string(),
+            ..AppConfig::default()
+        };
+        assert_eq!(
+            config.extra_params(),
+            Ok(BTreeMap::from([(
+                "claims".to_string(),
+                "{\"a\":1}=x".to_string()
+            )]))
+        );
+    }
+
+    #[test]
+    fn the_sign_in_settings_are_read_as_strings_however_they_look() {
+        let config: AppConfig = AppConfig::figment([
+            ("oidc_client_id", "12345".to_string()),
+            ("oidc_scopes", "true".to_string()),
+            ("oidc_extra_params", "a=1".to_string()),
+        ])
+        .extract()
+        .expect("extracts");
+        assert_eq!(config.oidc_client_id.as_deref(), Some("12345"));
+        assert_eq!(config.oidc_scopes, "true");
+        assert_eq!(config.oidc_extra_params, "a=1");
     }
 
     #[test]
@@ -222,7 +426,7 @@ mod tests {
     #[test]
     fn a_bootstrap_admin_whose_subject_reads_as_a_number_or_bool_is_still_a_subject() {
         for raw in ["12345", "true", "109876543210987654321", "12345,ada"] {
-            let config: AppConfig = AppConfig::figment(Some(raw.to_string()))
+            let config: AppConfig = AppConfig::figment([("bootstrap_admins", raw.to_string())])
                 .extract()
                 .unwrap_or_else(|err| panic!("{raw}: {err}"));
             assert_eq!(config.bootstrap_admins.as_str(), raw);
