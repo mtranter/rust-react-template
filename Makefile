@@ -85,16 +85,17 @@ setup: ## Install repo-local Rust CLI tools (run once after cloning)
 _require-cargo-bin:
 	@command -v cargo-bin >/dev/null 2>&1 || { echo "cargo-run-bin missing — run 'make setup'"; exit 1; }
 
-db-up: ## Start local Postgres (docker compose)
-	docker compose up -d postgres
+# Another checkout's compose Postgres may already hold :5432 (worktrees each get a
+# compose project of their own); then this one's can't start, and that one serves.
+db-up: ## Start local Postgres (docker compose), or use the one already on :5432
+	@docker compose up -d --wait postgres || { \
+	  timeout 2 bash -c '</dev/tcp/localhost/5432' 2>/dev/null \
+	    && echo "using the Postgres already listening on :5432"; }
 
 redis-up: ## Start local Valkey (docker compose), the bus `make dev` broadcasts over
 	docker compose up -d --wait redis
 
-db-wait: db-up ## Wait until Postgres is healthy
-	@echo "waiting for postgres..."; \
-	until docker compose exec -T postgres pg_isready -U app -d app >/dev/null 2>&1; do sleep 1; done; \
-	echo "postgres ready"
+db-wait: db-up ## Wait until Postgres is healthy (db-up waits)
 
 db-down: ## Stop local Postgres
 	docker compose down
