@@ -21,6 +21,8 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, PoisonError};
+use tracing::Instrument;
+use tracing::field::Empty;
 
 /// What the MCP endpoint offers: a tool per operation of `Api`, but those
 /// [`REST_ONLY`](Self::REST_ONLY). Type-level, since `poem-mcpserver` lists
@@ -104,6 +106,41 @@ impl<S: Surface> Tools for OpenApiTools<S> {
     }
 
     async fn call(&mut self, name: &str, arguments: Value) -> Result<ToolsCallResponse, RpcError> {
+        // `mcp.method.name` and `gen_ai.tool.name` are OpenTelemetry's MCP
+        // semantic conventions; `is_error` is the result's `isError`.
+        let span = tracing::info_span!(
+            "tool_call",
+            otel.name = name,
+            otel.status_code = Empty,
+            mcp.method.name = "tools/call",
+            gen_ai.tool.name = name,
+            is_error = Empty,
+        );
+        let called = self
+            .call_operation(name, arguments)
+            .instrument(span.clone())
+            .await;
+        match &called {
+            Ok(result) => {
+                span.record("is_error", result.is_error);
+                if result.is_error {
+                    span.record("otel.status_code", "error");
+                }
+            }
+            Err(_) => {
+                span.record("otel.status_code", "error");
+            }
+        }
+        called
+    }
+}
+
+impl<S: Surface> OpenApiTools<S> {
+    async fn call_operation(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<ToolsCallResponse, RpcError> {
         let operation = described::<S>()
             .0
             .into_iter()
