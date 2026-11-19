@@ -1,7 +1,7 @@
 ---
 id: 0040
 name: "Draft a Spec, for a human to decide, for MCP tool hints and marking untrusted fields"
-status: ready-for-agent
+status: in-progress
 priority: P2
 size: S
 blocked_by: []
