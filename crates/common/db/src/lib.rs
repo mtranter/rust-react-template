@@ -10,6 +10,7 @@ mod publishing;
 mod scope;
 mod subscriptions;
 mod topics;
+mod trace;
 mod unit_of_work;
 mod worker;
 

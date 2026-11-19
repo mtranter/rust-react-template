@@ -19,9 +19,13 @@ sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+tracing-opentelemetry.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+app-web = { workspace = true, features = ["test"] }
 strum.workspace = true
 app-test-db.workspace = true
 serde.workspace = true
