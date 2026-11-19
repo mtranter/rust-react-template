@@ -15,7 +15,7 @@ mod tools;
 pub use discovery::{Discovery, METADATA_PATH, Metadata};
 pub use tools::{OpenApiTools, RestOnly, Surface, problems};
 
-use crate::RequestIdMiddleware;
+use crate::{RequestIdMiddleware, TraceRequests};
 use poem::{Endpoint, EndpointExt, IntoEndpoint, Request};
 use poem_mcpserver::{McpServer, streamable_http};
 use sessions::{Presented, SubjectSessions};
@@ -32,7 +32,13 @@ pub const PATH: &str = "/mcp";
 pub fn endpoint<S: Surface>(api: impl Endpoint + 'static, discovery: Discovery) -> impl Endpoint {
     // Its own request id, so a tool's refusal names one even where the MCP
     // request's isn't in scope: an SSE answer runs after the request returns.
-    let api = Arc::new(api.with(RequestIdMiddleware).boxed());
+    // And its own span, a child of the tool call's: the app's `TraceRequests`
+    // is outside `/mcp`, so it sees the MCP request, not the call it makes.
+    let api = Arc::new(
+        api.with(TraceRequests::of::<S::Api>(S::BASE))
+            .with(RequestIdMiddleware)
+            .boxed(),
+    );
     streamable_http::endpoint(move |req: &Request| {
         // The factory is synchronous, so it can't check the token itself.
         let presented = req

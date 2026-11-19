@@ -493,3 +493,48 @@ async fn without_an_issuer_there_is_no_protected_resource_metadata() {
             .assert_status(StatusCode::NOT_FOUND);
     }
 }
+
+#[tokio::test]
+async fn a_tool_call_is_a_span_named_by_the_tool_parent_of_its_operations_request() {
+    let agent = Agent::new();
+    let session = agent.session("ada").await;
+    let traces = crate::testing::Traces::install();
+
+    put(&session, json!({ "id": "a", "body": { "name": "n" } }))
+        .await
+        .unwrap();
+    assert_eq!(
+        session
+            .call::<Value, Code>("delete_thing", json!({ "id": "missing" }))
+            .await,
+        Err(code("not_found"))
+    );
+
+    for (tool, request, is_error) in [
+        ("put_thing", "PUT /api/things/{id}", "false"),
+        ("delete_thing", "DELETE /api/things/{id}", "true"),
+    ] {
+        let call = traces.span(tool);
+        assert_eq!(
+            crate::testing::Traces::attribute(&call, "is_error").as_deref(),
+            Some(is_error),
+            "{tool}"
+        );
+        let request = traces.span(request);
+        assert_eq!(
+            request.parent_span_id,
+            call.span_context.span_id(),
+            "{tool}"
+        );
+        assert_eq!(
+            request.span_context.trace_id(),
+            call.span_context.trace_id(),
+            "{tool}"
+        );
+    }
+    let failed = traces.span("delete_thing");
+    assert!(matches!(
+        failed.status,
+        opentelemetry::trace::Status::Error { .. }
+    ));
+}
