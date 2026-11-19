@@ -4,7 +4,7 @@ name: "The binary serves the SPA's sign-in settings at /auth/config and refuses 
 status: ready-for-agent
 spec: docs/platform/specs/0002-the-embedded-spa-signs-users-in-with-the-identity-provider-and-sends-their-token.md
 blocked_by: []
-blocks: []
+blocks: [docs/platform/tickets/0035-a-visitor-signs-in-to-the-embedded-spa-with-the-id.md]
 ---
 
 # The binary serves the SPA's sign-in settings at /auth/config and refuses to start in prod without a client id
