@@ -4,7 +4,7 @@ name: "Request-side metrics are exported over OTLP: HTTP, MCP, database pool and
 status: ready-for-agent
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0044-the-server-worker-and-migrate-export-traces-over-o.md]
-blocks: [docs/platform/tickets/0050-the-worker-reports-queue-relay-and-backfill-metric.md]
+blocks: [docs/platform/tickets/0050-the-worker-reports-queue-relay-and-backfill-metric.md, docs/platform/tickets/0052-adr-otlp-and-the-standard-variables-trace-context.md]
 ---
 
 # Request-side metrics are exported over OTLP: HTTP, MCP, database pool and idempotency

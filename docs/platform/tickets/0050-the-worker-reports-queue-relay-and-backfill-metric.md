@@ -4,7 +4,7 @@ name: "The worker reports queue, relay and backfill metrics read from Postgres e
 status: ready-for-agent
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0049-request-side-metrics-are-exported-over-otlp-http-m.md]
-blocks: []
+blocks: [docs/platform/tickets/0052-adr-otlp-and-the-standard-variables-trace-context.md]
 ---
 
 # The worker reports queue, relay and backfill metrics read from Postgres every 15 seconds
