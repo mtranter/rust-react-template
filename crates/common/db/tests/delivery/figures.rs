@@ -170,7 +170,8 @@ async fn every_delivery_metric_is_registered(pool: PgPool) {
     let messaging = Messaging::new(pool).await;
     seeded(&messaging).await;
 
-    messaging.worker(QUEUE).read_figures().await.unwrap();
+    let worker = messaging.worker(QUEUE);
+    worker.read_figures().await.unwrap();
 
     let names = metrics.names();
     for metric in [

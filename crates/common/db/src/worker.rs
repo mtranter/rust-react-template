@@ -774,11 +774,13 @@ impl Worker {
     }
 
     async fn run_job(&self, job: &Claimed) -> AppResult<()> {
-        self.attempts.record(&job.queue, job.attempts);
         if job.attempts > job.max_attempts {
             self.abandon(job).await?;
             Span::current().record("otel.status_code", "error");
-        } else if let Err(err) = self.complete(job).await {
+            return Ok(());
+        }
+        self.attempts.record(&job.queue, job.attempts);
+        if let Err(err) = self.complete(job).await {
             self.fail(job, &err).await?;
             Span::current().record("otel.status_code", "error");
         }

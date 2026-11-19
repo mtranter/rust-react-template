@@ -194,6 +194,16 @@ impl FiguresReader {
     }
 }
 
+/// The gauges' callbacks outlive the reader, for as long as the meter
+/// provider does, so a dropped reader leaves them nothing to observe.
+impl Drop for FiguresReader {
+    fn drop(&mut self) {
+        if let Ok(mut snapshot) = self.snapshot.lock() {
+            *snapshot = None;
+        }
+    }
+}
+
 async fn read(conn: &mut PgConnection, now: DateTime<Utc>) -> AppResult<Figures> {
     let queues = sqlx::query!(
         r#"
@@ -325,7 +335,8 @@ fn queue_attributes(queue: &QueueFigures) -> Vec<KeyValue> {
     )]
 }
 
-/// `messaging.job.attempts`: the attempt each run of a job is, by queue.
+/// `messaging.job.attempts`: the attempt each run of a job's handler is, by
+/// queue; a claim past its last attempt is abandoned unrun, and not recorded.
 #[derive(Clone)]
 pub(crate) struct Attempts(Histogram<u64>);
 
@@ -335,7 +346,9 @@ impl Attempts {
             meter()
                 .u64_histogram("messaging.job.attempts")
                 .with_unit("{attempt}")
-                .with_description("Which attempt each run of a job is, the first being 1.")
+                .with_description(
+                    "Which attempt each run of a job's handler is, the first being 1.",
+                )
                 .with_boundaries((1..=MAX_ATTEMPTS).map(f64::from).collect())
                 .build(),
         )
