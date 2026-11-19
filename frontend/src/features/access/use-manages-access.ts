@@ -2,8 +2,8 @@ import { getAccessCatalogOptions } from "@/api/@tanstack/react-query.gen";
 import { useQuery } from "@tanstack/react-query";
 
 /**
- * Whether the caller may manage access: the catalog answers only those who may. The SPA holds no
- * token to read roles from (the dev proxy and, later, the identity provider add it), so it asks.
+ * Whether the caller may manage access: the catalog answers only those who may. The SPA reads no
+ * roles from its token (in dev it holds none: the proxy adds it), so it asks.
  * `undefined` until the answer comes.
  */
 export function useManagesAccess(): boolean | undefined {

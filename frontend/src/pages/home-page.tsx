@@ -2,7 +2,7 @@ import { listSearch } from "@/components/data-table";
 import { NewNoteForm, NotesTable } from "@/features/notes";
 import { Link, getRouteApi } from "@tanstack/react-router";
 
-const route = getRouteApi("/");
+const route = getRouteApi("/app/");
 
 export function HomePage() {
   const { page = 1, sort } = route.useSearch();

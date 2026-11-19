@@ -162,6 +162,8 @@ import { type GrantFilter, grantSortKeys } from "@/features/access";
 import { AccessPage } from "@/pages/access-page";
 import { HomePage } from "@/pages/home-page";
 import { RootLayout } from "@/pages/root-layout";
+import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
+import { SignedOutPage } from "@/pages/signed-out-page";
 import {
   type RouterHistory,
   createRootRoute,
@@ -169,16 +171,34 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 
-const rootRoute = createRootRoute({ component: RootLayout });
+const rootRoute = createRootRoute();
+
+// Pathless: every screen but signing in and out, which a visitor reaches before they are signed in.
+const appRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "app",
+  component: RootLayout,
+});
+
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/callback",
+  component: SignInCallbackPage,
+});
+const signedOutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/signed-out",
+  component: SignedOutPage,
+});
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/",
   component: HomePage,
 });
 
 const accessRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: "/access",
   validateSearch: (
     search: Record<string, unknown>,
@@ -191,7 +211,11 @@ const accessRoute = createRoute({
   component: AccessPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, accessRoute]);
+const routeTree = rootRoute.addChildren([
+  appRoute.addChildren([indexRoute, accessRoute]),
+  callbackRoute,
+  signedOutRoute,
+]);
 
 function grantFilter(search: Record<string, unknown>): GrantFilter {
   const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
@@ -227,11 +251,13 @@ perl -0 -i -pe '
   s{^  server\.use\(.*?\);\n}{}m;
 ' frontend/src/test/theme.test.tsx
 cat >frontend/screens/scenarios.ts <<EOF
+import type { SignInProvider } from "@/lib/sign-in";
 import type { RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
+import { signInScenarios } from "./sign-in-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
-// runs it with Node's type stripping: so only package imports, and types from \`@/\`.
+// runs it with Node's type stripping: so only package imports, types from \`@/\`, and other scenarios.
 
 export type Scenario = {
   /** The screenshot's file name: \`<name>.<width>.png\`. */
@@ -242,6 +268,8 @@ export type Scenario = {
   steps?: (page: Page) => Promise<void>;
   /** What the shot must show; the run fails if it never appears. */
   shows: (page: Page) => Locator;
+  /** The identity provider, when the app signs people in; with none it signs no one in, as in dev. */
+  signIn?: () => SignInProvider;
 };
 
 export const scenarios: Scenario[] = [
@@ -262,6 +290,7 @@ export const scenarios: Scenario[] = [
     },
     shows: (page) => page.locator("html.dark").getByRole("heading", { name: "$title" }),
   },
+  ...signInScenarios,
 ];
 EOF
 

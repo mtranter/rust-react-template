@@ -1,4 +1,5 @@
 import { App } from "@/App";
+import { Session } from "@/lib/sign-in";
 import { createAppRouter } from "@/router";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
@@ -32,6 +33,7 @@ await setupWorker(...scenario.handlers, notAnAdmin).start({
   },
 });
 
+const session = scenario.signIn ? await Session.restore(scenario.signIn()) : null;
 const router = createAppRouter(createMemoryHistory({ initialEntries: [scenario.route] }));
 
 const root = document.getElementById("root");
@@ -39,6 +41,6 @@ if (!root) throw new Error("missing #root element");
 
 createRoot(root).render(
   <StrictMode>
-    <App router={router} />
+    <App router={router} session={session} />
   </StrictMode>,
 );
