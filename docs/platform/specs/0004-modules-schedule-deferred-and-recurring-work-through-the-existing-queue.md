@@ -1,5 +1,5 @@
 ---
-status: draft
+status: ready-for-tickets
 ---
 
 # Modules schedule deferred and recurring work through the existing queue
@@ -41,6 +41,7 @@ Postgres stays the one source of truth for what is due. Both kinds of work becom
 - `migrate` registers it in a new `messaging.schedule` table:
   - a changed expression is updated, and its next due time recomputed;
   - a schedule removed from code is retired, and its pending run removed, as subscriptions are.
+- **The tick is the worker's existing poll loop.** `Worker::run` (`crates/common/db/src/worker.rs`) already wakes every `worker_poll_ms` (1 second by default) and runs whatever is due. Each pass also turns due slots into jobs, in the same pass as relaying and backfilling (`run_until_idle`). There's no separate timer or task, and `--drain` runs the same pass.
 - The worker turns each due slot into one job. Several workers never create a slot twice.
 - **After downtime:** missed slots run once, not once per missed slot.
 - **No overlap:** a schedule never has two runs pending or running at once. A slot that falls due while the previous run is still going is skipped and logged.
