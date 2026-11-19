@@ -294,6 +294,41 @@ async fn with_an_issuer_the_spa_is_told_how_to_sign_in(pool: PgPool) {
 }
 
 #[app_test_db::test(TEMPLATE)]
+async fn the_embedded_spa_reaches_its_own_origin_whatever_the_cors_origin(pool: PgPool) {
+    let ctx = context(pool).await;
+    let client = TestClient::new(server::build_app::<Registered>(
+        &ctx,
+        JwtVerifier::new("test-secret"),
+        Discovery::default(),
+        None,
+        "http://localhost:5173",
+    ));
+    let from = |origin: &str, host: &str| {
+        client
+            .get("/health")
+            .header("origin", origin)
+            .header("host", host)
+    };
+
+    from("https://app.example", "app.example")
+        .send()
+        .await
+        .assert_status_is_ok();
+    from("http://127.0.0.1:8080", "127.0.0.1:8080")
+        .send()
+        .await
+        .assert_status_is_ok();
+    from("http://localhost:5173", "127.0.0.1:8080")
+        .send()
+        .await
+        .assert_status_is_ok();
+    from("https://elsewhere.example", "app.example")
+        .send()
+        .await
+        .assert_status(poem::http::StatusCode::FORBIDDEN);
+}
+
+#[app_test_db::test(TEMPLATE)]
 async fn without_an_issuer_there_is_no_sign_in_for_the_spa(pool: PgPool) {
     let ctx = context(pool).await;
     let client = TestClient::new(server::build_app::<Registered>(

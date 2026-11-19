@@ -1,0 +1,10 @@
+# Learnings: 0037, the end-to-end sign-in check
+
+- **`JwtVerifier`'s JWKS mode refused every token until this ticket.** jsonwebtoken 11 rejects a `Validation` whose `algorithms` span key families (it listed RS* beside ES*), with `InvalidAlgorithm`, so every OIDC token was `401`. `Jwks::verify` now narrows the validation to the token's own `alg`, once it is one of the allowed. `crates/common/fake-oidc/tests/sign_in.rs` is the only test of JWKS verification: keep it.
+- **`make e2e`** = `scripts/e2e.sh` (build the debug `server` with `embed-frontend,seed` plus `fake-oidc`; `cargo bin sqlx database create` a `_test_e2e_<pid>` database; `migrate`; `seed`) then `frontend/e2e/sign-in.ts` (spawns `fake-oidc`, reads the issuer from its first stdout line, spawns the server with `APP_ENV=prod` on a free port, drives Chromium). The script strips `APP_*` (but `APP_REDIS_*`) and `DATABASE_URL` from the inherited environment, since the Makefile exports a developer's `.env`.
+- **RSA key generation is slow unoptimised** (5-25 s for 2048 bits): the root `Cargo.toml` builds `num-bigint-dig` at `opt-level = 3` in dev, bringing it to about a second.
+- **The fake provider depends on poem directly**, so it is in `deny.toml`'s `poem` wrappers.
+- **On this machine another checkout's Postgres holds :5432**: run make with `COMPOSE_PROJECT_NAME=rust-react-template`, or `db-wait` fails to start this checkout's container.
+- **`check-init` greps for the reference modules' names as whole words** outside `crates/reference/`: the e2e script, the fake provider and these docs avoid them (the subject is "Ada Signed-In", the screen `access`).
+- `cargo clippy -p <one crate>` can fail on dead code that the workspace-wide `make clippy` (with its features) doesn't see; use `make clippy`.
+- **The embedded SPA got `403` for its own `/assets/*.js` until this ticket**: poem's `Cors` refuses any `Origin` but `APP_CORS_ORIGIN`, and same-origin module scripts and fetches carry one. `build_app` now drops a same-origin `Origin` (matching `Host` or `X-Forwarded-Host`) before `Cors`; `composed_app.rs`' `the_embedded_spa_reaches_its_own_origin_whatever_the_cors_origin` covers it.

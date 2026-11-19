@@ -103,7 +103,7 @@ Take `ListQuery<XSortKey>` and the caller's `app_authz::Rows`, and return `Liste
 
 ### Common crates (ADR 0003)
 
-Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only). Never merge them, and never add poem/sqlx to a pure crate (`make check-deps` fails a pure crate depending on any non-pure workspace crate). Declare ids with `app_domain::uuid_newtype!`. Config and the logging and trace pipeline live in `crates/server`, not `common`; only the request's span, the query spans (`app_web::QuerySpans`) and the metrics measured where requests are served (`app_web::PoolWaits`, and the pool's in `app_db::observe_pool`) are `app_web`'s and `app_db`'s.
+Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persistence`, `app-test-support`) from framework-coupled (`app-web` = poem, `app-db` = sqlx, `app-module` = both, for `di.rs` and the server; `app-test-db` = sqlx, tests only; `app-fake-oidc` = poem, the OIDC provider `make e2e` signs in through, never a dependency of shipped code). Never merge them, and never add poem/sqlx to a pure crate (`make check-deps` fails a pure crate depending on any non-pure workspace crate). Declare ids with `app_domain::uuid_newtype!`. Config and the logging and trace pipeline live in `crates/server`, not `common`; only the request's span, the query spans (`app_web::QuerySpans`) and the metrics measured where requests are served (`app_web::PoolWaits`, and the pool's in `app_db::observe_pool`) are `app_web`'s and `app_db`'s.
 
 ### API surface
 
@@ -184,6 +184,5 @@ Deliberate gaps: build one only when a module needs it.
 - Enrichment: no `-api` trait has a display lookup yet (`UserDirectory` has only `exists`). The first screen to show another module's column adds one, with its stub in the consumer's driver.
 - Waking the worker other than by polling.
 - Ending long-lived responses (streams) on shutdown: nothing streams yet.
-- A sign-in flow in the SPA against the identity provider: in dev the Vite proxy signs requests (see "Auth"); a production build sends no token yet. The server half is built: `GET /auth/config` (`crates/server/src/sign_in.rs`, outside `/api`, so no operation or tool) serves the SPA the issuer, `APP_OIDC_CLIENT_ID`, scopes and extra parameters, `404` without `APP_JWT_ISSUER`, and a prod server built with `embed-frontend` refuses to start with an issuer but no client id.
-- Playwright end-to-end tests, and static hosting for the SPA apart from the binary.
+- End-to-end checks beyond `make e2e`'s one sign-in (`frontend/e2e/`, through `crates/common/fake-oidc`, an OIDC provider for tests only), and static hosting for the SPA apart from the binary.
 - More external dependencies as docker-compose services, or testcontainers for those a test must own.

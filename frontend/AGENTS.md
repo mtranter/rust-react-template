@@ -11,6 +11,7 @@ Run from `frontend/`, after `pnpm install` once.
 - `pnpm run generate` regenerates `src/api/` from the checked-in `openapi.json`, with no backend or database; `make generate` from the root first dumps a fresh spec from the backend.
 - `pnpm run test`; one test: `pnpm vitest run src/test/<feature>.test.tsx -t "<part of its name>"`. Also `pnpm run typecheck`, `pnpm biome ci .`, `pnpm run lint:imports`, `pnpm run build`. `make check` from the root runs them all.
 - `pnpm run screens` screenshots every scenario in `screens/scenarios.ts` at desktop and phone widths to `screens/out/` (gitignored), for UX review. Needs no backend or database, only Playwright's Chromium: `pnpm exec playwright install chromium` once where it's missing. Not part of `make check` or CI.
+- `make e2e` (from the root; part of `make check` and CI) signs in to the real thing: `scripts/e2e.sh` builds the server in debug with `embed-frontend` and `fake-oidc` (`crates/common/fake-oidc`, an OIDC provider that approves at once as one named subject), migrates and seeds a database of its own, and runs `e2e/sign-in.ts`, which starts both, signs in with Playwright's Chromium as that subject (a bootstrap admin), checks `/access?tab=subjects` lists it by the name only its token carried, then signs out and checks the signed-out page stays. It needs Postgres (`make db-up`) and Playwright's Chromium. Keep it to the `access` screen, which every app keeps after `make init`.
 
 ## Rules
 

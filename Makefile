@@ -68,7 +68,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # Phony targets
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
-        check-backend check-frontend check-changed check-spec screens \
+        check-backend check-frontend check-changed check-spec screens e2e \
         build-backend-dev build-frontend db-up redis-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
@@ -195,12 +195,15 @@ lint-frontend: frontend/node_modules ## Biome lint + format check, and feature i
 screens: frontend/src/api ## Screenshot every UI scenario → frontend/screens/out/ (needs Playwright's Chromium; not in check)
 	cd frontend && pnpm run screens
 
+e2e: build-frontend db-wait _require-cargo-bin ## Sign in to the debug binary's embedded SPA through a fake OIDC provider, open /access, sign out (Playwright; part of check)
+	./scripts/e2e.sh
+
 build-frontend: frontend/src/api ## tsc + vite build → frontend/dist
 	cd frontend && pnpm run build
 
 # Every step CI runs, backend and frontend. A step added here is added to CI,
 # and the reverse.
-check: check-backend check-frontend check-init ## CI mirror (run before calling work done)
+check: check-backend check-frontend e2e check-init ## CI mirror (run before calling work done)
 
 check-backend: fmt clippy deny check-sql check-deps check-modules check-spec build-backend-dev test-backend ## The backend half of check
 

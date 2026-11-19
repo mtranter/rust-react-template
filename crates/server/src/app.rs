@@ -10,10 +10,10 @@ use app_web::{
     Idempotent, JwtVerifier, RequestIdMiddleware, TraceRequests, health_routes, render_error,
 };
 use poem::{
-    Endpoint, EndpointExt, IntoResponse, Response, Route,
+    Endpoint, EndpointExt, IntoResponse, Request, Response, Route,
     endpoint::{BoxEndpoint, make_sync},
     get, handler,
-    http::StatusCode,
+    http::{StatusCode, header},
     middleware::Cors,
     web::{Data, Json},
 };
@@ -57,12 +57,37 @@ pub fn build_app<C: Composition>(
     mount_frontend(app)
         .catch_all_error(render_error)
         .with(Cors::new().allow_origin(cors_origin))
+        .around(|cors, mut req| async move {
+            // `Cors` refuses every `Origin` but `cors_origin`, and the embedded
+            // SPA's own module scripts and fetches carry one too.
+            if is_same_origin(&req) {
+                req.headers_mut().remove(header::ORIGIN);
+            }
+            cors.call(req).await
+        })
         .with(TraceRequests::of::<Idempotent<C::Endpoints>>(API_BASE))
         .with(RequestIdMiddleware)
         // For the readiness probe.
         .data(ctx.pool())
         // For MCP's sessions.
         .data(verifier)
+}
+
+/// Whether `req`'s `Origin` names the host it was sent to, as its `Host` or,
+/// behind a proxy, `X-Forwarded-Host` says.
+fn is_same_origin(req: &Request) -> bool {
+    let header = |name| req.headers().get(name).and_then(|value| value.to_str().ok());
+    let Some(origin) = header(header::ORIGIN.as_str()) else {
+        return false;
+    };
+    let Some((_, origin_host)) = origin.split_once("://") else {
+        return false;
+    };
+    [header("x-forwarded-host"), header(header::HOST.as_str())]
+        .into_iter()
+        .flatten()
+        .filter_map(|hosts| hosts.split(',').next())
+        .any(|host| host.trim().eq_ignore_ascii_case(origin_host))
 }
 
 /// The REST API as `/api` serves it, and as every MCP tool call reaches it
