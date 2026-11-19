@@ -50,6 +50,7 @@ struct NoteRow {
     title: String,
     body: String,
     created_at: DateTime<Utc>,
+    archive_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
     version: i64,
 }
@@ -77,6 +78,7 @@ impl NoteRow {
                 r.title,
                 r.body,
                 r.created_at,
+                r.archive_at,
                 r.archived_at,
                 items,
             ),
@@ -91,7 +93,7 @@ impl NoteRepository for PgNoteRepository {
         let row = sqlx::query_as!(
             NoteRow,
             r#"
-            SELECT id, author_id, title, body, created_at, archived_at, version
+            SELECT id, author_id, title, body, created_at, archive_at, archived_at, version
             FROM notes.note WHERE id = $1
             "#,
             id.as_uuid(),
@@ -111,7 +113,7 @@ impl NoteRepository for PgNoteRepository {
         rows: &Rows,
     ) -> AppResult<Listed<Versioned<Note>>> {
         let mut sql = QueryBuilder::new(
-            "SELECT id, author_id, title, body, created_at, archived_at, version FROM notes.note",
+            "SELECT id, author_id, title, body, created_at, archive_at, archived_at, version FROM notes.note",
         );
         push_scope::<NoteColumns>(&mut sql, Clause::Where, rows);
         push_list_clauses(&mut sql, query, sort_column, "created_at DESC, id");
@@ -146,7 +148,7 @@ impl NoteRepository for PgNoteRepository {
         let rows = sqlx::query_as!(
             NoteRow,
             r#"
-            SELECT id, author_id, title, body, created_at, archived_at, version
+            SELECT id, author_id, title, body, created_at, archive_at, archived_at, version
             FROM notes.note
             WHERE author_id = $1 AND archived_at IS NULL
             ORDER BY created_at, id
@@ -166,8 +168,8 @@ impl NoteRepository for PgNoteRepository {
             Expected::New => {
                 let version = sqlx::query_scalar!(
                     r#"
-                    INSERT INTO notes.note (id, author_id, title, body, created_at, archived_at, version)
-                    VALUES ($1, $2, $3, $4, $5, $6, 1)
+                    INSERT INTO notes.note (id, author_id, title, body, created_at, archive_at, archived_at, version)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
                     RETURNING version
                     "#,
                     note.id().as_uuid(),
@@ -175,6 +177,7 @@ impl NoteRepository for PgNoteRepository {
                     note.title(),
                     note.body(),
                     note.created_at(),
+                    note.archive_at(),
                     note.archived_at(),
                 )
                 .fetch_one(conn(tx))
@@ -188,13 +191,15 @@ impl NoteRepository for PgNoteRepository {
                 let updated = sqlx::query_scalar!(
                     r#"
                     UPDATE notes.note
-                    SET title = $2, body = $3, archived_at = $4, version = version + 1
-                    WHERE id = $1 AND version = $5
+                    SET title = $2, body = $3, archive_at = $4, archived_at = $5,
+                        version = version + 1
+                    WHERE id = $1 AND version = $6
                     RETURNING version
                     "#,
                     note.id().as_uuid(),
                     note.title(),
                     note.body(),
+                    note.archive_at(),
                     note.archived_at(),
                     expected.as_i64(),
                 )

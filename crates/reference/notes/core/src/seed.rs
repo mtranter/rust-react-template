@@ -27,6 +27,7 @@ fn note(published: v1::Note, body: &str) -> Note {
             author_id: AuthorId::from_uuid(published.author_id),
             title: published.title,
             body: body.into(),
+            archive_at: None,
         },
         published.created_at,
     )

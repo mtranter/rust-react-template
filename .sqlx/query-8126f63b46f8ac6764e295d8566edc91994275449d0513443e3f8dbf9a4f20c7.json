@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE messaging.job\n            SET dead_at = $2, attempts = max_attempts, last_error = concat_ws(': ', $3::text, last_error)\n            WHERE id = $1 AND version = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Timestamptz",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8126f63b46f8ac6764e295d8566edc91994275449d0513443e3f8dbf9a4f20c7"
+}

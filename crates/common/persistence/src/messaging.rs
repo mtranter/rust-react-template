@@ -3,7 +3,7 @@
 //! delivers them. Every handler runs at least once per
 //! event, so it must be safe to run twice.
 
-use crate::Tx;
+use crate::{DeferredJob, Run, Tx};
 use app_error::{AppError, AppResult};
 use app_events::{Subscribable, Topic};
 use async_trait::async_trait;
@@ -32,6 +32,7 @@ pub trait Handle<S: Subscribable>: Send + Sync {
 #[derive(Default)]
 pub struct Handlers {
     queues: BTreeMap<&'static str, Queue>,
+    jobs: BTreeMap<&'static str, Arc<dyn ErasedHandler>>,
 }
 
 struct Queue {
@@ -58,6 +59,14 @@ impl Start {
             Start::Earliest => "earliest",
         }
     }
+}
+
+/// What a worker may claim from `messaging.job`: a subscription's queue and
+/// one of its event types, or a deferred job's type as both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Claim {
+    pub queue: &'static str,
+    pub event_type: &'static str,
 }
 
 /// A queue and an event type of the topic it's bound to: one row of
@@ -100,6 +109,16 @@ impl Handlers {
         self.subscribe(queue, Start::Earliest, handler)
     }
 
+    /// Runs each [`DeferredJob`] `J` once due, as `handler` says: in the
+    /// queue `J::NAME`, which no subscription may share. Registered by
+    /// nothing: the job's type is its queue.
+    pub fn runs<J: DeferredJob>(mut self, handler: impl Run<J> + 'static) -> Self {
+        self.assert_free(J::NAME);
+        self.jobs
+            .insert(J::NAME, Arc::new(JobHandler::<J, _>::new(handler)));
+        self
+    }
+
     fn subscribe<S: Subscribable>(
         self,
         queue: &'static str,
@@ -119,10 +138,29 @@ impl Handlers {
 
     /// Panics on a queue both handle.
     pub fn merge(self, other: Handlers) -> Self {
-        other
-            .queues
+        let Handlers { queues, jobs } = other;
+        let mut merged = queues
             .into_iter()
-            .fold(self, |handlers, (queue, q)| handlers.with_queue(queue, q))
+            .fold(self, |handlers, (queue, q)| handlers.with_queue(queue, q));
+        for (name, handler) in jobs {
+            merged.assert_free(name);
+            merged.jobs.insert(name, handler);
+        }
+        merged
+    }
+
+    /// Every queue and type this worker can run: its subscriptions', then its
+    /// deferred jobs'.
+    pub fn claims(&self) -> impl Iterator<Item = Claim> + '_ {
+        let subscribed = self.subscriptions().map(|s| Claim {
+            queue: s.queue,
+            event_type: s.event_type,
+        });
+        let deferred = self.jobs.keys().map(|&name| Claim {
+            queue: name,
+            event_type: name,
+        });
+        subscribed.chain(deferred)
     }
 
     /// Every `(queue, event type)` these handlers can decode, by queue: what a
@@ -139,19 +177,26 @@ impl Handlers {
     }
 
     pub async fn handle(&self, queue: &str, tx: &mut Tx, payload: Value) -> AppResult<()> {
-        let q = self
+        let handler = self
             .queues
             .get(queue)
+            .map(|q| &q.handler)
+            .or_else(|| self.jobs.get(queue))
             .ok_or_else(|| AppError::internal(NoHandler(queue.to_owned())))?;
-        q.handler.handle(tx, payload).await
+        handler.handle(tx, payload).await
     }
 
     fn with_queue(mut self, queue: &'static str, q: Queue) -> Self {
+        self.assert_free(queue);
+        self.queues.insert(queue, q);
+        self
+    }
+
+    fn assert_free(&self, queue: &str) {
         assert!(
-            self.queues.insert(queue, q).is_none(),
+            !self.queues.contains_key(queue) && !self.jobs.contains_key(queue),
             "two handlers for the queue `{queue}`"
         );
-        self
     }
 }
 
@@ -191,6 +236,28 @@ impl<S: Subscribable, H: Handle<S>> ErasedHandler for TypedHandler<S, H> {
     async fn handle(&self, tx: &mut Tx, payload: Value) -> AppResult<()> {
         let event = S::decode(payload).map_err(AppError::internal)?;
         self.handler.handle(tx, event).await
+    }
+}
+
+struct JobHandler<J, H> {
+    handler: H,
+    runs: PhantomData<fn() -> J>,
+}
+
+impl<J, H> JobHandler<J, H> {
+    fn new(handler: H) -> Self {
+        Self {
+            handler,
+            runs: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<J: DeferredJob, H: Run<J>> ErasedHandler for JobHandler<J, H> {
+    async fn handle(&self, tx: &mut Tx, payload: Value) -> AppResult<()> {
+        let job = serde_json::from_value(payload).map_err(AppError::internal)?;
+        self.handler.run(tx, job).await
     }
 }
 
@@ -441,6 +508,78 @@ mod tests {
             .unwrap();
 
         assert_eq!(written(&mut tx), ["a: alice", "b: 3"]);
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Remind {
+        who: String,
+    }
+
+    impl DeferredJob for Remind {
+        const NAME: &'static str = "a.remind";
+    }
+
+    #[async_trait]
+    impl Run<Remind> for Recorder {
+        async fn run(&self, tx: &mut Tx, job: Remind) -> AppResult<()> {
+            write(tx, format!("{}: remind {}", self.0, job.who))
+        }
+    }
+
+    #[test]
+    fn a_worker_claims_its_subscriptions_and_its_deferred_jobs() {
+        let handlers = Handlers::new()
+            .on::<Pinged>("a.on_ping", Recorder("a"))
+            .runs::<Remind>(Recorder("a"));
+
+        assert_eq!(
+            handlers.claims().collect::<Vec<_>>(),
+            [
+                Claim {
+                    queue: "a.on_ping",
+                    event_type: "tests.pinged"
+                },
+                Claim {
+                    queue: "a.remind",
+                    event_type: "a.remind"
+                },
+            ]
+        );
+        assert_eq!(handlers.subscriptions().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_deferred_job_runs_its_handler_with_its_payload() {
+        let handlers = Handlers::new()
+            .on::<Pinged>("a.on_ping", Recorder("a"))
+            .merge(Handlers::new().runs::<Remind>(Recorder("b")));
+        let mut tx = Tx::new(FakeTx::default());
+
+        handlers
+            .handle("a.remind", &mut tx, serde_json::json!({ "who": "alice" }))
+            .await
+            .unwrap();
+
+        assert_eq!(written(&mut tx), ["b: remind alice"]);
+    }
+
+    #[tokio::test]
+    async fn a_deferred_job_it_cannot_decode_fails_without_running_the_handler() {
+        let handlers = Handlers::new().runs::<Remind>(Recorder("a"));
+        let mut tx = Tx::new(FakeTx::default());
+
+        let result = handlers.handle("a.remind", &mut tx, ping("alice")).await;
+
+        assert!(matches!(result, Err(AppError::Internal(_))));
+        assert!(written(&mut tx).is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "two handlers for the queue `a.remind`")]
+    fn a_deferred_job_cannot_share_a_subscriptions_queue() {
+        let _ = Handlers::new()
+            .on::<Pinged>("a.remind", Recorder("a"))
+            .merge(Handlers::new().runs::<Remind>(Recorder("b")));
     }
 
     #[test]

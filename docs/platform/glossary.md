@@ -108,7 +108,11 @@ _Avoid_: Listener, consumer, handler (for the concept)
 Where a Unit of Work records its Events, so they are delivered if and only if it commits. Shared by every Module and owned by none. A **compacted** log: the Worker deletes a relayed Event once it is older than its Topic's Retention and a later one of its key exists, so every key's latest Event stays forever.
 
 **Worker**:
-The process that delivers Events to their Subscribers, each delivery in its own Unit of Work, in order per key, retrying a failure and setting it aside as a **Dead Letter** once its attempts run out.
+The process that delivers Events to their Subscribers and runs Deferred Jobs once due, each delivery in its own Unit of Work, in order per key, retrying a failure and setting it aside as a **Dead Letter** once its attempts run out.
+
+**Deferred Job**:
+A command a Module defers to its own handler, due at a time it chooses (e.g. archive a note at its `archiveAt`): written in the Unit of Work that causes it, named by a **key** within its type, so deferring again with the key reschedules it and cancelling removes it. The Worker runs it as `System` once it is due by the Clock, retrying it like any delivery. Not an Event: no other Module hears of it.
+_Avoid_: Scheduled event, timer, task
 
 **Bus**:
 The broadcast between the app's instances (ADR 0039), so a stream held by one hears what happened on another. Best effort, unlike the Outbox: a message sent while an instance can't hear it is lost to it, and it is told only of a **Gap**, its cue to recheck the truth the database holds. Carries named **Channels**; a **Hub** fans one instance's subscription out to the streams it holds.

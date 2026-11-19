@@ -2,6 +2,7 @@
 //! compile-time `query!` checking works against the default search path while
 //! each module keeps its own schema.
 
+mod deferral;
 mod errors;
 mod idempotency;
 mod listing;
@@ -15,6 +16,7 @@ mod trace;
 mod unit_of_work;
 mod worker;
 
+pub use deferral::PgDeferredJobs;
 pub use errors::map_db_error;
 pub use idempotency::PgIdempotencyRecords;
 pub use listing::push_list_clauses;

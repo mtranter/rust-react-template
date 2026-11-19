@@ -6,6 +6,7 @@ mod driver;
 mod behaviours {
     mod access;
     mod archiving;
+    mod archiving_at;
     mod creating;
     mod deleting;
     mod editing;

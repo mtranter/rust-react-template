@@ -14,15 +14,23 @@ pub struct CreateNoteRequest {
     pub title: String,
     #[oai(default)]
     pub body: String,
+    /// When to archive the note (RFC 3339), if ever: from then on it is
+    /// read-only. A time already past archives it at once.
+    pub archive_at: Option<String>,
 }
 
-/// Replaces a note's title and body. Carries no version: the concurrency token
-/// travels only in the `If-Match` header, never the body (see the handlers).
+/// Replaces a note's title, body and `archiveAt`: one left out is cleared,
+/// cancelling the archive. Carries no version: the concurrency token travels
+/// only in the `If-Match` header, never the body (see the handlers).
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct EditNoteRequest {
     pub title: String,
     pub body: String,
+    /// When to archive the note (RFC 3339), if ever; a new time reschedules
+    /// it, and a time already past archives it at once. Send back the one read
+    /// to keep it.
+    pub archive_at: Option<String>,
 }
 
 /// Adds a line to a note's checklist. Like an edit, it carries no version.
@@ -47,8 +55,11 @@ pub struct NoteResponse {
     pub title: String,
     pub body: String,
     pub created_at: String,
-    /// When the note was archived, because its author was deleted. An archived
-    /// note can't be edited or deleted.
+    /// When the note is due to archive itself, as its author chose.
+    #[oai(skip_serializing_if_is_none)]
+    pub archive_at: Option<String>,
+    /// When the note was archived: at its `archiveAt`, or because its author
+    /// was deleted. An archived note can't be edited or deleted.
     #[oai(skip_serializing_if_is_none)]
     pub archived_at: Option<String>,
     /// Its checklist, in the order the items were added. An item is part of
@@ -69,6 +80,7 @@ impl From<Versioned<Note>> for NoteResponse {
             title: n.title().to_string(),
             body: n.body().to_string(),
             created_at: n.created_at().to_rfc3339(),
+            archive_at: n.archive_at().map(|at| at.to_rfc3339()),
             archived_at: n.archived_at().map(|at| at.to_rfc3339()),
             items: n
                 .items()

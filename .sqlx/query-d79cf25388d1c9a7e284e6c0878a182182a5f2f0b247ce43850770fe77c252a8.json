@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE messaging.job SET last_error = $2, run_at = $3, dead_at = $4\n            WHERE id = $1 AND version = $5 AND dead_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d79cf25388d1c9a7e284e6c0878a182182a5f2f0b247ce43850770fe77c252a8"
+}

@@ -4,6 +4,7 @@ use crate::application::{NoteService, Versioned};
 use crate::domain::{EditNote, ItemId, Note, NoteId};
 use app_error::AppError;
 use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use chrono::{DateTime, Utc};
 use poem::web::Data;
 use poem_openapi::{
     ApiResponse, OpenApi, Tags,
@@ -29,6 +30,15 @@ fn note_id(raw: &str) -> ApiResult<NoteId> {
         .map_err(|_| AppError::validation("invalid note id").into())
 }
 
+fn archive_at(raw: Option<String>) -> ApiResult<Option<DateTime<Utc>>> {
+    raw.map(|raw| {
+        DateTime::parse_from_rfc3339(&raw)
+            .map(|at| at.to_utc())
+            .map_err(|_| AppError::invalid_field("archiveAt", "not an RFC 3339 time").into())
+    })
+    .transpose()
+}
+
 fn parse_item_id(raw: &str) -> ApiResult<ItemId> {
     raw.parse()
         .map_err(|_| AppError::validation("invalid item id").into())
@@ -45,7 +55,8 @@ pub struct NotesEndpoints;
 
 #[OpenApi(prefix_path = "/notes", tag = "ApiTag::Notes")]
 impl NotesEndpoints {
-    /// Create a note, written by the caller.
+    /// Create a note, written by the caller. With an `archiveAt`, it archives
+    /// itself then.
     #[oai(path = "/", method = "post", operation_id = "create_note")]
     async fn create(
         &self,
@@ -53,7 +64,12 @@ impl NotesEndpoints {
         caller: Caller,
         body: Json<CreateNoteRequest>,
     ) -> ApiResult<NoteResult> {
-        let note = notes.0.create(&caller, body.0.title, body.0.body).await?;
+        let body = body.0;
+        let archive_at = archive_at(body.archive_at)?;
+        let note = notes
+            .0
+            .create(&caller, body.title, body.body, archive_at)
+            .await?;
         Ok(tagged(note))
     }
 
@@ -70,8 +86,10 @@ impl NotesEndpoints {
         Ok(tagged(note))
     }
 
-    /// Edit a note's title and body. Requires `If-Match` with the version the
-    /// client last read; a stale value is refused with `412` and changes nothing.
+    /// Edit a note's title, body and `archiveAt`: a new `archiveAt` reschedules
+    /// its archive, and leaving it out cancels it. Requires `If-Match` with the
+    /// version the client last read; a stale value is refused with `412` and
+    /// changes nothing.
     /// An archived note is refused with `403`, and another user's with `404`.
     #[oai(path = "/:id", method = "patch", operation_id = "edit_note")]
     async fn edit(
@@ -83,14 +101,16 @@ impl NotesEndpoints {
         body: Json<EditNoteRequest>,
     ) -> ApiResult<NoteResult> {
         let expected = if_match_version(if_match.0)?;
+        let body = body.0;
         let note = notes
             .0
             .edit(
                 &caller,
                 EditNote {
                     note_id: note_id(&id.0)?,
-                    title: body.0.title,
-                    body: body.0.body,
+                    title: body.title,
+                    body: body.body,
+                    archive_at: archive_at(body.archive_at)?,
                 },
                 expected,
             )

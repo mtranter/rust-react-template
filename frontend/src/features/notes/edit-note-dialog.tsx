@@ -62,6 +62,9 @@ function EditNoteForm({ note, onSaved }: { note: NoteResponse; onSaved: () => vo
 
   // The version the user's edit is based on: the one opened, until a conflict reloads it.
   const [version, setVersion] = useState(note.version);
+  // An edit replaces the whole note, so `archiveAt`, which this form doesn't show, is sent back as
+  // read: leaving it out would cancel the note's archive.
+  const [archiveAt, setArchiveAt] = useState(note.archiveAt);
   const [changedMeanwhile, setChangedMeanwhile] = useState(false);
 
   const reload = async () => {
@@ -69,6 +72,7 @@ function EditNoteForm({ note, onSaved }: { note: NoteResponse; onSaved: () => vo
     try {
       const latest = await queryClient.fetchQuery(getNotesByIdOptions({ path: { id: note.id } }));
       setVersion(latest.version);
+      setArchiveAt(latest.archiveAt);
       setChangedMeanwhile(true);
     } catch (error) {
       toast.add({ type: "error", title: "Couldn't reload", description: errorMessage(error) });
@@ -84,7 +88,7 @@ function EditNoteForm({ note, onSaved }: { note: NoteResponse; onSaved: () => vo
           await edit.mutateAsync({
             path: { id: note.id },
             headers: ifMatch(version),
-            body: value,
+            body: { ...value, archiveAt },
           });
         } catch (error) {
           if (isPreconditionFailed(error)) await reload();

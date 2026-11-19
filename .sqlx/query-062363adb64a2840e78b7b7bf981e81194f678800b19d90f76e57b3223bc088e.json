@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM messaging.job WHERE id = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "062363adb64a2840e78b7b7bf981e81194f678800b19d90f76e57b3223bc088e"
+}
