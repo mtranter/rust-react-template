@@ -1,7 +1,7 @@
 ---
 id: 0043
 name: "Draft a Spec, for a human to decide, for rate limits, quotas, request body limits and timeouts"
-status: in-review
+status: done
 priority: P2
 size: S
 blocked_by: []
