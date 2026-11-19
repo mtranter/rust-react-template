@@ -1,7 +1,7 @@
 ---
 id: 0036
 name: The SPA renews the access token before it expires and recovers from a 401 by renewing once and retrying
-status: in-review
+status: done
 spec: docs/platform/specs/0002-the-embedded-spa-signs-users-in-with-the-identity-provider-and-sends-their-token.md
 blocked_by: [docs/platform/tickets/0035-a-visitor-signs-in-to-the-embedded-spa-with-the-id.md]
 blocks: []
