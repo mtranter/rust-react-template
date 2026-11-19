@@ -1,7 +1,7 @@
 ---
 id: 0041
 name: "Draft a Spec, for a human to decide, for an eval harness that measures the agent docs within a token budget"
-status: in-review
+status: done
 priority: P2
 size: S
 blocked_by: []
