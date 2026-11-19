@@ -538,3 +538,26 @@ async fn a_tool_call_is_a_span_named_by_the_tool_parent_of_its_operations_reques
         opentelemetry::trace::Status::Error { .. }
     ));
 }
+
+#[tokio::test]
+async fn a_tool_call_refused_before_any_request_is_an_error_span_with_no_request() {
+    let agent = Agent::new();
+    let session = agent.session("ada").await;
+    let traces = crate::testing::Traces::install();
+
+    assert_eq!(
+        put(
+            &session,
+            json!({ "id": "a", "body": { "name": "n" }, "colour": "red" })
+        )
+        .await,
+        Err(code("malformed_request"))
+    );
+
+    let call = traces.span("put_thing");
+    assert!(matches!(
+        call.status,
+        opentelemetry::trace::Status::Error { .. }
+    ));
+    assert_eq!(crate::testing::Traces::attribute(&call, "is_error"), None);
+}
