@@ -1,7 +1,7 @@
 ---
 id: 0038
 name: "Research agent identity, on-behalf-of tokens and an audit log, and draft a Spec for a human to decide"
-status: ready-for-agent
+status: in-progress
 priority: P1
 size: M
 blocked_by: []
