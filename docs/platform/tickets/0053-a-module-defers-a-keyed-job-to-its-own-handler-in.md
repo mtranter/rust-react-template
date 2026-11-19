@@ -1,7 +1,7 @@
 ---
 id: 0053
 name: "A Module defers a keyed job to its own handler in a Unit of Work, and a note archives itself at its archiveAt"
-status: in-review
+status: done
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: []
 blocks: [docs/platform/tickets/0054-a-module-declares-a-cron-schedule-that-the-worker.md]
