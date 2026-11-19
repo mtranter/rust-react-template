@@ -7,6 +7,8 @@ export {
   type SignInProvider,
   callbackPath,
   fetchSignInConfig,
+  isSilentRenewal,
+  renewBeforeExpirySeconds,
   signedOutPath,
   userManagerSettings,
 } from "./session";

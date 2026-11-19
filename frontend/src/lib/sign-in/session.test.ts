@@ -1,9 +1,16 @@
 import { signedInUser, stubProvider } from "@/test/sign-in-fixtures";
+import { waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { OidcClient } from "oidc-client-ts";
-import { expect, test } from "vitest";
+import { OidcClient, UserManager } from "oidc-client-ts";
+import { expect, test, vi } from "vitest";
 import { server } from "../../../vitest.setup";
-import { Session, type SignInConfig, fetchSignInConfig, userManagerSettings } from "./session";
+import {
+  Session,
+  type SignInConfig,
+  fetchSignInConfig,
+  isSilentRenewal,
+  userManagerSettings,
+} from "./session";
 
 const config: SignInConfig = {
   issuer: "https://id.example.com",
@@ -88,4 +95,159 @@ test("returns from the callback only to a path on this origin", async () => {
       await session.completeSignIn(`https://app.example.com/auth/callback?r=${returnTo}`),
     ).toBe("/");
   }
+});
+
+const origin = "https://app.example.com";
+
+/** A real `UserManager` for `config`, its provider's endpoints answered by MSW. */
+function userManager() {
+  return new UserManager({
+    ...userManagerSettings(config, origin),
+    metadata: {
+      issuer: config.issuer,
+      authorization_endpoint: `${config.issuer}/authorize`,
+      token_endpoint: `${config.issuer}/token`,
+    },
+  });
+}
+
+/** Records each form the provider's token endpoint is sent, answering with `answer`. */
+function tokenEndpoint(answer: Record<string, unknown>) {
+  const forms: URLSearchParams[] = [];
+  server.use(
+    http.post(`${config.issuer}/token`, async ({ request }) => {
+      forms.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({ token_type: "Bearer", expires_in: 3600, ...answer });
+    }),
+  );
+  return forms;
+}
+
+/** An unsigned ID token: oidc-client-ts reads its claims and leaves its signature to the server. */
+function idToken(claims: Record<string, unknown>): string {
+  const part = (value: object) => btoa(JSON.stringify(value)).replace(/=+$/, "");
+  return `${part({ alg: "none" })}.${part(claims)}.`;
+}
+
+test("renews the access token with the refresh token when the provider issued one", async () => {
+  const forms = tokenEndpoint({ access_token: "renewed", refresh_token: "refresh-2" });
+  const manager = userManager();
+  await manager.storeUser(signedInUser(undefined, undefined, { refreshToken: "refresh-1" }));
+  const session = await Session.restore(manager);
+
+  expect(await session.renew()).toBe("renewed");
+
+  expect(session.accessToken).toBe("renewed");
+  expect(forms).toHaveLength(1);
+  expect(forms[0].get("grant_type")).toBe("refresh_token");
+  expect(forms[0].get("refresh_token")).toBe("refresh-1");
+  expect(forms[0].get("client_id")).toBe("spa");
+  // A refreshed session still names the user its ID token did.
+  expect(session.user?.profile.name).toBe("Ada Lovelace");
+  sessionStorage.clear();
+});
+
+test("with no refresh token, renews silently through the provider's session, back at /auth/callback", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const forms = tokenEndpoint({
+    access_token: "renewed",
+    id_token: idToken({ iss: config.issuer, aud: "spa", sub: "ada", iat: now, exp: now + 3600 }),
+  });
+  const manager = userManager();
+  await manager.storeUser(signedInUser());
+  const session = await Session.restore(manager);
+  // jsdom can't load the iframe's page at the provider, and says so on the console.
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  const renewing = session.renew();
+
+  // The hidden iframe asks the provider with `prompt=none`, to come back to the one redirect URI.
+  let stateId = "";
+  await waitFor(() => {
+    const stored = Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("oidc.") && !key.startsWith("oidc.user:"))
+      .map((key) => JSON.parse(sessionStorage.getItem(key) ?? "{}"));
+    const silent = stored.find((state) => state.request_type === "si:s");
+    expect(silent?.redirect_uri).toBe(`${origin}/auth/callback`);
+    stateId = silent.id;
+  });
+  expect(document.querySelector("iframe")).not.toBeNull();
+  // What `/auth/callback` in that iframe (`isSilentRenewal`) posts back once the provider answers.
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: window.location.origin,
+      data: {
+        source: "oidc-client",
+        url: `${origin}/auth/callback?code=the-code&state=${stateId}`,
+        keepOpen: false,
+      },
+    }),
+  );
+
+  expect(await renewing).toBe("renewed");
+  expect(session.accessToken).toBe("renewed");
+  expect(forms[0].get("grant_type")).toBe("authorization_code");
+  expect(forms[0].get("redirect_uri")).toBe(`${origin}/auth/callback`);
+  expect(forms[0].get("code_verifier")).toBeTruthy();
+  quiet.mockRestore();
+  sessionStorage.clear();
+});
+
+test("renews a minute before the access token expires, and again before the new one does", async () => {
+  vi.useFakeTimers();
+  try {
+    const provider = stubProvider({
+      user: signedInUser(undefined, undefined, { expiresIn: 120 }),
+      renew: async () =>
+        signedInUser(undefined, undefined, { accessToken: "renewed", expiresIn: 300 }),
+    });
+    const session = await Session.restore(provider);
+
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(provider.signinSilent).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(provider.signinSilent).toHaveBeenCalledOnce();
+    expect(session.accessToken).toBe("renewed");
+
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(provider.signinSilent).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("doesn't renew again at once when a renewal brings a token about to expire", async () => {
+  vi.useFakeTimers();
+  try {
+    const provider = stubProvider({
+      user: signedInUser(undefined, undefined, { expiresIn: 30 }),
+      renew: async () => signedInUser(undefined, undefined, { expiresIn: 30 }),
+    });
+    await Session.restore(provider);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(provider.signinSilent).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("shares one renewal between callers, and resolves to nothing when the provider refuses", async () => {
+  const provider = stubProvider({ user: signedInUser() });
+  const session = await Session.restore(provider);
+
+  expect(await Promise.all([session.renew(), session.renew()])).toEqual([undefined, undefined]);
+  expect(provider.signinSilent).toHaveBeenCalledOnce();
+  expect(session.accessToken).toBe("ada-access-token");
+});
+
+test("the silent renewal's callback is /auth/callback in a frame, and only there", () => {
+  const page = (pathname: string, framed: boolean) => {
+    const win = { location: { pathname } } as unknown as Window & { parent: Window };
+    win.parent = framed ? ({} as Window) : win;
+    return win;
+  };
+  expect(isSilentRenewal(page("/auth/callback", true))).toBe(true);
+  expect(isSilentRenewal(page("/auth/callback", false))).toBe(false);
+  expect(isSilentRenewal(page("/access", true))).toBe(false);
 });

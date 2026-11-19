@@ -1,0 +1,8 @@
+# Learnings: 0036 token renewal and 401 retry
+
+- `oidc-client-ts`' `signinSilent()` picks the path itself: the refresh-token grant when the stored user has a `refresh_token`, otherwise a hidden iframe with `prompt=none` sent to `silent_redirect_uri`, which defaults to `redirect_uri` (`/auth/callback`). The iframe loads the whole SPA, so `src/main.tsx` checks `isSilentRenewal()` (framed and on `/auth/callback`) and only calls `signinSilentCallback()`, which posts the URL to the parent. The parent does the code exchange.
+- You can test both renewal paths with a **real** `UserManager` (`metadata` given inline, the token endpoint answered by MSW), with no module mocks: see `src/lib/sign-in/session.test.ts`. For the iframe path, read the `si:s` state from `sessionStorage` and dispatch a `MessageEvent` with `{ source: "oidc-client", url }` and `origin: window.location.origin`. jsdom logs "Not implemented: navigation" when the iframe navigates; the test silences `console.error` around it.
+- An `ID token` in tests can be unsigned (`alg: none`): oidc-client-ts reads claims and doesn't verify signatures.
+- In `server.use(a, b)` within one call, `a` wins over `b`. Put the overriding handler first when spreading a fixture's handlers after it.
+- Renewal scheduling: a renewal that returns a token already inside the 60s margin must not reschedule at once, or it loops (the fake-timer test caught this).
+- `.env.example` said the sign-out redirect was `<origin>/`. The code uses `<origin>/auth/signed-out`; that's fixed now.
