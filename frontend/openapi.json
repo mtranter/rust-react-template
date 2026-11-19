@@ -3970,6 +3970,10 @@
           "requestId": {
             "type": "string",
             "description": "The same id as the `x-request-id` header."
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The W3C trace id of the request; absent when tracing is off."
           }
         }
       },

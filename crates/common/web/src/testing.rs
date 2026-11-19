@@ -375,6 +375,12 @@ fn refused_body(body: Value, request_id: Option<&str>) -> Refused {
         );
     }
     assert!(!error.request_id.is_empty(), "a refusal names its request");
+    if let Some(trace_id) = &error.trace_id {
+        assert!(
+            trace_id.len() == 32 && trace_id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "a trace id is W3C's 32 hex digits, not {trace_id:?}"
+        );
+    }
     assert!(!error.message.is_empty(), "a refusal explains itself");
     assert!(error.fields.iter().all(|f| !f.message.is_empty()));
     assert!(
@@ -434,6 +440,7 @@ struct ErrorShape {
     #[serde(default)]
     fields: Vec<FieldShape>,
     request_id: String,
+    trace_id: Option<String>,
 }
 
 #[derive(Deserialize)]

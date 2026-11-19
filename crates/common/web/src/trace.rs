@@ -139,6 +139,17 @@ impl<E: Endpoint> Endpoint for TraceRequestsEndpoint<E> {
     }
 }
 
+/// The W3C trace id of the current span's trace; `None` when no trace is
+/// being recorded (no OpenTelemetry layer installed).
+pub(crate) fn current_trace_id() -> Option<String> {
+    let context = Span::current().context();
+    let span = context.span();
+    let span_context = span.span_context();
+    span_context
+        .is_valid()
+        .then(|| span_context.trace_id().to_string())
+}
+
 struct Headers<'a>(&'a HeaderMap);
 
 impl Extractor for Headers<'_> {
@@ -171,10 +182,16 @@ mod tests {
         ))
     }
 
+    #[handler]
+    fn refuse() -> Result<()> {
+        Err(crate::ApiError::from(app_error::AppError::invalid_field("title", "too long")).into())
+    }
+
     fn app() -> TestClient<impl Endpoint> {
         let app = Route::new()
             .at("/things/:id", get(ok))
             .at("/fail", get(fail))
+            .at("/refuse", get(refuse))
             .catch_all_error(render_error)
             .with(TraceRequests::default())
             .with(RequestIdMiddleware);
@@ -224,5 +241,32 @@ mod tests {
         app().get("/nowhere").send().await;
 
         assert_eq!(traces.only_span().name, "GET");
+    }
+
+    async fn trace_id_of(path: &str) -> Option<String> {
+        let body = app().get(path).send().await.0.into_body();
+        let body: serde_json::Value = body.into_json().await.unwrap();
+        body.get("traceId")
+            .map(|id| id.as_str().unwrap().to_owned())
+    }
+
+    #[tokio::test]
+    async fn an_error_body_names_the_trace_of_its_request() {
+        let traces = Traces::install();
+        for path in ["/refuse", "/nowhere"] {
+            let trace_id = trace_id_of(path).await;
+            let span = traces.spans().pop().unwrap();
+            assert_eq!(
+                trace_id,
+                Some(span.span_context.trace_id().to_string()),
+                "{path}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_error_body_names_no_trace_when_tracing_is_off() {
+        assert_eq!(trace_id_of("/refuse").await, None);
+        assert_eq!(trace_id_of("/nowhere").await, None);
     }
 }

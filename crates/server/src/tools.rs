@@ -35,7 +35,8 @@ increment it.
 change. Retrying with the same key and arguments replays the first answer instead of changing \
 anything twice.
 - A refusal is an error result whose text is the API's error body: branch on its `code`, not \
-its `message`; `fields` names the arguments at fault.
+its `message`; `fields` names the arguments at fault. To have a failed call looked up, give \
+its `requestId`, and its `traceId` when it has one: the id of the call's trace.
 
 Descriptions use the REST API's terms:
 - `If-Match` means `expected_version`; `Idempotency-Key` means `idempotency_key`.

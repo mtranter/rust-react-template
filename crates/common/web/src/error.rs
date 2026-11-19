@@ -3,6 +3,7 @@
 //! (unparseable requests, unknown routes, failed auth) into the same body.
 
 use crate::request_id::current_request_id;
+use crate::trace::current_trace_id;
 use app_error::AppError;
 use poem::{IntoResponse, PathPattern, Response, http::StatusCode};
 use poem_openapi::{ApiResponse, Enum, Object, OperationId, payload::Json};
@@ -42,6 +43,9 @@ pub struct ErrorBody {
     /// The same id as the `x-request-id` header.
     #[oai(skip_serializing_if_is_none)]
     pub request_id: Option<String>,
+    /// The W3C trace id of the request; absent when tracing is off.
+    #[oai(skip_serializing_if_is_none)]
+    pub trace_id: Option<String>,
 }
 
 /// One input at fault. `path` names it as the client sent it (e.g. `title`).
@@ -59,6 +63,7 @@ impl ErrorBody {
             message: message.into(),
             fields: None,
             request_id: current_request_id(),
+            trace_id: current_trace_id(),
         }
     }
 }
