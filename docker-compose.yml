@@ -1,4 +1,5 @@
-# Local Postgres and Valkey for development. Production does not use these.
+# Local Postgres and Valkey for development, and, in the `observability`
+# profile, an OTLP backend. Production does not use these.
 services:
   postgres:
     image: postgres:17-alpine
@@ -28,6 +29,17 @@ services:
       interval: 2s
       timeout: 3s
       retries: 20
+
+  # Grafana with Tempo, Prometheus and Loki behind one OTLP endpoint, for
+  # `make dev-observability`. Only in the `observability` profile, so a plain
+  # `docker compose up` (and `make dev`) leaves it off.
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.11.10
+    profiles: [observability]
+    ports:
+      - "3000:3000" # Grafana, signed in as admin
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
 
 volumes:
   pgdata:

@@ -67,7 +67,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # ---------------------------------------------------------------------------
 # Phony targets
 # ---------------------------------------------------------------------------
-.PHONY: help setup dev generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
+.PHONY: help setup dev dev-observability generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
         check-backend check-frontend check-changed check-spec screens e2e \
         build-backend-dev build-frontend db-up redis-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
@@ -137,6 +137,12 @@ watch-api: _require-cargo-bin ## Watch backend sources and regenerate the client
 
 dev: _require-cargo-bin seed generate redis-up ## Run backend (:8080), the worker and Vite (:5173) in parallel
 	$(MAKE) -j3 _dev-backend _dev-worker _dev-frontend
+
+# Command-line variables reach the recipes' environment and override .env's.
+dev-observability: ## make dev, exporting traces and metrics to a local Grafana (:3000) from compose's `observability` profile
+	docker compose --profile observability up -d otel-lgtm
+	@echo "traces and metrics: http://localhost:3000 (Grafana, Explore: Tempo and Prometheus)"
+	$(MAKE) dev OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 _dev-backend:
 	$(CARGO_BIN) cargo-watch -x 'run --bin server'
