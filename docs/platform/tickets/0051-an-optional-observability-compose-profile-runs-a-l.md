@@ -1,7 +1,7 @@
 ---
 id: 0051
 name: An optional observability compose profile runs a local OTLP backend for make dev
-status: in-review
+status: done
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0044-the-server-worker-and-migrate-export-traces-over-o.md]
 blocks: [docs/platform/tickets/0052-adr-otlp-and-the-standard-variables-trace-context.md]
