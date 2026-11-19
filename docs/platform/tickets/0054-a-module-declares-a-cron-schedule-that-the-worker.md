@@ -1,7 +1,7 @@
 ---
 id: 0054
 name: "A Module declares a cron Schedule that the worker's poll loop runs once per due slot, and notes purges old archived notes nightly"
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: [docs/platform/tickets/0053-a-module-defers-a-keyed-job-to-its-own-handler-in.md]
 blocks: [docs/platform/tickets/0055-a-schedule-removed-from-code-is-retired-by-migrate.md]
