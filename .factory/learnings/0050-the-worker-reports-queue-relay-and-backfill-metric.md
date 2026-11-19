@@ -1,0 +1,8 @@
+# Learnings: 0050 the worker's queue, relay and backfill metrics
+
+- **Observable-gauge callbacks are synchronous**, so they can't query Postgres. `app_db`'s `figures.rs` reads into a shared snapshot every 15 s and the callbacks observe that; a `None` snapshot observes nothing, which is how non-reading workers export no duplicate series.
+- **"One worker at a time" is a session advisory lock** (`pg_try_advisory_lock`) taken on a pooled connection and then `PoolConnection::detach()`ed, so only the holder keeps a connection out of the pool. The lock goes when that connection closes (worker dropped or a failed read), and Postgres notices that asynchronously: a takeover test must poll, not assert at once.
+- **Value assertions on metrics don't work in tests**: the meter provider is global and every `Worker` built in the binary registers callbacks on it with the same queue names. So `Worker::read_figures()` returns the `Figures` it read and the value test asserts those; the in-memory-exporter test only checks names.
+- **`.sqlx` for one crate without `make prepare`**: `touch` the source, then `SQLX_OFFLINE=false SQLX_OFFLINE_DIR=$PWD/.sqlx DATABASE_URL=postgres://app:app@localhost:5432/app cargo check -p app-db` writes just the new query files (the shared `app` DB already had `messaging` migrated). `make prepare` would migrate the shared dev DB and re-prepare the whole workspace.
+- `Worker::run` now runs the figures reader *beside* the polling loop in a `select!`; shutdown is still only honoured between polls (the polling future owns the shutdown signal), and the reader is just dropped.
+- Seeding a "waiting" job: a failure backs off 10 s from the worker's `FixedClock`, so advancing the clock by minutes afterwards makes it due again.

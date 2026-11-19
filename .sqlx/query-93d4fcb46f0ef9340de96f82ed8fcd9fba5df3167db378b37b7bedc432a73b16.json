@@ -1,0 +1,51 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT q.queue AS \"queue!\",\n               count(j.id) FILTER (WHERE j.dead_at IS NULL AND j.run_at <= $1) AS \"due!\",\n               count(j.id) FILTER (WHERE j.dead_at IS NULL AND j.run_at > $1) AS \"waiting!\",\n               min(j.run_at) FILTER (WHERE j.dead_at IS NULL AND j.run_at <= $1) AS oldest_due,\n               count(j.id) FILTER (WHERE j.dead_at IS NOT NULL) AS \"dead_letters!\"\n        FROM (\n            SELECT queue FROM messaging.subscription\n            UNION SELECT DISTINCT queue FROM messaging.job\n        ) q\n        LEFT JOIN messaging.job j ON j.queue = q.queue\n        GROUP BY q.queue\n        ORDER BY q.queue\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "queue!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "due!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "waiting!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "oldest_due",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "dead_letters!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "93d4fcb46f0ef9340de96f82ed8fcd9fba5df3167db378b37b7bedc432a73b16"
+}
