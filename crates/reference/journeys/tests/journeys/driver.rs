@@ -116,7 +116,7 @@ pub struct App {
 }
 
 impl App {
-    /// Migrates, seeds and registers topics and subscriptions for every
+    /// Migrates, seeds and registers topics, subscriptions and schedules for every
     /// module, as `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
@@ -128,6 +128,9 @@ impl App {
         server::register_subscriptions::<Reference>(&ctx)
             .await
             .expect("register every module's subscriptions");
+        server::register_schedules::<Reference>(&ctx)
+            .await
+            .expect("register every module's schedules");
         app
     }
 

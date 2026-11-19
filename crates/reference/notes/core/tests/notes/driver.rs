@@ -153,6 +153,9 @@ impl Notes {
         app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
             .await
             .expect("register notes' subscriptions");
+        app_db::register_schedules(&ctx.pool(), clock.as_ref(), &handlers)
+            .await
+            .expect("register notes' schedules");
         let worker = ctx.worker(handlers);
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");

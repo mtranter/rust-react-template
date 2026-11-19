@@ -5,13 +5,16 @@
 //! database: one relays at a time, every claim skips rows another worker holds,
 //! and a worker claims only the subscriptions its own handlers can decode, so
 //! builds can differ during a rolling deploy. Workers also copy each new
-//! `earliest` subscription's backfill into its queue, a chunk at a time.
+//! `earliest` subscription's backfill into its queue, a chunk at a time, and
+//! turn each schedule's slot that falls due into a job.
 
+use crate::cron::Cron;
+use crate::schedules::parse_schedules;
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, Event, Topic};
-use app_persistence::{Handlers, MAX_ATTEMPTS};
+use app_persistence::{Handlers, MAX_ATTEMPTS, Slot};
 use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -131,14 +134,16 @@ impl Worker {
 
     /// Polls every `interval` until `shutdown` resolves, compacting the
     /// outbox after each poll that it's due. Refuses to start unless
-    /// [`check_subscriptions`](Self::check_subscriptions) passes; after that,
-    /// a failure to reach the database is logged and retried at the next poll.
+    /// [`check_subscriptions`](Self::check_subscriptions) and
+    /// [`check_schedules`](Self::check_schedules) pass; after that, a failure
+    /// to reach the database is logged and retried at the next poll.
     pub async fn run(
         &self,
         interval: Duration,
         shutdown: impl Future<Output = ()>,
     ) -> AppResult<()> {
         self.check_subscriptions().await?;
+        self.check_schedules().await?;
         tokio::pin!(shutdown);
         loop {
             if let Err(err) = self.run_until_idle().await {
@@ -163,6 +168,7 @@ impl Worker {
     /// failed jobs are retried and dead-lettered as usual, and aren't.
     pub async fn drain(&self, budget: Option<Duration>) -> AppResult<()> {
         self.check_subscriptions().await?;
+        self.check_schedules().await?;
         let pass = async {
             self.run_until_idle().await?;
             if let Err(err) = self.compact_if_due().await {
@@ -232,6 +238,23 @@ impl Worker {
         Ok(())
     }
 
+    /// Fails on a schedule this worker runs whose expression doesn't parse,
+    /// naming it, or that `migrate` hasn't registered.
+    pub async fn check_schedules(&self) -> AppResult<()> {
+        let own = parse_schedules(&self.handlers).map_err(AppError::internal)?;
+        let registered = sqlx::query_scalar!("SELECT name FROM messaging.schedule")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(AppError::internal)?;
+        match own
+            .iter()
+            .find(|(s, _)| !registered.iter().any(|r| r == s.name))
+        {
+            Some((s, _)) => Err(AppError::internal(UnregisteredSchedule(s.name))),
+            None => Ok(()),
+        }
+    }
+
     /// Fails when this worker's clock is more than [`CLOCK_REFUSED`] from the
     /// database's, and warns past [`CLOCK_WARNED`]. Not part of
     /// [`run`](Self::run): a test driving time itself must be able to skip it.
@@ -257,18 +280,19 @@ impl Worker {
         Ok(())
     }
 
-    /// Relays, backfills and runs until nothing is due by the worker's clock,
-    /// including whatever the handlers publish. A failed delivery backs off
-    /// past `now`, so this returns rather than retrying it.
+    /// Relays, backfills, schedules and runs until nothing is due by the
+    /// worker's clock, including whatever the handlers publish. A failed
+    /// delivery backs off past `now`, so this returns rather than retrying it.
     pub async fn run_until_idle(&self) -> AppResult<()> {
         loop {
             let relayed = self.relay().await?;
             let backfilled = self.backfill().await?;
+            let scheduled = self.schedule().await?;
             let mut ran = false;
             while self.run_next().await? {
                 ran = true;
             }
-            if relayed == 0 && backfilled == 0 && !ran {
+            if relayed == 0 && backfilled == 0 && scheduled == 0 && !ran {
                 return Ok(());
             }
         }
@@ -471,6 +495,93 @@ impl Worker {
             tx.commit().await.map_err(AppError::internal)?;
             Span::current().record("events", copied);
             Ok(Some(copied as u64))
+        }
+        .instrument(span)
+        .await
+    }
+
+    /// Turns each registered schedule whose next slot has passed by the
+    /// worker's clock into one job, due now, for the last slot it missed, and
+    /// moves its next slot past now: after downtime spanning several slots it
+    /// runs once. A schedule with a run still pending or running (its job
+    /// unfinished, or backing off) skips the slot, logged. Returns how many
+    /// jobs it created. Any worker schedules any schedule, as any relays any
+    /// event, by the expression `migrate` registered; two never create one
+    /// slot twice, since each takes the schedule's row before moving it on.
+    pub async fn schedule(&self) -> AppResult<usize> {
+        let now = self.clock.now();
+        let mut tx = self.pool.begin().await.map_err(AppError::internal)?;
+        let due = sqlx::query!(
+            r#"
+            SELECT name, cron, next_at FROM messaging.schedule
+            WHERE next_at <= $1
+            ORDER BY next_at, name
+            FOR UPDATE SKIP LOCKED
+            "#,
+            now,
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(AppError::internal)?;
+        if due.is_empty() {
+            return Ok(0);
+        }
+        let span = tracing::info_span!("schedule_slots", schedules = due.len(), jobs = Empty);
+        async move {
+            let mut created = 0;
+            for schedule in due {
+                let cron = match schedule.cron.parse::<Cron>() {
+                    Ok(cron) => cron,
+                    Err(err) => {
+                        tracing::error!(schedule = schedule.name, error = %err, "schedule left unrun");
+                        continue;
+                    }
+                };
+                let Some(next_at) = cron.next_after(now) else {
+                    tracing::error!(schedule = schedule.name, "schedule never falls due again");
+                    continue;
+                };
+                let slot = cron.last_until(schedule.next_at, now);
+                let payload = serde_json::to_value(Slot { slot }).map_err(AppError::internal)?;
+                let inserted = sqlx::query!(
+                    r#"
+                    INSERT INTO messaging.job
+                        (queue, event_type, key, version, payload, outbox_seq, run_at,
+                         max_attempts, created_at, deferred)
+                    VALUES ($1, $1, $1, 1, $2, 0, $3, $4, $3, true)
+                    ON CONFLICT (queue, key) WHERE deferred AND dead_at IS NULL DO NOTHING
+                    "#,
+                    schedule.name,
+                    payload,
+                    now,
+                    MAX_ATTEMPTS,
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::internal)?
+                .rows_affected()
+                    == 1;
+                if inserted {
+                    created += 1;
+                } else {
+                    tracing::warn!(
+                        schedule = schedule.name,
+                        %slot,
+                        "slot skipped: the schedule's previous run is still pending or running"
+                    );
+                }
+                sqlx::query!(
+                    "UPDATE messaging.schedule SET next_at = $2 WHERE name = $1",
+                    schedule.name,
+                    next_at,
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::internal)?;
+            }
+            tx.commit().await.map_err(AppError::internal)?;
+            Span::current().record("jobs", created);
+            Ok(created)
         }
         .instrument(span)
         .await
@@ -803,6 +914,10 @@ struct Unregistered {
     queue: &'static str,
     event_type: &'static str,
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("the schedule `{0}` isn't registered: run `migrate` with this build first")]
+struct UnregisteredSchedule(&'static str);
 
 #[derive(Debug, thiserror::Error)]
 #[error("`{queue}` is registered to the topic `{registered}`, but this build serves `{served}`")]

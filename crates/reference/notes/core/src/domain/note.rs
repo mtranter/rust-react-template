@@ -52,6 +52,14 @@ impl Note {
         Ok(NoteEvent::Deleted)
     }
 
+    /// What purging it says happened: only a note archived before
+    /// `archived_before` goes, announced as a deletion.
+    pub fn purge(&self, archived_before: DateTime<Utc>) -> Option<NoteEvent> {
+        self.archived_at
+            .filter(|archived| *archived < archived_before)
+            .map(|_| NoteEvent::Deleted)
+    }
+
     /// Adds `text` as the last item. Items are told apart by their text, ignoring
     /// case, so a list never holds the same thing twice.
     pub fn add_item(&mut self, id: ItemId, text: &str) -> Result<NoteEvent, NoteError> {
@@ -176,6 +184,7 @@ fn title(raw: &str) -> Result<String, NoteError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeDelta;
     use uuid::Uuid;
 
     fn create(title: &str) -> Result<Note, NoteError> {
@@ -225,6 +234,17 @@ mod tests {
         assert_eq!(edited, Ok(NoteEvent::Edited));
         assert_eq!(note.delete(), Ok(NoteEvent::Deleted));
         assert_eq!(note.archive(Utc::now()), Some(NoteEvent::Archived));
+    }
+
+    #[test]
+    fn only_a_note_archived_before_the_cutoff_is_purged() {
+        let cutoff = Utc::now();
+        let mut note = create("First").unwrap();
+        assert_eq!(note.purge(cutoff), None);
+
+        let _ = note.archive(cutoff - TimeDelta::seconds(1));
+        assert_eq!(note.purge(cutoff), Some(NoteEvent::Deleted));
+        assert_eq!(note.purge(cutoff - TimeDelta::seconds(1)), None);
     }
 
     #[test]

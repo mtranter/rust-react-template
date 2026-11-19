@@ -1,4 +1,6 @@
-use app_db::{PgDeferredJobs, PgEventPublisher, PgTransactions, SubscriptionError, Worker};
+use app_db::{
+    PgDeferredJobs, PgEventPublisher, PgTransactions, ScheduleError, SubscriptionError, Worker,
+};
 use app_domain::{FixedClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{EnvelopeOf, PublishedTopic, TopicEnvelope};
@@ -286,6 +288,20 @@ impl Messaging {
         app_db::register_subscriptions(&self.pool, self.clock.as_ref(), handlers).await
     }
 
+    /// As `migrate` does for the schedules `handlers` declare.
+    pub async fn register_schedules(&self, handlers: &Handlers) -> Result<(), ScheduleError> {
+        app_db::register_schedules(&self.pool, self.clock.as_ref(), handlers).await
+    }
+
+    /// When the schedule `name` is next due, as registered.
+    pub async fn next_at(&self, name: &str) -> chrono::DateTime<chrono::Utc> {
+        sqlx::query_scalar("SELECT next_at FROM messaging.schedule WHERE name = $1")
+            .bind(name)
+            .fetch_one(&self.pool)
+            .await
+            .expect("a registered schedule")
+    }
+
     /// As `migrate` does for a build publishing `topics`.
     pub async fn register_topics(&self, topics: &[PublishedTopic]) {
         app_db::register_topics(&self.pool, topics)
@@ -427,32 +443,48 @@ pub const TEMPLATE: Template = Template::new("delivery", |pool| {
     })
 });
 
-/// The error events logged on this thread from [`capture`](Self::capture) until
-/// the guard drops, each as `<message> <field>=<value>…`. A test runs on one
-/// thread, so another test's logging never shows here.
-#[derive(Clone, Default)]
-pub struct LoggedErrors(Arc<Mutex<Vec<String>>>);
+/// The events logged on this thread at one level from
+/// [`capture`](Self::capture) until the guard drops, each as
+/// `<message> <field>=<value>…`. A test runs on one thread, so another test's
+/// logging never shows here.
+#[derive(Clone)]
+pub struct LoggedErrors {
+    lines: Arc<Mutex<Vec<String>>>,
+    level: tracing::Level,
+}
 
 impl LoggedErrors {
+    /// The errors.
     pub fn capture() -> (Self, tracing::subscriber::DefaultGuard) {
-        let errors = Self::default();
-        let subscriber = tracing_subscriber::registry().with(errors.clone());
-        (errors, tracing::subscriber::set_default(subscriber))
+        Self::capture_at(tracing::Level::ERROR)
+    }
+
+    pub fn capture_at(level: tracing::Level) -> (Self, tracing::subscriber::DefaultGuard) {
+        let logged = Self {
+            lines: Arc::default(),
+            level,
+        };
+        let subscriber = tracing_subscriber::registry().with(logged.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        // Another test's thread, with no subscriber, may have cached a
+        // callsite as never enabled while this one was being set.
+        tracing::callsite::rebuild_interest_cache();
+        (logged, guard)
     }
 
     pub fn lines(&self) -> Vec<String> {
-        self.0.lock().unwrap().clone()
+        self.lines.lock().unwrap().clone()
     }
 }
 
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LoggedErrors {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if *event.metadata().level() != tracing::Level::ERROR {
+        if *event.metadata().level() != self.level {
             return;
         }
         let mut line = Line::default();
         event.record(&mut line);
-        self.0
+        self.lines
             .lock()
             .unwrap()
             .push(format!("{}{}", line.message, line.fields));

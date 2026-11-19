@@ -3,7 +3,7 @@
 //! delivers them. Every handler runs at least once per
 //! event, so it must be safe to run twice.
 
-use crate::{DeferredJob, Run, Tx};
+use crate::{DeclaredSchedule, DeferredJob, Run, RunScheduled, Schedule, Slot, Tx};
 use app_error::{AppError, AppResult};
 use app_events::{Subscribable, Topic};
 use async_trait::async_trait;
@@ -33,6 +33,7 @@ pub trait Handle<S: Subscribable>: Send + Sync {
 pub struct Handlers {
     queues: BTreeMap<&'static str, Queue>,
     jobs: BTreeMap<&'static str, Arc<dyn ErasedHandler>>,
+    schedules: BTreeMap<&'static str, &'static str>,
 }
 
 struct Queue {
@@ -119,6 +120,24 @@ impl Handlers {
         self
     }
 
+    /// Runs `handler` for each slot of the [`Schedule`] `S` that falls due:
+    /// in the queue `S::NAME`, which no subscription or deferred job may
+    /// share. `migrate` registers it in `messaging.schedule`.
+    pub fn every<S: Schedule>(mut self, handler: impl RunScheduled<S> + 'static) -> Self {
+        self.assert_free(S::NAME);
+        self.jobs
+            .insert(S::NAME, Arc::new(ScheduleHandler::<S, _>::new(handler)));
+        self.schedules.insert(S::NAME, S::CRON);
+        self
+    }
+
+    /// Every schedule these handlers run, by name: what `migrate` registers.
+    pub fn schedules(&self) -> impl Iterator<Item = DeclaredSchedule> + '_ {
+        self.schedules
+            .iter()
+            .map(|(&name, &cron)| DeclaredSchedule { name, cron })
+    }
+
     fn subscribe<S: Subscribable>(
         self,
         queue: &'static str,
@@ -138,7 +157,11 @@ impl Handlers {
 
     /// Panics on a queue both handle.
     pub fn merge(self, other: Handlers) -> Self {
-        let Handlers { queues, jobs } = other;
+        let Handlers {
+            queues,
+            jobs,
+            schedules,
+        } = other;
         let mut merged = queues
             .into_iter()
             .fold(self, |handlers, (queue, q)| handlers.with_queue(queue, q));
@@ -146,11 +169,12 @@ impl Handlers {
             merged.assert_free(name);
             merged.jobs.insert(name, handler);
         }
+        merged.schedules.extend(schedules);
         merged
     }
 
     /// Every queue and type this worker can run: its subscriptions', then its
-    /// deferred jobs'.
+    /// deferred jobs' and schedules'.
     pub fn claims(&self) -> impl Iterator<Item = Claim> + '_ {
         let subscribed = self.subscriptions().map(|s| Claim {
             queue: s.queue,
@@ -258,6 +282,28 @@ impl<J: DeferredJob, H: Run<J>> ErasedHandler for JobHandler<J, H> {
     async fn handle(&self, tx: &mut Tx, payload: Value) -> AppResult<()> {
         let job = serde_json::from_value(payload).map_err(AppError::internal)?;
         self.handler.run(tx, job).await
+    }
+}
+
+struct ScheduleHandler<S, H> {
+    handler: H,
+    runs: PhantomData<fn() -> S>,
+}
+
+impl<S, H> ScheduleHandler<S, H> {
+    fn new(handler: H) -> Self {
+        Self {
+            handler,
+            runs: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<S: Schedule, H: RunScheduled<S>> ErasedHandler for ScheduleHandler<S, H> {
+    async fn handle(&self, tx: &mut Tx, payload: Value) -> AppResult<()> {
+        let Slot { slot } = serde_json::from_value(payload).map_err(AppError::internal)?;
+        self.handler.run(tx, slot).await
     }
 }
 
@@ -572,6 +618,66 @@ mod tests {
 
         assert!(matches!(result, Err(AppError::Internal(_))));
         assert!(written(&mut tx).is_empty());
+    }
+
+    struct Nightly;
+
+    impl Schedule for Nightly {
+        const NAME: &'static str = "a.nightly";
+        const CRON: &'static str = "0 3 * * *";
+    }
+
+    #[async_trait]
+    impl RunScheduled<Nightly> for Recorder {
+        async fn run(&self, tx: &mut Tx, slot: DateTime<chrono::Utc>) -> AppResult<()> {
+            write(tx, format!("{}: nightly {}", self.0, slot.to_rfc3339()))
+        }
+    }
+
+    #[test]
+    fn a_worker_claims_its_schedules_runs_and_migrate_registers_them() {
+        let handlers = Handlers::new()
+            .on::<Pinged>("a.on_ping", Recorder("a"))
+            .merge(Handlers::new().every::<Nightly>(Recorder("b")));
+
+        assert_eq!(
+            handlers.schedules().collect::<Vec<_>>(),
+            [DeclaredSchedule {
+                name: "a.nightly",
+                cron: "0 3 * * *"
+            }]
+        );
+        assert!(handlers.claims().any(|c| c
+            == Claim {
+                queue: "a.nightly",
+                event_type: "a.nightly"
+            }));
+        assert_eq!(handlers.subscriptions().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_scheduled_run_runs_its_handler_for_its_slot() {
+        let handlers = Handlers::new().every::<Nightly>(Recorder("a"));
+        let mut tx = Tx::new(FakeTx::default());
+
+        handlers
+            .handle(
+                "a.nightly",
+                &mut tx,
+                serde_json::json!({ "slot": "2025-01-01T03:00:00Z" }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(written(&mut tx), ["a: nightly 2025-01-01T03:00:00+00:00"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "two handlers for the queue `a.nightly`")]
+    fn a_schedule_cannot_share_a_queue() {
+        let _ = Handlers::new()
+            .on::<Pinged>("a.nightly", Recorder("a"))
+            .merge(Handlers::new().every::<Nightly>(Recorder("b")));
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod events;
 mod jobs;
 mod reactions;
 mod repository;
+mod schedules;
 mod service;
 
 pub use app_persistence::{
@@ -16,4 +17,5 @@ pub use app_persistence::{
 pub(crate) use events::pending;
 pub use jobs::ArchiveNote;
 pub use repository::{NoteRepository, NoteSortKey};
+pub use schedules::PurgeArchivedNotes;
 pub use service::NoteService;

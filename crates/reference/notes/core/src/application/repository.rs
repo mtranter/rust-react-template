@@ -2,6 +2,7 @@ use super::{Expected, ListQuery, Listed, Tx, Version, Versioned};
 use crate::domain::{AuthorId, Note, NoteId};
 use app_authz::Rows;
 use app_error::AppResult;
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteSortKey {
@@ -22,6 +23,8 @@ pub trait NoteRepository: Send + Sync {
         query: &ListQuery<NoteSortKey>,
         rows: &Rows,
     ) -> AppResult<Listed<Versioned<Note>>>;
+    /// Every note archived before `before`, oldest archive first.
+    async fn archived_before(&self, before: DateTime<Utc>) -> AppResult<Vec<Versioned<Note>>>;
     /// Oldest first.
     async fn unarchived_by(&self, author: AuthorId) -> AppResult<Vec<Versioned<Note>>>;
     /// [`Expected::Version`] updates only if the stored version matches, else

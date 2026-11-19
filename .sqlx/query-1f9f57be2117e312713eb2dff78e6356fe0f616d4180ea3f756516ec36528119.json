@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO messaging.job\n                        (queue, event_type, key, version, payload, outbox_seq, run_at,\n                         max_attempts, created_at, deferred)\n                    VALUES ($1, $1, $1, 1, $2, 0, $3, $4, $3, true)\n                    ON CONFLICT (queue, key) WHERE deferred AND dead_at IS NULL DO NOTHING\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1f9f57be2117e312713eb2dff78e6356fe0f616d4180ea3f756516ec36528119"
+}

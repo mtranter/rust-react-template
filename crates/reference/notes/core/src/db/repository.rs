@@ -144,6 +144,24 @@ impl NoteRepository for PgNoteRepository {
         })
     }
 
+    async fn archived_before(&self, before: DateTime<Utc>) -> AppResult<Vec<Versioned<Note>>> {
+        let rows = sqlx::query_as!(
+            NoteRow,
+            r#"
+            SELECT id, author_id, title, body, created_at, archive_at, archived_at, version
+            FROM notes.note
+            WHERE archived_at < $1
+            ORDER BY archived_at, id
+            "#,
+            before,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::internal)?;
+
+        NoteRow::restore_all(&self.pool, rows).await
+    }
+
     async fn unarchived_by(&self, author: AuthorId) -> AppResult<Vec<Versioned<Note>>> {
         let rows = sqlx::query_as!(
             NoteRow,

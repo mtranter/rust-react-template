@@ -2,6 +2,7 @@
 //! compile-time `query!` checking works against the default search path while
 //! each module keeps its own schema.
 
+mod cron;
 mod deferral;
 mod errors;
 mod idempotency;
@@ -9,6 +10,7 @@ mod listing;
 mod metrics;
 mod projection;
 mod publishing;
+mod schedules;
 mod scope;
 mod subscriptions;
 mod topics;
@@ -16,6 +18,7 @@ mod trace;
 mod unit_of_work;
 mod worker;
 
+pub use cron::{Cron, CronError};
 pub use deferral::PgDeferredJobs;
 pub use errors::map_db_error;
 pub use idempotency::PgIdempotencyRecords;
@@ -23,6 +26,7 @@ pub use listing::push_list_clauses;
 pub use metrics::observe_pool;
 pub use projection::{Generations, Project, Projecting, caught_up, dead_letters_in};
 pub use publishing::PgEventPublisher;
+pub use schedules::{ScheduleError, parse_schedules, register_schedules};
 pub use scope::{Clause, Column, Columns, Kind, push_scope};
 pub use subscriptions::{SubscriptionError, register_subscriptions};
 pub use topics::register_topics;

@@ -15,4 +15,5 @@ mod effects;
 mod order;
 mod polling;
 mod projection;
+mod schedules;
 mod traces;
