@@ -1,0 +1,8 @@
+# Learnings: 0048, a span per SQL query
+
+- **sqlx 0.9 makes no span per query and has no hook around one.** What it does do: every query, on a pool, connection or transaction, ends with a `sqlx::query` tracing *event* (`sqlx-core/src/logger.rs`, `QueryLogger::finish` on drop) carrying `summary` (first four words), `db.statement` (the full SQL, but only when longer than four words; empty otherwise), `elapsed_secs`, rows. Never bound values. `app_web::QuerySpans` turns each into an OpenTelemetry client span, started `elapsed` before the event, under `opentelemetry::Context::current()` (tracing-opentelemetry's context activation makes the entered span's context current, so a layer needs no `Dispatch` or `OtelData`, which is private).
+- **sqlx only formats the event if `tracing::enabled!(target: "sqlx::query", DEBUG)`.** The server's `EnvFilter` (`info,sqlx=warn`) used to be global, which hid it from every layer. It is now a per-layer filter on the fmt and OTel layers, so `QuerySpans` (filtered to its target with a `DEBUG` max-level hint) still sees the events while logs stay quiet.
+- Inside a `Layer::on_event`, `tracing::dispatcher::get_default` yields the no-op dispatcher (re-entrancy guard), so `get_otel_context(id, dispatch)` isn't usable there.
+- `access`' `create_role` answers `200`, not `201`.
+- `pkill -f "<pattern>"` kills the calling shell too (again): don't.
+- A private compose stack for `make check-changed`: `COMPOSE_PROJECT_NAME=<x> COMPOSE_FILE=docker-compose.yml:<override>` with `ports: !override [...]` for `postgres` and `redis`, plus `DATABASE_URL`, `TEST_DATABASE_URL` and `APP_REDIS_URL` on those ports.

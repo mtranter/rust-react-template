@@ -1,5 +1,6 @@
 //! An in-memory span exporter, for a test to check the spans its requests make.
 
+use crate::QuerySpans;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
 use std::sync::Once;
@@ -30,7 +31,8 @@ impl Traces {
             .with_simple_exporter(exporter.clone())
             .build();
         let subscriber = tracing_subscriber::registry()
-            .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("test")));
+            .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("test")))
+            .with(QuerySpans::layer(provider.tracer("test")));
         Self {
             exporter,
             _provider: provider,

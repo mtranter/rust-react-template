@@ -69,21 +69,25 @@ impl Drop for Telemetry {
 /// `service` names the binary, `OTEL_SERVICE_NAME`'s default. A second call
 /// installs nothing (`try_init`) and exports nothing.
 pub fn init(env: Environment, service: &'static str) -> Telemetry {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sqlx=warn"));
     let (tracer, problem) = match tracer(service) {
         Ok(tracer) => (tracer, None),
         Err(problem) => (None, Some(problem)),
     };
+    // Each layer filters by `RUST_LOG` on its own, not the registry, so that
+    // sqlx's query events reach `QuerySpans` at `DEBUG` without being logged.
     let traces = tracer.as_ref().map(|provider| {
         tracing_opentelemetry::layer()
             .with_tracer(provider.tracer(service))
+            .with_filter(levels())
             .with_filter(filter_fn(|meta| !is_export_path(meta)))
     });
+    let queries = tracer
+        .as_ref()
+        .map(|provider| app_web::QuerySpans::layer(provider.tracer(service)));
     let registry = tracing_subscriber::registry()
-        .with(filter)
         .with(Throttled::default())
-        .with(traces);
+        .with(traces)
+        .with(queries);
 
     let installed = match env {
         Environment::Prod => registry
@@ -91,11 +95,17 @@ pub fn init(env: Environment, service: &'static str) -> Telemetry {
                 fmt::layer()
                     .json()
                     .with_current_span(true)
-                    .map_event_format(WithTraceIds::json),
+                    .map_event_format(WithTraceIds::json)
+                    .with_filter(levels()),
             )
             .try_init(),
         Environment::Dev | Environment::Test => registry
-            .with(fmt::layer().pretty().map_event_format(WithTraceIds::pretty))
+            .with(
+                fmt::layer()
+                    .pretty()
+                    .map_event_format(WithTraceIds::pretty)
+                    .with_filter(levels()),
+            )
             .try_init(),
     };
     if let Some(problem) = problem {
@@ -104,6 +114,10 @@ pub fn init(env: Environment, service: &'static str) -> Telemetry {
     Telemetry {
         tracer: installed.is_ok().then_some(tracer).flatten(),
     }
+}
+
+fn levels() -> EnvFilter {
+    EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sqlx=warn"))
 }
 
 /// `None` when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
