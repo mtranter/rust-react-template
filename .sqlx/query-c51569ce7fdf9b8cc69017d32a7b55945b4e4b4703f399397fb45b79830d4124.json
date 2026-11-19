@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM messaging.job\n        WHERE deferred AND queue = ANY($1) AND key = queue AND dead_at IS NULL AND attempts = 0\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c51569ce7fdf9b8cc69017d32a7b55945b4e4b4703f399397fb45b79830d4124"
+}

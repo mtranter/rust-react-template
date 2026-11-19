@@ -514,7 +514,7 @@ impl Worker {
         let due = sqlx::query!(
             r#"
             SELECT name, cron, next_at FROM messaging.schedule
-            WHERE next_at <= $1
+            WHERE next_at <= $1 AND retired_at IS NULL
             ORDER BY next_at, name
             FOR UPDATE SKIP LOCKED
             "#,

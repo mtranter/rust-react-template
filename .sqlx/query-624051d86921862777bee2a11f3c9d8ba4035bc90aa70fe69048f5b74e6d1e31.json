@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "LOCK TABLE messaging.schedule IN EXCLUSIVE MODE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "624051d86921862777bee2a11f3c9d8ba4035bc90aa70fe69048f5b74e6d1e31"
+}

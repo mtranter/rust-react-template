@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE messaging.job SET dead_at = $2, last_error = 'schedule retired'\n        WHERE deferred AND queue = ANY($1) AND key = queue AND dead_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "88dafa74451deedf0ad226e6e3ac9dc2ccdc2be41761a8d11f7551dd4451cf00"
+}
