@@ -62,7 +62,7 @@ Every state change publishes an event in its Unit of Work (ADR 0012), through `E
 
 At RDS gp3's roughly $0.115/GB-month (unverified: [AWS calculator](https://calculator.aws/#/addService/RDSPostgreSQL)), a million 1 KB records cost about $0.12 a month to keep.
 
-**Retention** has no single legal answer. PCI DSS 10.5.1 asks for 12 months, 3 of them immediately available ([summary](https://withpci.pages.dev/requirements/10/10.5/10.5.1)). SOC 2 sets no period, but 12 months is the norm ([Linford](https://linfordco.com/blog/data-retention-policy-soc-2/)). HIPAA's 6 years covers documentation, not logs as such ([45 CFR 164.316](https://www.law.cornell.edu/cfr/text/45/164.316)). GDPR asks that personal data be kept no longer than needed ([Art. 5(1)(e)](https://gdpr-info.eu/art-5-gdpr/)).
+**Retention** has no single legal answer. PCI DSS 10.5.1 asks for 12 months, 3 of them immediately available (unverified: a third-party [summary](https://withpci.pages.dev/requirements/10/10.5/10.5.1)). SOC 2 sets no period, but 12 months is the norm ([Linford](https://linfordco.com/blog/data-retention-policy-soc-2/)). HIPAA's 6 years covers documentation, not logs as such ([45 CFR 164.316](https://www.law.cornell.edu/cfr/text/45/164.316)). GDPR asks that personal data be kept no longer than needed ([Art. 5(1)(e)](https://gdpr-info.eu/art-5-gdpr/)).
 
 **The envelope** can carry the actor through CloudEvents' `authcontext` extension: `authtype` (`user`, `service_account`, `system`…), `authid`, `authclaims` ([spec](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/authcontext.md)). It has no field for an actor acting for someone else, so that one needs an extension attribute of our own.
 
