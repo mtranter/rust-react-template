@@ -1,7 +1,7 @@
 ---
 id: 0054
 name: "A Module declares a cron Schedule that the worker's poll loop runs once per due slot, and notes purges old archived notes nightly"
-status: needs-info
+status: ready-for-agent
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: [docs/platform/tickets/0053-a-module-defers-a-keyed-job-to-its-own-handler-in.md]
 blocks: [docs/platform/tickets/0055-a-schedule-removed-from-code-is-retired-by-migrate.md]
@@ -29,3 +29,6 @@ Reference: `notes` declares a nightly Schedule that purges notes archived more t
 ## Needs Human Input (factory)
 
 The factory stopped on this Ticket: implementor did not complete the Ticket: no structured output (session 00b86bcb-7f11-48c9-8a78-444604679b13)
+
+### From Human 
+Try again
