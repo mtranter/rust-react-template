@@ -37,6 +37,10 @@ required-features = ["seed"]
 name = "composed_app"
 path = "tests/composed_app.rs"
 
+[[test]]
+name = "worker_bin"
+path = "tests/worker_bin.rs"
+
 [dependencies]
 access.workspace = true
 app-authz.workspace = true
