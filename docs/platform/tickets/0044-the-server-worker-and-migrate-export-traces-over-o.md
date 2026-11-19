@@ -4,7 +4,7 @@ name: "The server, worker and migrate export traces over OTLP, with one span per
 status: ready-for-agent
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: []
-blocks: [docs/platform/tickets/0045-errorbody-carries-the-trace-s-id-as-traceid.md, docs/platform/tickets/0046-a-trace-follows-a-request-across-the-outbox-into-t.md, docs/platform/tickets/0047-each-mcp-tool-call-is-a-span-with-its-outcome-pare.md, docs/platform/tickets/0048-each-sql-query-is-a-span-with-its-statement-but-ne.md]
+blocks: [docs/platform/tickets/0045-errorbody-carries-the-trace-s-id-as-traceid.md, docs/platform/tickets/0046-a-trace-follows-a-request-across-the-outbox-into-t.md, docs/platform/tickets/0047-each-mcp-tool-call-is-a-span-with-its-outcome-pare.md, docs/platform/tickets/0048-each-sql-query-is-a-span-with-its-statement-but-ne.md, docs/platform/tickets/0049-request-side-metrics-are-exported-over-otlp-http-m.md]
 ---
 
 # The server, worker and migrate export traces over OTLP, with one span per HTTP request
