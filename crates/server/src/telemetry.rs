@@ -1,14 +1,18 @@
-//! Logs to stdout and, when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, traces over
-//! OTLP, configured only by the standard `OTEL_*` variables (`.env.example`).
+//! Logs to stdout and, when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, traces and
+//! metrics over OTLP, configured only by the standard `OTEL_*` variables (`.env.example`).
 
 use crate::config::Environment;
 use crate::{API_VERSION, APP_NAME};
 use async_trait::async_trait;
+use opentelemetry::metrics::MeterProvider;
 use opentelemetry::trace::{TraceContextExt, TracerProvider};
-use opentelemetry::{KeyValue, Value};
+use opentelemetry::{KeyValue, Value, global};
 use opentelemetry_http::{Bytes, HttpClient, HttpError};
-use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{
+    MetricExporter, Protocol, SpanExporter, WithExportConfig, WithHttpConfig,
+};
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use poem::http::{Request, Response};
 use std::collections::HashMap;
@@ -31,18 +35,25 @@ const WARN_AT_MOST_EVERY: Duration = Duration::from_secs(60);
 /// The process's telemetry pipeline. Dropping it shuts the pipeline down,
 /// exporting what is buffered; [`Telemetry::flush`] exports it and keeps going,
 /// as a host that freezes the process between invocations needs.
-#[must_use = "dropping it shuts the trace pipeline down"]
+#[must_use = "dropping it shuts the trace and metric pipelines down"]
 pub struct Telemetry {
     tracer: Option<SdkTracerProvider>,
+    meter: Option<SdkMeterProvider>,
 }
 
 impl Telemetry {
-    /// Exports every finished span still buffered, blocking until it is sent.
+    /// Exports every finished span still buffered, and the metrics as they
+    /// stand, blocking until they are sent.
     pub fn flush(&self) {
         if let Some(tracer) = &self.tracer
             && let Err(err) = tracer.force_flush()
         {
             tracing::warn!(error = %err, "flushing spans failed");
+        }
+        if let Some(meter) = &self.meter
+            && let Err(err) = meter.force_flush()
+        {
+            tracing::warn!(error = %err, "flushing metrics failed");
         }
     }
 
@@ -57,6 +68,11 @@ impl Telemetry {
         {
             tracing::warn!(error = %err, "shutting the trace pipeline down failed");
         }
+        if let Some(meter) = self.meter.take()
+            && let Err(err) = meter.shutdown()
+        {
+            tracing::warn!(error = %err, "shutting the metric pipeline down failed");
+        }
     }
 }
 
@@ -67,11 +83,16 @@ impl Drop for Telemetry {
 }
 
 /// `service` names the binary, `OTEL_SERVICE_NAME`'s default. A second call
-/// installs nothing (`try_init`) and exports nothing.
+/// installs nothing (`try_init`) and exports nothing. Call it before building
+/// the pool and the app: their instruments record into the meter provider
+/// installed when they are built.
 pub fn init(env: Environment, service: &'static str) -> Telemetry {
-    let (tracer, problem) = match tracer(service) {
-        Ok(tracer) => (tracer, None),
-        Err(problem) => (None, Some(problem)),
+    let (tracer, meter, problem) = match tracer(service).and_then(|tracer| {
+        let meter = meter(service)?;
+        Ok((tracer, meter))
+    }) {
+        Ok((tracer, meter)) => (tracer, meter, None),
+        Err(problem) => (None, None, Some(problem)),
     };
     // Each layer filters by `RUST_LOG` on its own, not the registry, so that
     // sqlx's query events reach `QuerySpans` at `DEBUG` without being logged.
@@ -84,10 +105,15 @@ pub fn init(env: Environment, service: &'static str) -> Telemetry {
     let queries = tracer
         .as_ref()
         .map(|provider| app_web::QuerySpans::layer(provider.tracer(service)));
+    // Only with export on: sqlx then builds an event for each acquire.
+    let pool_waits = meter
+        .as_ref()
+        .map(|provider| app_web::PoolWaits::layer(&provider.meter("app-web")));
     let registry = tracing_subscriber::registry()
         .with(Throttled::default())
         .with(traces)
-        .with(queries);
+        .with(queries)
+        .with(pool_waits);
 
     let installed = match env {
         Environment::Prod => registry
@@ -109,20 +135,31 @@ pub fn init(env: Environment, service: &'static str) -> Telemetry {
             .try_init(),
     };
     if let Some(problem) = problem {
-        tracing::warn!(error = %problem, "exporting no traces");
+        tracing::warn!(error = %problem, "exporting no traces or metrics");
     }
-    Telemetry {
-        tracer: installed.is_ok().then_some(tracer).flatten(),
+    if installed.is_err() {
+        return Telemetry {
+            tracer: None,
+            meter: None,
+        };
     }
+    if let Some(meter) = &meter {
+        global::set_meter_provider(meter.clone());
+    }
+    Telemetry { tracer, meter }
 }
 
 fn levels() -> EnvFilter {
     EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sqlx=warn"))
 }
 
+fn exporting() -> bool {
+    env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok_and(|endpoint| !endpoint.trim().is_empty())
+}
+
 /// `None` when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
 fn tracer(service: &'static str) -> Result<Option<SdkTracerProvider>, String> {
-    if env::var("OTEL_EXPORTER_OTLP_ENDPOINT").map_or(true, |endpoint| endpoint.trim().is_empty()) {
+    if !exporting() {
         return Ok(None);
     }
     let exporter = SpanExporter::builder()
@@ -137,6 +174,28 @@ fn tracer(service: &'static str) -> Result<Option<SdkTracerProvider>, String> {
     Ok(Some(
         SdkTracerProvider::builder()
             .with_batch_exporter(exporter)
+            .with_resource(resource(service))
+            .build(),
+    ))
+}
+
+/// `None` when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
+fn meter(service: &'static str) -> Result<Option<SdkMeterProvider>, String> {
+    if !exporting() {
+        return Ok(None);
+    }
+    let exporter = MetricExporter::builder()
+        .with_http()
+        .with_protocol(protocol()?)
+        .with_http_client(Blocking::new()?)
+        .build()
+        .map_err(|err| err.to_string())?;
+    // A request only adds to aggregates in memory; the periodic reader
+    // collects and exports them from a thread of its own, every
+    // `OTEL_METRIC_EXPORT_INTERVAL` (60 s by default).
+    Ok(Some(
+        SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter)
             .with_resource(resource(service))
             .build(),
     ))

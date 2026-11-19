@@ -13,6 +13,7 @@
 
 use crate::auth::verified_caller;
 use crate::error::{ApiError, ErrorBody, ErrorCode, render_error};
+use crate::metrics::IdempotencyOutcomes;
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use app_persistence::{Claimed, IdempotencyRecords, KeyClaim, RecordedResponse};
@@ -37,11 +38,16 @@ const MAX_KEY_LENGTH: usize = 255;
 pub struct Idempotency {
     records: Arc<dyn IdempotencyRecords>,
     clock: Arc<dyn Clock>,
+    outcomes: IdempotencyOutcomes,
 }
 
 impl Idempotency {
     pub fn new(records: Arc<dyn IdempotencyRecords>, clock: Arc<dyn Clock>) -> Self {
-        Self { records, clock }
+        Self {
+            records,
+            clock,
+            outcomes: IdempotencyOutcomes::new(),
+        }
     }
 
     async fn claim(&self, caller: String, key: String, request: &[u8]) -> AppResult<Keyed<'_>> {
@@ -149,9 +155,15 @@ impl<E: Endpoint> IdempotencyEndpoint<E> {
 
         let claim = match self.idempotency.claim(caller, key, &request).await {
             Ok(Keyed::Claimed(claim)) => claim,
-            Ok(Keyed::ForAnotherRequest) => return Ok(IdempotencyRefusal::reused().into_response()),
+            Ok(Keyed::ForAnotherRequest) => {
+                self.idempotency.outcomes.reuse_refused();
+                return Ok(IdempotencyRefusal::reused().into_response());
+            }
             Ok(Keyed::InFlight) => return Ok(IdempotencyRefusal::in_flight().into_response()),
-            Ok(Keyed::Answered(recorded)) => return Ok(replay(recorded)),
+            Ok(Keyed::Answered(recorded)) => {
+                self.idempotency.outcomes.replayed();
+                return Ok(replay(recorded));
+            }
             Err(err) => return Ok(ApiError::from(err).into_response()),
         };
 

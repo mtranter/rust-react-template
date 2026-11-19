@@ -3,8 +3,10 @@
 //! module's own: domain verbs, JSON newtypes built from aggregates, and a
 //! `Refusal` declaring only the codes the module produces.
 
+mod metrics;
 mod traces;
 
+pub use metrics::Metrics;
 pub use traces::Traces;
 
 use crate::{IDEMPOTENCY_KEY, Idempotency, RequestIdMiddleware, TraceRequests, mcp, render_error};

@@ -5,6 +5,7 @@
 mod errors;
 mod idempotency;
 mod listing;
+mod metrics;
 mod projection;
 mod publishing;
 mod scope;
@@ -17,6 +18,7 @@ mod worker;
 pub use errors::map_db_error;
 pub use idempotency::PgIdempotencyRecords;
 pub use listing::push_list_clauses;
+pub use metrics::observe_pool;
 pub use projection::{Generations, Project, Projecting, caught_up, dead_letters_in};
 pub use publishing::PgEventPublisher;
 pub use scope::{Clause, Column, Columns, Kind, push_scope};
@@ -39,12 +41,17 @@ pub struct ModuleMigrations {
     pub migrator: &'static Migrator,
 }
 
+/// Its connections in use, idle and maximum are observed as metrics, and it
+/// emits the event `app_web::PoolWaits` measures each acquire's wait from.
 pub async fn connect(database_url: &str, max_connections: u32) -> AppResult<PgPool> {
-    PgPoolOptions::new()
+    let pool = PgPoolOptions::new()
         .max_connections(max_connections)
+        .acquire_time_level(metrics::ACQUIRE_EVENT_LEVEL)
         .connect(database_url)
         .await
-        .map_err(AppError::internal)
+        .map_err(AppError::internal)?;
+    observe_pool(&pool);
+    Ok(pool)
 }
 
 pub async fn ping(pool: &PgPool) -> AppResult<()> {

@@ -7,7 +7,7 @@ use app_domain::SystemClock;
 use app_module::{Context, Module};
 use app_test_db::Template;
 use app_web::mcp::{self, Discovery, Surface};
-use app_web::testing::{Refused, TestApi, Traces};
+use app_web::testing::{Metrics, Refused, TestApi, Traces};
 use app_web::{JwtVerifier, Provide, PublicUrl};
 use poem::test::TestClient;
 use serde_json::Value;
@@ -597,5 +597,48 @@ async fn each_query_a_request_makes_is_a_child_span_with_its_statement_and_none_
                 attribute.key
             );
         }
+    }
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn every_request_side_metric_is_recorded(pool: PgPool) {
+    let metrics = Metrics::install();
+    app_db::observe_pool(&pool);
+    let verifier = JwtVerifier::new("test-secret");
+    let token = verifier.issue(NIL_ID, 60).expect("issue token");
+    let api = TestApi::over(server::build_app::<Registered>(
+        &context(pool).await,
+        verifier,
+        Discovery::default(),
+        None,
+        "http://localhost",
+    ));
+
+    let create = |name: &str| {
+        api.post("/api/access/roles")
+            .bearer(&token)
+            .idempotency_key("metrics-key")
+            .json(&serde_json::json!({ "name": name, "description": "measured" }))
+    };
+    create("measured").answered().await;
+    create("measured").answered().await;
+    create("another").answered().await;
+    let session = api.mcp_session::<Code>(Some(&token)).await.unwrap();
+    session
+        .call::<Value, Code>("list_roles", serde_json::json!({}))
+        .await
+        .unwrap();
+
+    let names = metrics.names();
+    for metric in [
+        "http.server.request.duration",
+        "mcp.server.tool.calls",
+        "db.client.connection.count",
+        "db.client.connection.max",
+        "db.client.connection.wait_time",
+        "idempotency.replays",
+        "idempotency.reuse_refusals",
+    ] {
+        assert!(names.contains(metric), "{metric} isn't in {names:?}");
     }
 }

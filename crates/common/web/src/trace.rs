@@ -3,8 +3,10 @@
 //! whose id it carries, and outside the error rendering, whose status it records.
 //! It also writes the access log line, in the span. With no OpenTelemetry layer
 //! installed (`OTEL_EXPORTER_OTLP_ENDPOINT` unset) it is only a `tracing` span.
+//! It records each request's `http.server.request.duration` too.
 
 use crate::RequestId;
+use crate::metrics::RequestDuration;
 use opentelemetry::propagation::{Extractor, TextMapPropagator};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
@@ -18,9 +20,19 @@ use tracing::field::Empty;
 use tracing::{Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct TraceRequests {
     routes: Arc<HashMap<&'static str, String>>,
+    duration: RequestDuration,
+}
+
+impl Default for TraceRequests {
+    fn default() -> Self {
+        Self {
+            routes: Arc::default(),
+            duration: RequestDuration::new(),
+        }
+    }
 }
 
 impl TraceRequests {
@@ -40,6 +52,7 @@ impl TraceRequests {
             .collect();
         Self {
             routes: Arc::new(routes),
+            duration: RequestDuration::new(),
         }
     }
 }
@@ -51,6 +64,7 @@ impl<E: Endpoint> Middleware<E> for TraceRequests {
         TraceRequestsEndpoint {
             inner,
             routes: self.routes.clone(),
+            duration: self.duration.clone(),
         }
     }
 }
@@ -58,6 +72,7 @@ impl<E: Endpoint> Middleware<E> for TraceRequests {
 pub struct TraceRequestsEndpoint<E> {
     inner: E,
     routes: Arc<HashMap<&'static str, String>>,
+    duration: RequestDuration,
 }
 
 /// The request's span, in request data, so what is learned inside the request
@@ -132,8 +147,11 @@ impl<E: Endpoint> Endpoint for TraceRequestsEndpoint<E> {
         if status.is_server_error() {
             span.record("otel.status_code", "error");
         }
+        let elapsed = started.elapsed();
+        self.duration
+            .record(elapsed.as_secs_f64(), &method, status, route, operation);
         span.in_scope(|| {
-            tracing::info!(status = %status, duration = ?started.elapsed(), "response");
+            tracing::info!(status = %status, duration = ?elapsed, "response");
         });
         Ok(resp)
     }
