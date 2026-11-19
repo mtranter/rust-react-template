@@ -1,7 +1,7 @@
 ---
 id: 0039
 name: "Draft a Spec, for a human to decide, for sending the app's events out to webhooks and EventBridge"
-status: in-progress
+status: in-review
 priority: P1
 size: S
 blocked_by: []
