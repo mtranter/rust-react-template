@@ -39,7 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(?interval, %compact_every, "starting worker");
     worker.run(interval, server::shutdown_signal()).await?;
     tracing::info!("worker stopped");
-    // Also on an early return, when `telemetry` drops.
     telemetry.shutdown();
     Ok(())
 }

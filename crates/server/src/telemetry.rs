@@ -24,7 +24,7 @@ use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*};
 
-/// The default timeout of an OTLP export (`OTEL_EXPORTER_OTLP_TIMEOUT`).
+/// The OTLP HTTP client's own timeout: the exporter's default (`OTEL_EXPORTER_OTLP_TIMEOUT`).
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const WARN_AT_MOST_EVERY: Duration = Duration::from_secs(60);
 
@@ -114,7 +114,6 @@ fn tracer(service: &'static str) -> Result<Option<SdkTracerProvider>, String> {
     let exporter = SpanExporter::builder()
         .with_http()
         .with_protocol(protocol()?)
-        .with_timeout(EXPORT_TIMEOUT)
         .with_http_client(Blocking::new()?)
         .build()
         .map_err(|err| err.to_string())?;

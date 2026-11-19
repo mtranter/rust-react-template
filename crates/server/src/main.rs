@@ -48,7 +48,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .run_with_graceful_shutdown(app, shutdown_signal(), None)
         .await?;
     tracing::info!("server stopped");
-    // Also on an early return, when `telemetry` drops.
     telemetry.shutdown();
     Ok(())
 }

@@ -500,8 +500,9 @@ async fn a_request_is_one_span_with_its_operation_continuing_the_callers_trace(p
     ));
     let traces = Traces::install();
 
+    // An `access` operation, the one module `make init` leaves on the server.
     client
-        .get(format!("/api/notes/{NIL_ID}"))
+        .delete("/api/access/roles/nobody")
         .header("authorization", bearer)
         .header("x-request-id", "the-request")
         .header(
@@ -510,16 +511,16 @@ async fn a_request_is_one_span_with_its_operation_continuing_the_callers_trace(p
         )
         .send()
         .await
-        .assert_status(poem::http::StatusCode::NOT_FOUND);
+        .assert_status(poem::http::StatusCode::PRECONDITION_REQUIRED);
 
-    let span = traces.span("GET /api/notes/{id}");
+    let span = traces.span("DELETE /api/access/roles/{name}");
     let attribute = |key| Traces::attribute(&span, key);
-    assert_eq!(attribute("operation_id").as_deref(), Some("get_note"));
+    assert_eq!(attribute("operation_id").as_deref(), Some("delete_role"));
     assert_eq!(attribute("request_id").as_deref(), Some("the-request"));
     assert_eq!(attribute("user.id").as_deref(), Some(NIL_ID));
     assert_eq!(
         attribute("http.response.status_code").as_deref(),
-        Some("404")
+        Some("428")
     );
     assert_eq!(span.span_context.trace_id().to_string(), CALLERS_TRACE);
     assert_eq!(span.parent_span_id.to_string(), CALLERS_SPAN);

@@ -25,7 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(granted, "default grants applied");
 
     tracing::info!("migrations complete");
-    // Also on an early return, when `telemetry` drops.
     telemetry.shutdown();
     Ok(())
 }
