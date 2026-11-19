@@ -3,7 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { useState } from "react";
 import { Toaster } from "./components/ui/toast";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { sendAccessToken } from "./hey-api";
+import { authorizeRequests } from "./hey-api";
 import { createQueryClient } from "./lib/query-client";
 import { type Session, SessionContext } from "./lib/sign-in";
 import { ThemeProvider } from "./lib/theme";
@@ -25,7 +25,18 @@ export function App({
   const [client] = useState(() => queryClient ?? createQueryClient());
   const [appRouter] = useState(() => router ?? createAppRouter());
   // Before the first render, so the first screen's requests carry the token.
-  useState(() => sendAccessToken(() => session?.accessToken));
+  useState(() =>
+    authorizeRequests(
+      session
+        ? {
+            accessToken: () => session.accessToken,
+            renew: () => session.renew(),
+            signIn: () => void session.signInAgain(appRouter.state.location.href),
+            accepted: () => session.accepted(),
+          }
+        : undefined,
+    ),
+  );
   return (
     <ThemeProvider>
       <SessionContext value={session}>

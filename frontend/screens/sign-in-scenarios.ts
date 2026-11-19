@@ -14,6 +14,7 @@ function provider({
     getUser: async () => user,
     signinRedirect: async () => {},
     signinRedirectCallback: callback,
+    signinSilent: async () => null,
     signoutRedirect: async () => {},
     removeUser: async () => {},
     metadataService: { getEndSessionEndpoint: async () => undefined },

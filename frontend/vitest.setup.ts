@@ -31,5 +31,7 @@ beforeAll(() => {
 afterEach(() => {
   server.resetHandlers();
   cleanup();
+  // Sign-in state (oidc-client-ts' and the `Session`'s) lives in the tab's `sessionStorage`.
+  sessionStorage.clear();
 });
 afterAll(() => server.close());

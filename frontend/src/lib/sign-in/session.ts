@@ -17,11 +17,33 @@ export type SignInConfig = {
 /** The part of `oidc-client-ts`' `UserManager` the SPA uses; tests pass a stub. */
 export type SignInProvider = Pick<
   UserManager,
-  "getUser" | "signinRedirect" | "signinRedirectCallback" | "signoutRedirect" | "removeUser"
+  | "getUser"
+  | "signinRedirect"
+  | "signinRedirectCallback"
+  | "signinSilent"
+  | "signoutRedirect"
+  | "removeUser"
 > & { metadataService: Pick<UserManager["metadataService"], "getEndSessionEndpoint"> };
 
 export const callbackPath = "/auth/callback";
 export const signedOutPath = "/auth/signed-out";
+
+/**
+ * Set while the tab is away signing in again because the API refused a fresh token, and cleared
+ * once it accepts one: in `sessionStorage`, so it outlives the redirect to the provider and back.
+ */
+const signingInAgainKey = "sign-in.again";
+
+/** How long before the access token expires the session renews it. */
+export const renewBeforeExpirySeconds = 60;
+
+/**
+ * Whether this page is the hidden iframe of a silent renewal, which the provider sends back to the
+ * one redirect URI, `/auth/callback`: it hands the response to the app in its parent and shows nothing.
+ */
+export function isSilentRenewal(win: Window = window): boolean {
+  return win.parent !== win && win.location.pathname === callbackPath;
+}
 
 /**
  * The SPA's sign-in settings, or `null` when it signs no one in: a `404` (no `APP_JWT_ISSUER`), no
@@ -63,6 +85,8 @@ export function userManagerSettings(config: SignInConfig, origin: string): UserM
 export class Session {
   #user: User | null = null;
   #signingIn: Promise<void> | undefined;
+  #renewing: Promise<string | undefined> | undefined;
+  #renewal: ReturnType<typeof setTimeout> | undefined;
   readonly #callbacks = new Map<string, Promise<string>>();
 
   private constructor(private readonly provider: SignInProvider) {}
@@ -71,7 +95,7 @@ export class Session {
   static async restore(provider: SignInProvider): Promise<Session> {
     const session = new Session(provider);
     const user = await provider.getUser();
-    session.#user = user && !user.expired ? user : null;
+    session.#signedIn(user && !user.expired ? user : null);
     return session;
   }
 
@@ -95,6 +119,48 @@ export class Session {
   }
 
   /**
+   * Leaves to sign in again because the API refused the user's token, resolving `true`; or, when
+   * the last such sign-in's token was refused too, stays and resolves `false`. Otherwise a provider
+   * that signs the user straight back in, with a token the API never accepts (the wrong audience,
+   * say), would send them back and forth for ever.
+   */
+  async signInAgain(returnTo: string): Promise<boolean> {
+    if (sessionStorage.getItem(signingInAgainKey)) return false;
+    sessionStorage.setItem(signingInAgainKey, "1");
+    await this.signIn(returnTo);
+    return true;
+  }
+
+  /** The API accepted the user's token: a later refusal may send them to sign in again. */
+  accepted() {
+    sessionStorage.removeItem(signingInAgainKey);
+  }
+
+  /**
+   * Renews the access token, resolving to the new one, or `undefined` when it can't. oidc-client-ts
+   * uses the refresh token when the provider issued one, and otherwise the provider's session in a
+   * hidden iframe. Callers at the same time share one renewal.
+   */
+  renew(): Promise<string | undefined> {
+    if (!this.#user) return Promise.resolve(undefined);
+    this.#renewing ??= this.provider
+      .signinSilent()
+      .then(
+        (user) => {
+          // Signed out while it was renewing: the renewal mustn't sign them back in.
+          if (!user || !this.#user) return undefined;
+          this.#signedIn(user, { renewed: true });
+          return user.access_token;
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        this.#renewing = undefined;
+      });
+    return this.#renewing;
+  }
+
+  /**
    * Completes the sign-in the provider redirected back with in `url`, resolving to where the user
    * started; rejects with a {@link SignInError}. Once per URL, as the code can be redeemed only once.
    */
@@ -103,7 +169,7 @@ export class Session {
     if (!completing) {
       completing = this.provider.signinRedirectCallback(url).then(
         (user) => {
-          this.#user = user;
+          this.#signedIn(user);
           return returnTo(user.state);
         },
         (error: unknown) => {
@@ -123,13 +189,28 @@ export class Session {
     const endSession = await this.provider.metadataService
       .getEndSessionEndpoint()
       .catch(() => undefined);
-    this.#user = null;
+    this.#signedIn(null);
+    this.accepted();
     if (endSession) {
       await this.provider.signoutRedirect();
       return true;
     }
     await this.provider.removeUser();
     return false;
+  }
+
+  /** Holds `user`, renewing their access token shortly before it expires. */
+  #signedIn(user: User | null, { renewed = false } = {}) {
+    this.#user = user;
+    clearTimeout(this.#renewal);
+    this.#renewal = undefined;
+    const expiresIn = user?.expires_in;
+    if (expiresIn === undefined) return;
+    const delay = Math.max(0, expiresIn - renewBeforeExpirySeconds) * 1000;
+    // A renewal that brought a token as short-lived as the margin would renew again at once, forever.
+    if (renewed && delay === 0) return;
+    // A failed renewal isn't retried here: the request that next gets `401` renews once more.
+    this.#renewal = setTimeout(() => void this.renew(), delay);
   }
 }
 
