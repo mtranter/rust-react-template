@@ -28,6 +28,12 @@ export type SignInProvider = Pick<
 export const callbackPath = "/auth/callback";
 export const signedOutPath = "/auth/signed-out";
 
+/**
+ * Set while the tab is away signing in again because the API refused a fresh token, and cleared
+ * once it accepts one: in `sessionStorage`, so it outlives the redirect to the provider and back.
+ */
+const signingInAgainKey = "sign-in.again";
+
 /** How long before the access token expires the session renews it. */
 export const renewBeforeExpirySeconds = 60;
 
@@ -113,6 +119,24 @@ export class Session {
   }
 
   /**
+   * Leaves to sign in again because the API refused the user's token, resolving `true`; or, when
+   * the last such sign-in's token was refused too, stays and resolves `false`. Otherwise a provider
+   * that signs the user straight back in, with a token the API never accepts (the wrong audience,
+   * say), would send them back and forth for ever.
+   */
+  async signInAgain(returnTo: string): Promise<boolean> {
+    if (sessionStorage.getItem(signingInAgainKey)) return false;
+    sessionStorage.setItem(signingInAgainKey, "1");
+    await this.signIn(returnTo);
+    return true;
+  }
+
+  /** The API accepted the user's token: a later refusal may send them to sign in again. */
+  accepted() {
+    sessionStorage.removeItem(signingInAgainKey);
+  }
+
+  /**
    * Renews the access token, resolving to the new one, or `undefined` when it can't. oidc-client-ts
    * uses the refresh token when the provider issued one, and otherwise the provider's session in a
    * hidden iframe. Callers at the same time share one renewal.
@@ -123,7 +147,8 @@ export class Session {
       .signinSilent()
       .then(
         (user) => {
-          if (!user) return undefined;
+          // Signed out while it was renewing: the renewal mustn't sign them back in.
+          if (!user || !this.#user) return undefined;
           this.#signedIn(user, { renewed: true });
           return user.access_token;
         },
@@ -165,6 +190,7 @@ export class Session {
       .getEndSessionEndpoint()
       .catch(() => undefined);
     this.#signedIn(null);
+    this.accepted();
     if (endSession) {
       await this.provider.signoutRedirect();
       return true;

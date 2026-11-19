@@ -31,7 +31,8 @@ export function App({
         ? {
             accessToken: () => session.accessToken,
             renew: () => session.renew(),
-            signIn: () => void session.signIn(appRouter.state.location.href),
+            signIn: () => void session.signInAgain(appRouter.state.location.href),
+            accepted: () => session.accepted(),
           }
         : undefined,
     ),

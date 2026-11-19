@@ -129,6 +129,34 @@ function idToken(claims: Record<string, unknown>): string {
   return `${part({ alg: "none" })}.${part(claims)}.`;
 }
 
+/**
+ * Silences jsdom's "Not implemented: navigation" error, which it reports when the silent renewal's
+ * iframe goes to the provider, on a console of its own that a spy on `console.error` doesn't reach.
+ * Returns what puts its reporting back.
+ */
+type Reporter = (error: Error) => void;
+type VirtualConsole = {
+  listeners(event: "jsdomError"): Reporter[];
+  on(event: "jsdomError", listener: Reporter): void;
+  removeAllListeners(event: "jsdomError"): void;
+};
+
+function quietNavigation(): () => void {
+  const { virtualConsole } = (window as unknown as { jsdom: { virtualConsole: VirtualConsole } })
+    .jsdom;
+  const reporters = virtualConsole.listeners("jsdomError");
+  virtualConsole.removeAllListeners("jsdomError");
+  virtualConsole.on("jsdomError", (error: Error) => {
+    if (!error.message.startsWith("Not implemented: navigation")) {
+      for (const report of reporters) report(error);
+    }
+  });
+  return () => {
+    virtualConsole.removeAllListeners("jsdomError");
+    for (const report of reporters) virtualConsole.on("jsdomError", report);
+  };
+}
+
 test("renews the access token with the refresh token when the provider issued one", async () => {
   const forms = tokenEndpoint({ access_token: "renewed", refresh_token: "refresh-2" });
   const manager = userManager();
@@ -144,7 +172,6 @@ test("renews the access token with the refresh token when the provider issued on
   expect(forms[0].get("client_id")).toBe("spa");
   // A refreshed session still names the user its ID token did.
   expect(session.user?.profile.name).toBe("Ada Lovelace");
-  sessionStorage.clear();
 });
 
 test("with no refresh token, renews silently through the provider's session, back at /auth/callback", async () => {
@@ -156,41 +183,41 @@ test("with no refresh token, renews silently through the provider's session, bac
   const manager = userManager();
   await manager.storeUser(signedInUser());
   const session = await Session.restore(manager);
-  // jsdom can't load the iframe's page at the provider, and says so on the console.
-  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+  const unquiet = quietNavigation();
+  try {
+    const renewing = session.renew();
 
-  const renewing = session.renew();
+    // The hidden iframe asks the provider with `prompt=none`, to come back to the one redirect URI.
+    let stateId = "";
+    await waitFor(() => {
+      const stored = Object.keys(sessionStorage)
+        .filter((key) => key.startsWith("oidc.") && !key.startsWith("oidc.user:"))
+        .map((key) => JSON.parse(sessionStorage.getItem(key) ?? "{}"));
+      const silent = stored.find((state) => state.request_type === "si:s");
+      expect(silent?.redirect_uri).toBe(`${origin}/auth/callback`);
+      stateId = silent.id;
+    });
+    expect(document.querySelector("iframe")).not.toBeNull();
+    // What `/auth/callback` in that iframe (`isSilentRenewal`) posts back once the provider answers.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin: window.location.origin,
+        data: {
+          source: "oidc-client",
+          url: `${origin}/auth/callback?code=the-code&state=${stateId}`,
+          keepOpen: false,
+        },
+      }),
+    );
 
-  // The hidden iframe asks the provider with `prompt=none`, to come back to the one redirect URI.
-  let stateId = "";
-  await waitFor(() => {
-    const stored = Object.keys(sessionStorage)
-      .filter((key) => key.startsWith("oidc.") && !key.startsWith("oidc.user:"))
-      .map((key) => JSON.parse(sessionStorage.getItem(key) ?? "{}"));
-    const silent = stored.find((state) => state.request_type === "si:s");
-    expect(silent?.redirect_uri).toBe(`${origin}/auth/callback`);
-    stateId = silent.id;
-  });
-  expect(document.querySelector("iframe")).not.toBeNull();
-  // What `/auth/callback` in that iframe (`isSilentRenewal`) posts back once the provider answers.
-  window.dispatchEvent(
-    new MessageEvent("message", {
-      origin: window.location.origin,
-      data: {
-        source: "oidc-client",
-        url: `${origin}/auth/callback?code=the-code&state=${stateId}`,
-        keepOpen: false,
-      },
-    }),
-  );
-
-  expect(await renewing).toBe("renewed");
-  expect(session.accessToken).toBe("renewed");
-  expect(forms[0].get("grant_type")).toBe("authorization_code");
-  expect(forms[0].get("redirect_uri")).toBe(`${origin}/auth/callback`);
-  expect(forms[0].get("code_verifier")).toBeTruthy();
-  quiet.mockRestore();
-  sessionStorage.clear();
+    expect(await renewing).toBe("renewed");
+    expect(session.accessToken).toBe("renewed");
+    expect(forms[0].get("grant_type")).toBe("authorization_code");
+    expect(forms[0].get("redirect_uri")).toBe(`${origin}/auth/callback`);
+    expect(forms[0].get("code_verifier")).toBeTruthy();
+  } finally {
+    unquiet();
+  }
 });
 
 test("renews a minute before the access token expires, and again before the new one does", async () => {
@@ -250,4 +277,37 @@ test("the silent renewal's callback is /auth/callback in a frame, and only there
   expect(isSilentRenewal(page("/auth/callback", true))).toBe(true);
   expect(isSilentRenewal(page("/auth/callback", false))).toBe(false);
   expect(isSilentRenewal(page("/access", true))).toBe(false);
+});
+
+test("a renewal that finishes after signing out doesn't sign the user back in", async () => {
+  let finish: (user: ReturnType<typeof signedInUser>) => void = () => {};
+  const provider = stubProvider({
+    user: signedInUser(),
+    renew: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  });
+  const session = await Session.restore(provider);
+
+  const renewing = session.renew();
+  await session.signOut();
+  finish(signedInUser(undefined, undefined, { accessToken: "renewed" }));
+
+  expect(await renewing).toBeUndefined();
+  expect(session.user).toBeNull();
+});
+
+test("signs in again after a refused token only until the API accepts one", async () => {
+  const provider = stubProvider({ user: signedInUser() });
+
+  expect(await (await Session.restore(provider)).signInAgain("/access")).toBe(true);
+  // Back from the provider, in a new page, with a token the API refuses too.
+  const back = await Session.restore(provider);
+  expect(await back.signInAgain("/access")).toBe(false);
+  expect(provider.signinRedirect).toHaveBeenCalledOnce();
+
+  back.accepted();
+  expect(await back.signInAgain("/access")).toBe(true);
+  expect(provider.signinRedirect).toHaveBeenCalledTimes(2);
 });

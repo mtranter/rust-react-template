@@ -1,7 +1,7 @@
 import { accessApi, catalog } from "@/test/access-fixtures";
 import { renderAt } from "@/test/render-app";
 import { sessionOf, signedInUser, stubProvider } from "@/test/sign-in-fixtures";
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { ErrorResponse } from "oidc-client-ts";
@@ -229,6 +229,23 @@ test("when the retry gets a 401 too, sends the user to sign in rather than renew
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(provider.signinSilent).toHaveBeenCalledOnce();
   expect(seen).toEqual(["Bearer ada-access-token", "Bearer renewed-access-token"]);
+});
+
+test("back from a sign-in whose token the API refuses too, shows the refusal rather than signing in again", async () => {
+  const seen = catalogFor([]);
+  const before = stubProvider({ user: signedInUser() });
+  renderAt("/access", { session: await sessionOf(before) });
+  await waitFor(() => expect(before.signinRedirect).toHaveBeenCalledOnce());
+  cleanup();
+
+  // The provider signed the user straight back in, and the app starts again in the same tab.
+  const after = stubProvider({ user: signedInUser() });
+  renderAt("/access", { session: await sessionOf(after) });
+
+  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
+  expect(after.signinSilent).toHaveBeenCalledOnce();
+  expect(after.signinRedirect).not.toHaveBeenCalled();
+  expect(seen).toHaveLength(2);
 });
 
 test("a 403 neither renews nor signs in: the access screen just hides", async () => {
