@@ -1,7 +1,7 @@
 ---
 id: 0035
 name: A visitor signs in to the embedded SPA with the identity provider and every API request carries their token
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0002-the-embedded-spa-signs-users-in-with-the-identity-provider-and-sends-their-token.md
 blocked_by: [docs/platform/tickets/0034-the-binary-serves-the-spa-s-sign-in-settings-at-au.md]
 blocks: [docs/platform/tickets/0036-the-spa-renews-the-access-token-before-it-expires.md, docs/platform/tickets/0037-an-end-to-end-check-signs-in-to-the-embedded-spa-t.md]
