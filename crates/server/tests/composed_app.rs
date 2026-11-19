@@ -7,7 +7,7 @@ use app_domain::SystemClock;
 use app_module::{Context, Module};
 use app_test_db::Template;
 use app_web::mcp::{self, Discovery, Surface};
-use app_web::testing::{Refused, TestApi};
+use app_web::testing::{Refused, TestApi, Traces};
 use app_web::{JwtVerifier, Provide, PublicUrl};
 use poem::test::TestClient;
 use serde_json::Value;
@@ -480,4 +480,49 @@ fn operations() -> impl Iterator<Item = (String, String, Value)> {
         })
         .collect::<Vec<_>>()
         .into_iter()
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn a_request_is_one_span_with_its_operation_continuing_the_callers_trace(pool: PgPool) {
+    const CALLERS_TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const CALLERS_SPAN: &str = "00f067aa0ba902b7";
+    let verifier = JwtVerifier::new("test-secret");
+    let bearer = format!(
+        "Bearer {}",
+        verifier.issue(NIL_ID, 60).expect("issue token")
+    );
+    let client = TestClient::new(server::build_app::<Registered>(
+        &context(pool).await,
+        verifier,
+        Discovery::default(),
+        None,
+        "http://localhost",
+    ));
+    let traces = Traces::install();
+
+    // An `access` operation, the one module `make init` leaves on the server.
+    client
+        .delete("/api/access/roles/nobody")
+        .header("authorization", bearer)
+        .header("x-request-id", "the-request")
+        .header(
+            "traceparent",
+            format!("00-{CALLERS_TRACE}-{CALLERS_SPAN}-01"),
+        )
+        .send()
+        .await
+        .assert_status(poem::http::StatusCode::PRECONDITION_REQUIRED);
+
+    let span = traces.span("DELETE /api/access/roles/{name}");
+    let attribute = |key| Traces::attribute(&span, key);
+    assert_eq!(attribute("operation_id").as_deref(), Some("delete_role"));
+    assert_eq!(attribute("request_id").as_deref(), Some("the-request"));
+    assert_eq!(attribute("user.id").as_deref(), Some(NIL_ID));
+    assert_eq!(
+        attribute("http.response.status_code").as_deref(),
+        Some("428")
+    );
+    assert_eq!(span.span_context.trace_id().to_string(), CALLERS_TRACE);
+    assert_eq!(span.parent_span_id.to_string(), CALLERS_SPAN);
+    assert!(span.parent_span_is_remote);
 }

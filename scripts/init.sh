@@ -96,6 +96,7 @@ EOF
 
 # 3. The app's name.
 perl -i -pe 's{^pub const API_TITLE: &str = ".*";}{pub const API_TITLE: &str = "$ENV{TITLE} API";}' crates/server/src/lib.rs
+perl -i -pe 's{^pub const APP_NAME: &str = ".*";}{pub const APP_NAME: &str = "$ENV{NAME}";}' crates/server/src/lib.rs
 perl -i -pe 's{<title>.*</title>}{<title>$ENV{TITLE}</title>}' frontend/index.html
 perl -i -pe 's{^  "name": ".*",}{  "name": "$ENV{NAME}",}' frontend/package.json
 perl -0 -i -pe '

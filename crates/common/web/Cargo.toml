@@ -25,10 +25,16 @@ jsonwebtoken.workspace = true
 reqwest.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
 
 [features]
 # Test-driver plumbing (`app_web::testing`); enabled only from dev-dependencies.
-test = ["poem/test"]
+test = ["poem/test", "opentelemetry_sdk/testing", "dep:tracing-subscriber"]
 
 [dev-dependencies]
 poem = { workspace = true, features = ["test"] }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+tracing-subscriber.workspace = true

@@ -289,6 +289,7 @@ pub(crate) async fn verified_caller(req: &Request) -> Option<Claims> {
 async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
     let verifier = req.data::<JwtVerifier>()?;
     let claims = verifier.verify(&bearer.token).await.ok()?;
+    crate::trace::record_subject(req, &claims.sub);
     let resolved = match (
         req.data::<Arc<dyn PrincipalResolver>>(),
         req.data::<Arc<Authorizer>>(),

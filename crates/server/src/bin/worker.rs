@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let authorizer = server::authorizer::<server::Registered>()
         .inspect_err(|err| eprintln!("worker refused to start: {err}"))?;
     let bus = config.bus(server::uses_bus::<server::Registered>())?;
-    server::telemetry::init(config.env);
+    let telemetry = server::telemetry::init(config.env, "worker");
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
     let compact_every = TimeDelta::seconds(config.outbox_compact_every as i64);
@@ -39,5 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(?interval, %compact_every, "starting worker");
     worker.run(interval, server::shutdown_signal()).await?;
     tracing::info!("worker stopped");
+    telemetry.shutdown();
     Ok(())
 }

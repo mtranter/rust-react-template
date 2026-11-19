@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
     let bus = config.bus(server::uses_bus::<Registered>())?;
-    telemetry::init(config.env);
+    let telemetry = telemetry::init(config.env, "server");
     tracing::info!(addr = %config.bind_addr(), env = ?config.env, "starting server");
 
     let pool = app_db::connect(&config.database_url, config.db_max_connections).await?;
@@ -48,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .run_with_graceful_shutdown(app, shutdown_signal(), None)
         .await?;
     tracing::info!("server stopped");
+    telemetry.shutdown();
     Ok(())
 }
 
