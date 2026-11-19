@@ -13,6 +13,7 @@ mod behaviours {
     mod items;
     mod lifecycle;
     mod listing;
+    mod purging;
     mod reading;
     mod retrying;
     mod scoping;

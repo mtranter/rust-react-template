@@ -19,7 +19,7 @@ pub use shutdown::shutdown_signal;
 pub use tools::Tools;
 
 use app_authz::{Authorizer, Policies};
-use app_db::{ModuleMigrations, SubscriptionError, Worker};
+use app_db::{ModuleMigrations, ScheduleError, SubscriptionError, Worker};
 use app_error::AppResult;
 use app_module::{Context, Module, PoliciesError};
 use app_persistence::Handlers;
@@ -134,4 +134,15 @@ pub async fn register_subscriptions<C: Composition>(
     ctx: &Context,
 ) -> Result<(), SubscriptionError> {
     app_db::register_subscriptions(&ctx.pool(), ctx.clock().as_ref(), &handlers::<C>(ctx)).await
+}
+
+/// Fails on the first module schedule whose expression doesn't parse, naming
+/// it: `migrate` and `worker` refuse to start on one, before changing anything.
+pub fn check_schedules<C: Composition>(ctx: &Context) -> Result<(), ScheduleError> {
+    app_db::parse_schedules(&handlers::<C>(ctx)).map(|_| ())
+}
+
+/// Registers every module's schedules, as `migrate` does after migrating.
+pub async fn register_schedules<C: Composition>(ctx: &Context) -> Result<(), ScheduleError> {
+    app_db::register_schedules(&ctx.pool(), ctx.clock().as_ref(), &handlers::<C>(ctx)).await
 }

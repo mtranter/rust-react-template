@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE messaging.schedule SET next_at = $2 WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8a8af95855b1345552ab0ae3237401fd944fb4e51f3a669c2ff49115c64442bf"
+}

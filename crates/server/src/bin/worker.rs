@@ -36,13 +36,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             |err| tracing::error!(error = %cause(err), "worker can't reach the database"),
         )?;
     let compact_every = TimeDelta::seconds(config.outbox_compact_every as i64);
-    let worker = server::worker::<server::Registered>(
-        &Context::new(pool, Arc::new(SystemClock))
-            .with_bus(bus)
-            .with_authorizer(Arc::new(authorizer)),
-    )
-    .compacting_every(compact_every)
-    .checking_its_clock();
+    let ctx = Context::new(pool, Arc::new(SystemClock))
+        .with_bus(bus)
+        .with_authorizer(Arc::new(authorizer));
+    server::check_schedules::<server::Registered>(&ctx)
+        .inspect_err(|err| tracing::error!(error = %err, "worker refused to start"))?;
+    let worker = server::worker::<server::Registered>(&ctx)
+        .compacting_every(compact_every)
+        .checking_its_clock();
     if let Err(err) = worker.check_clock().await {
         tracing::error!(error = %cause(&err), "worker refused to start");
         return Err(err.into());

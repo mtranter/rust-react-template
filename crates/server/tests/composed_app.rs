@@ -64,6 +64,9 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
     server::register_subscriptions::<Registered>(&ctx)
         .await
         .expect("register every module's subscriptions");
+    server::register_schedules::<Registered>(&ctx)
+        .await
+        .expect("register every module's schedules");
     server::worker::<Registered>(&ctx)
         .run_until_idle()
         .await

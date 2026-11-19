@@ -9,9 +9,12 @@ use crate::domain::{
 use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use std::sync::Arc;
 use users_api::UserDirectory;
+
+/// How long an archived note is kept before the nightly purge deletes it.
+pub const PURGE_AFTER: TimeDelta = TimeDelta::days(30);
 
 /// Holds trait objects rather than being generic, so the service is one concrete
 /// type that can be named and shared; one dynamic call is negligible beside the I/O.
@@ -257,6 +260,38 @@ impl NoteService {
         self.publisher
             .publish(tx, events::pending(&note, version, event))
             .await
+    }
+
+    /// Deletes every note archived more than [`PURGE_AFTER`] before `slot`,
+    /// in `tx`, each announced as its own deletion, so a failure purges none
+    /// of them. A note changed meanwhile is stale and fails it too, to be
+    /// retried.
+    pub async fn purge_archived(
+        &self,
+        principal: &Principal,
+        tx: &mut Tx,
+        slot: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let plan = self.authorize(principal, NoteAction::Delete)?;
+        let before = slot - PURGE_AFTER;
+        for Versioned {
+            entity: note,
+            version,
+        } in self.repo.archived_before(before).await?
+        {
+            self.authorizer.check(principal, &plan, &note)?;
+            let Some(event) = note.purge(before) else {
+                continue;
+            };
+            self.repo.delete(tx, note.id(), version).await?;
+            self.publisher
+                .publish(tx, events::pending(&note, version.next(), event))
+                .await?;
+            self.deferred
+                .cancel::<ArchiveNote>(tx, ArchiveNote::key(note.id()))
+                .await?;
+        }
+        Ok(())
     }
 
     /// Saves every note in `tx`, so a failure archives none of them. A note
