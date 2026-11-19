@@ -6,3 +6,4 @@
 - In `server.use(a, b)` within one call, `a` wins over `b`. Put the overriding handler first when spreading a fixture's handlers after it.
 - Renewal scheduling: a renewal that returns a token already inside the 60s margin must not reschedule at once, or it loops (the fake-timer test caught this).
 - `.env.example` said the sign-out redirect was `<origin>/`. The code uses `<origin>/auth/signed-out`; that's fixed now.
+- `make check-changed` runs `docker compose up -d postgres`, which publishes 5432 under this worktree's project name, so it fails when another checkout's Postgres already holds the port. `COMPOSE_PROJECT_NAME=rust-react-template make check-changed` reuses the running one instead. The tests create their own databases, so sharing it is safe.
