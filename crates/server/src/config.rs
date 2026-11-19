@@ -146,7 +146,7 @@ impl AppConfig {
         {
             return refuse(
                 "refusing to start in prod with APP_JWT_ISSUER set but APP_OIDC_CLIENT_ID unset: \
-                 the embedded SPA signs users in at the issuer as that client",
+                 the embedded SPA signs in at the issuer as that client",
             );
         }
         self.extra_params().map(|_| ()).map_err(|message| {
