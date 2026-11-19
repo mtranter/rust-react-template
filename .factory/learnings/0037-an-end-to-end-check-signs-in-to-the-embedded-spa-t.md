@@ -8,3 +8,5 @@
 - **`check-init` greps for the reference modules' names as whole words** outside `crates/reference/`: the e2e script, the fake provider and these docs avoid them (the subject is "Ada Signed-In", the screen `access`).
 - `cargo clippy -p <one crate>` can fail on dead code that the workspace-wide `make clippy` (with its features) doesn't see; use `make clippy`.
 - **The embedded SPA got `403` for its own `/assets/*.js` until this ticket**: poem's `Cors` refuses any `Origin` but `APP_CORS_ORIGIN`, and same-origin module scripts and fetches carry one. `build_app` now drops a same-origin `Origin` (matching `Host` or `X-Forwarded-Host`) before `Cors`; `composed_app.rs`' `the_embedded_spa_reaches_its_own_origin_whatever_the_cors_origin` covers it.
+- **`make help`'s pattern had no digits**, so `e2e:` never showed; it is now `^[a-zA-Z0-9_-]+:`. Check a new target with `make help | grep <name>`.
+- The fake provider's `base64`, `rand`, `rsa`, `sha2` and `url` are in the root `[workspace.dependencies]`, as every crate's dependencies are.

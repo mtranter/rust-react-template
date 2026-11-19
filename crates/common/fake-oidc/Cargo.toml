@@ -12,17 +12,16 @@ name = "fake-oidc"
 path = "src/main.rs"
 
 [dependencies]
-base64 = "0.22"
+base64.workspace = true
 jsonwebtoken.workspace = true
 poem.workspace = true
-# jsonwebtoken's own RSA and RNG, to make the signing key.
-rand = "0.8"
-rsa = "0.9"
+rand.workspace = true
+rsa.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2.workspace = true
 tokio.workspace = true
-url = "2"
+url.workspace = true
 
 [dev-dependencies]
 app-web.workspace = true

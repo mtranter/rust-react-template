@@ -73,7 +73,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
         test-frontend test-db-clean spec clean _require-cargo-bin
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install repo-local Rust CLI tools (run once after cloning)

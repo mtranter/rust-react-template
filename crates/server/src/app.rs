@@ -74,7 +74,9 @@ pub fn build_app<C: Composition>(
 }
 
 /// Whether `req`'s `Origin` names the host it was sent to, as its `Host` or,
-/// behind a proxy, `X-Forwarded-Host` says.
+/// behind a proxy, `X-Forwarded-Host` says. The scheme is ignored on purpose:
+/// behind a TLS-terminating proxy the server can't see it, and a browser only
+/// sends its page's own origin, so this lets no other site through.
 fn is_same_origin(req: &Request) -> bool {
     let header = |name| {
         req.headers()
