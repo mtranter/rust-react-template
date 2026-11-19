@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: ticketed
 ---
 
 # Modules schedule deferred and recurring work through the existing queue
