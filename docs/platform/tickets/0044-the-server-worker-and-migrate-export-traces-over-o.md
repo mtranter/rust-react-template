@@ -4,7 +4,7 @@ name: "The server, worker and migrate export traces over OTLP, with one span per
 status: ready-for-agent
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: []
-blocks: []
+blocks: [docs/platform/tickets/0045-errorbody-carries-the-trace-s-id-as-traceid.md]
 ---
 
 # The server, worker and migrate export traces over OTLP, with one span per HTTP request
