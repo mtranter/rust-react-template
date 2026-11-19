@@ -76,7 +76,11 @@ pub fn build_app<C: Composition>(
 /// Whether `req`'s `Origin` names the host it was sent to, as its `Host` or,
 /// behind a proxy, `X-Forwarded-Host` says.
 fn is_same_origin(req: &Request) -> bool {
-    let header = |name| req.headers().get(name).and_then(|value| value.to_str().ok());
+    let header = |name| {
+        req.headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+    };
     let Some(origin) = header(header::ORIGIN.as_str()) else {
         return false;
     };
