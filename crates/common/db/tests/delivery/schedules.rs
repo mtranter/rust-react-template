@@ -7,6 +7,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Notify;
 
 // The test clock starts at 2025-01-01T00:00:00Z.
@@ -351,4 +352,203 @@ async fn a_failing_run_retries_then_is_dead_lettered_and_the_next_slot_runs_afre
     messaging.later(TimeDelta::days(1));
     worker.schedule().await.unwrap();
     assert_eq!(messaging.jobs().await.len(), 2);
+}
+
+/// As `migrate` does for a build that no longer declares `tests.nightly`.
+async fn retire(messaging: &Messaging) {
+    messaging
+        .register_schedules(&Handlers::new())
+        .await
+        .expect("retire the schedule");
+}
+
+async fn retired(pool: &PgPool) -> Vec<String> {
+    sqlx::query_scalar("SELECT name FROM messaging.schedule WHERE retired_at IS NOT NULL")
+        .fetch_all(pool)
+        .await
+        .expect("read the retired schedules")
+}
+
+fn dead_letter_of_retirement(attempts: i32) -> Job {
+    Job {
+        queue: "tests.nightly".into(),
+        attempts,
+        last_error: Some("schedule retired".into()),
+    }
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn migrate_without_a_schedule_retires_it_and_no_worker_creates_its_runs(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let worker = migrated(&messaging, nightly(Nightlies::new(&messaging))).await;
+
+    retire(&messaging).await;
+    messaging.later(TimeDelta::days(2));
+    let created = worker.schedule().await.unwrap();
+    run(&worker).await;
+
+    assert_eq!(retired(&messaging.pool).await, ["tests.nightly"]);
+    assert_eq!(created, 0);
+    assert!(messaging.jobs().await.is_empty());
+    assert!(messaging.log.handled().is_empty());
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn retiring_a_schedule_removes_its_pending_run(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let worker = migrated(&messaging, nightly(Nightlies::new(&messaging))).await;
+    messaging.later(TimeDelta::hours(3));
+    assert_eq!(worker.schedule().await.unwrap(), 1);
+
+    retire(&messaging).await;
+    run(&worker).await;
+
+    assert!(messaging.jobs().await.is_empty());
+    assert!(messaging.log.handled().is_empty());
+}
+
+/// Retires `tests.nightly` while its run is under way, then lets the run
+/// succeed or fail, and then has the worker run until idle past the lease.
+async fn retired_while_running(messaging: &Messaging, fails: bool) -> app_db::Worker {
+    let (began, release) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+    let holding = Nightlies {
+        fails,
+        holds: Some((began.clone(), release.clone())),
+        ..Nightlies::new(messaging)
+    };
+    let worker = migrated(messaging, nightly(holding)).await;
+    messaging.later(TimeDelta::hours(3));
+
+    let meanwhile = async {
+        began.notified().await;
+        retire(messaging).await;
+        assert_eq!(messaging.jobs().await, [dead_letter_of_retirement(1)]);
+        release.notify_one();
+    };
+    tokio::join!(run(&worker), meanwhile);
+    worker
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn a_run_under_way_when_its_schedule_is_retired_finishes_once(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+
+    let worker = retired_while_running(&messaging, false).await;
+    messaging.later(TimeDelta::days(2));
+    run(&worker).await;
+
+    assert_eq!(
+        messaging.log.handled(),
+        ["nightly 2025-01-01T03:00:00+00:00"]
+    );
+    assert!(messaging.jobs().await.is_empty());
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn a_run_failing_after_its_schedule_was_retired_stays_dead_and_never_runs_again(
+    pool: PgPool,
+) {
+    let messaging = Messaging::new(pool).await;
+
+    let worker = retired_while_running(&messaging, true).await;
+    messaging.later(TimeDelta::days(2));
+    run(&worker).await;
+
+    assert_eq!(messaging.jobs().await, [dead_letter_of_retirement(1)]);
+    assert!(messaging.log.handled().is_empty());
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn retiring_waits_for_a_worker_pass_in_flight_and_removes_the_run_it_created(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let worker = migrated(&messaging, nightly(Nightlies::new(&messaging))).await;
+    messaging.later(TimeDelta::hours(3));
+    // An uncommitted run of the same key holds the pass at its insert, after
+    // it has taken the schedule's row.
+    let mut blocking = messaging.pool.begin().await.unwrap();
+    sqlx::query(
+        r#"
+        INSERT INTO messaging.job
+            (queue, event_type, key, version, payload, outbox_seq, run_at, max_attempts,
+             created_at, deferred)
+        VALUES ('tests.nightly', 'tests.nightly', 'tests.nightly', 1, '{}', 0, now(), 1, now(), true)
+        "#,
+    )
+    .execute(&mut *blocking)
+    .await
+    .unwrap();
+    let pass = tokio::spawn({
+        let worker = messaging.worker_of(nightly(Nightlies::new(&messaging)));
+        async move { worker.schedule().await }
+    });
+    while !waiting_on_a_lock(&messaging.pool).await {
+        tokio::task::yield_now().await;
+    }
+
+    let retiring = retire(&messaging);
+    tokio::pin!(retiring);
+    let waited = tokio::time::timeout(Duration::from_millis(200), &mut retiring).await;
+    blocking.rollback().await.unwrap();
+    let created = pass.await.unwrap().unwrap();
+    retiring.await;
+    messaging.later(TimeDelta::days(2));
+    let again = worker.schedule().await.unwrap();
+    run(&worker).await;
+
+    assert!(
+        waited.is_err(),
+        "retiring didn't wait for the worker's pass"
+    );
+    assert_eq!((created, again), (1, 0));
+    assert!(messaging.jobs().await.is_empty());
+    assert!(messaging.log.handled().is_empty());
+}
+
+async fn waiting_on_a_lock(pool: &PgPool) -> bool {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database())",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn a_worker_pass_racing_retirement_never_leaves_a_run_behind(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let worker = migrated(&messaging, nightly(Nightlies::new(&messaging))).await;
+    let other = messaging.worker_of(nightly(Nightlies::new(&messaging)));
+    messaging.later(TimeDelta::hours(3));
+
+    let (created, (), later) =
+        tokio::join!(worker.schedule(), retire(&messaging), other.schedule());
+    created.unwrap();
+    later.unwrap();
+    messaging.later(TimeDelta::days(2));
+
+    assert_eq!(other.schedule().await.unwrap(), 0);
+    assert!(messaging.jobs().await.is_empty());
+}
+
+#[app_test_db::test(TEMPLATE)]
+async fn declaring_a_retired_schedule_again_reactivates_it_due_at_its_next_slot(pool: PgPool) {
+    let messaging = Messaging::new(pool).await;
+    let handlers = || nightly(Nightlies::new(&messaging));
+    let worker = migrated(&messaging, handlers()).await;
+    retire(&messaging).await;
+    messaging.later(TimeDelta::days(2));
+
+    messaging.register_schedules(&handlers()).await.unwrap();
+
+    assert!(retired(&messaging.pool).await.is_empty());
+    assert_eq!(
+        messaging.next_at("tests.nightly").await,
+        at("2025-01-03T03:00:00Z")
+    );
+    messaging.later(TimeDelta::hours(3));
+    run(&worker).await;
+    assert_eq!(
+        messaging.log.handled(),
+        ["nightly 2025-01-03T03:00:00+00:00"]
+    );
 }

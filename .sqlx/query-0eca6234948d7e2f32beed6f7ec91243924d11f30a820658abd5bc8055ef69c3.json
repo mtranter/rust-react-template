@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT name, cron, next_at FROM messaging.schedule\n            WHERE next_at <= $1\n            ORDER BY next_at, name\n            FOR UPDATE SKIP LOCKED\n            ",
+  "query": "\n            SELECT name, cron, next_at FROM messaging.schedule\n            WHERE next_at <= $1 AND retired_at IS NULL\n            ORDER BY next_at, name\n            FOR UPDATE SKIP LOCKED\n            ",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "8be3e5a476448ffbc1cb0db3c5178c98366df0056876fa43d0f5c1d7911449e1"
+  "hash": "0eca6234948d7e2f32beed6f7ec91243924d11f30a820658abd5bc8055ef69c3"
 }

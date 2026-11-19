@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO messaging.schedule (name, cron, next_at, registered_at)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (name) DO UPDATE\n            SET cron = EXCLUDED.cron, next_at = EXCLUDED.next_at, retired_at = NULL\n            WHERE messaging.schedule.cron <> EXCLUDED.cron\n               OR messaging.schedule.retired_at IS NOT NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bd18b3f1c4e352d950012200db410094c95b9da9b917853fe87e691c5c56f0b5"
+}

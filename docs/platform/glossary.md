@@ -115,7 +115,7 @@ A command a Module defers to its own handler, due at a time it chooses (e.g. arc
 _Avoid_: Scheduled event, timer, task
 
 **Schedule**:
-A Module's recurring work, declared in code beside its Subscribers: a stable name, a five-field cron expression, always UTC (`0 3 * * *` is 03:00 every day), and a handler. `migrate` registers it, and the Worker's poll loop turns each **slot** (a time the expression names) that falls due into one run, as `System`, telling the handler the slot, retried like any delivery. After downtime it runs once, for the last slot missed; a slot due while the last run is still pending or running is skipped.
+A Module's recurring work, declared in code beside its Subscribers: a stable name, a five-field cron expression, always UTC (`0 3 * * *` is 03:00 every day), and a handler. `migrate` registers it, and the Worker's poll loop turns each **slot** (a time the expression names) that falls due into one run, as `System`, telling the handler the slot, retried like any delivery. After downtime it runs once, for the last slot missed; a slot due while the last run is still pending or running is skipped. Deleting its declaration **retires** it at the next `migrate`: no more runs, and its pending run removed; declaring its name again reactivates it.
 _Avoid_: Cron job, timer, recurring job
 
 **Bus**:
