@@ -7,3 +7,4 @@
 - A private Postgres for the worktree: a compose override file mapping `5446:5432`, plus `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`, `DATABASE_URL` and `TEST_DATABASE_URL` pointing at it.
 - `pgrep -f '<pattern>'` in an until-loop matches its own shell's command line, so it never ends.
 - In the journeys, `App::seeded` leaves the seeds' events undelivered: a trace test must `run_pending_events()` before installing `Traces`, or the seeds' jobs show up, each in a trace of its own.
+- `make check-changed` touching `app-db` or `app-web` runs most of the backend tests and took more than 10 minutes here. Run it in the background with a timeout of about an hour.
