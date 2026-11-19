@@ -526,3 +526,76 @@ async fn a_request_is_one_span_with_its_operation_continuing_the_callers_trace(p
     assert_eq!(span.parent_span_id.to_string(), CALLERS_SPAN);
     assert!(span.parent_span_is_remote);
 }
+
+#[app_test_db::test(TEMPLATE)]
+async fn each_query_a_request_makes_is_a_child_span_with_its_statement_and_none_of_its_values(
+    pool: PgPool,
+) {
+    const BOUND: &str = "a-value-only-ever-bound-7f3a9c";
+    let verifier = JwtVerifier::new("test-secret");
+    let bearer = format!(
+        "Bearer {}",
+        verifier.issue(NIL_ID, 60).expect("issue token")
+    );
+    let client = TestClient::new(server::build_app::<Registered>(
+        &context(pool).await,
+        verifier,
+        Discovery::default(),
+        None,
+        "http://localhost",
+    ));
+    let traces = Traces::install();
+
+    client
+        .post("/api/access/roles")
+        .header("authorization", bearer)
+        .body_json(&serde_json::json!({ "name": BOUND, "description": BOUND }))
+        .send()
+        .await
+        .assert_status_is_ok();
+
+    let request = traces.span("POST /api/access/roles");
+    let spans = traces.spans();
+    let queries: Vec<_> = spans
+        .iter()
+        .filter(|span| Traces::attribute(span, "db.query.text").is_some())
+        .collect();
+    assert!(
+        queries
+            .iter()
+            .any(|query| Traces::attribute(query, "db.query.text")
+                .is_some_and(|text| text.contains("INSERT INTO access.role"))),
+        "no span for the role's INSERT"
+    );
+    for query in &queries {
+        assert_eq!(
+            query.span_context.trace_id(),
+            request.span_context.trace_id()
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.span_context.span_id() == query.parent_span_id),
+            "{:?} isn't a child of a span the request made",
+            query.name
+        );
+        assert_eq!(
+            Traces::attribute(query, "db.system.name").as_deref(),
+            Some("postgresql")
+        );
+    }
+    for span in &spans {
+        let attributes = span
+            .attributes
+            .iter()
+            .chain(span.events.iter().flat_map(|event| &event.attributes));
+        for attribute in attributes {
+            assert!(
+                !attribute.value.to_string().contains(BOUND),
+                "span {:?} carries the bound value in {}",
+                span.name,
+                attribute.key
+            );
+        }
+    }
+}

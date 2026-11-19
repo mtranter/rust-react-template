@@ -8,6 +8,7 @@ mod listing;
 pub mod mcp;
 mod provide;
 mod public_url;
+mod queries;
 mod request_id;
 #[cfg(any(test, feature = "test"))]
 pub mod testing;
@@ -25,5 +26,6 @@ pub use idempotency::{IDEMPOTENCY_KEY, Idempotency, IdempotencyEndpoint, Idempot
 pub use listing::{ListResult, SortParam, paged, sorts};
 pub use provide::{Accept, Provide};
 pub use public_url::PublicUrl;
+pub use queries::QuerySpans;
 pub use request_id::{RequestId, RequestIdMiddleware};
 pub use trace::TraceRequests;
