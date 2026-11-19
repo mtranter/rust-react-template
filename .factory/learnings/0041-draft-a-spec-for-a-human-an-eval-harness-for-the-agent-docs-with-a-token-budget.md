@@ -1,0 +1,9 @@
+# Learnings: 0041, a Spec for a human on evals of the agent docs within a token budget
+
+- Spec 0009 follows Specs 0006–0008: `status: needs-info` only, the body assumes each recommendation with "(question N)" markers, and it ends in `## Needs Human Input (factory)`. Eight questions plus a cost table came to about 150 lines only with one line per option.
+- **Real token and dollar figures for factory runs are on disk.** Claude Code keeps each session's transcript in `~/.claude/projects/<worktree path with / as ->/<session>.jsonl`, reviewers' under `<session>/subagents/`. Sum `message.usage` over `assistant` lines, deduplicated by `message.id`. The factory itself records no usage (`../trizzoop/src/implementor.ts` passes only `model` and `maxTurns`).
+- Measured on 2026-11-19 (Opus 5.5, Tickets 0026–0041): an Implementor on a code Ticket used 66–130 turns and $4–11, on a docs Ticket $0.4–1.7; 95–99% of input was cache reads; all cache writes were 1-hour ones, as a subscription gets. A reviewer subagent cost a median $0.34. Cache reads dominate tokens; output and cache writes are each about a third of the dollars.
+- The factory authenticates with a subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, `../trizzoop/docs/research/agent-sdk-spike.md`), not an API key, so its dollars are estimates. With an API key the default cache TTL drops to 5 minutes (`CLAUDE_CODE_PROMPT_CACHE_TTL=1h` restores it).
+- The Agent SDK (0.3.326 in `../trizzoop/node_modules`) has `maxBudgetUsd` (ends with `error_max_budget_usd`) and a `taskBudget`; `total_cost_usd` and `modelUsage` are client-side estimates.
+- Prices checked 2026-11-19: Opus 5.5 $4 input, $5 / $8 cache write (5 min / 1 h), $0.20 cache read, $20 output; Sonnet 5.5 exactly half.
+- `../trizzoop` means `~/projects/trizzoop`, relative to the main checkout, not to a worktree.
