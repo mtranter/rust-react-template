@@ -1,7 +1,7 @@
 ---
 id: 0055
 name: "A Schedule removed from code is retired by migrate, with its pending run removed and no race with the worker"
-status: ready-for-agent
+status: in-progress
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: [docs/platform/tickets/0054-a-module-declares-a-cron-schedule-that-the-worker.md]
 blocks: []
