@@ -40,8 +40,8 @@ The SPA keeps the one bearer scheme (ADR 0025). The server keeps no sessions or 
 
 ### Signing in
 
-- A visitor who isn't signed in sees a sign-in screen with one action. It redirects to the provider with PKCE, `state` and `nonce`.
-- `/auth/callback` completes the sign-in and returns to the page the user started from (the deep link is kept). A failed or cancelled sign-in shows the provider's error and a retry button. It doesn't loop.
+- A visitor who isn't signed in is redirected straight to the provider, with PKCE, `state` and `nonce`. The app has no sign-in screen of its own: the provider's hosted page asks for credentials.
+- `/auth/callback` completes the sign-in and returns to the page the user started from (the deep link is kept). A failed or cancelled sign-in shows an error page with the provider's error and a retry button. It doesn't loop.
 - The token handling uses `oidc-client-ts`, pinned exact. The SPA doesn't implement OIDC itself.
 - Tokens live in `sessionStorage`, so a reload in the same tab stays signed in and closing the tab forgets them. They never go in `localStorage` or cookies.
 - `frontend/src/hey-api.ts` attaches `Authorization: Bearer <access token>` to every request.
@@ -51,7 +51,7 @@ The SPA keeps the one bearer scheme (ADR 0025). The server keeps no sessions or 
 - Before the access token expires, the SPA renews it with a refresh token when the provider issues one. Otherwise it renews silently through the provider's session.
 - If a request gets `401`, the SPA renews once and retries. If that also fails, it sends the user to sign in again and returns them to the same page afterwards.
 - `403` is unchanged: screens already handle it, for example the access screen hides on `403`.
-- Signing out clears the local tokens and, when the provider has an end-session endpoint, signs out there too.
+- Signing out clears the local tokens and, when the provider has an end-session endpoint, signs out there too. It ends on a signed-out page with a "sign in again" link. That page never redirects by itself: if the provider's own session were still alive, a redirect would silently sign the user back in.
 - The header shows who is signed in, from the ID token's name or email, and has a sign-out action.
 
 ### Dev and tests
@@ -64,7 +64,7 @@ The SPA keeps the one bearer scheme (ADR 0025). The server keeps no sessions or 
 - A Playwright test starts the binary with the SPA embedded, against a database seeded for the test. Its `APP_JWT_ISSUER` points at a **fake OIDC provider** that the test harness starts.
   - The fake provider serves discovery, JWKS, an authorize endpoint that approves straight away as a named subject, a token endpoint and end-session.
   - It's written in Rust, in the test harness, so no extra container or third-party image is needed.
-- The test signs in, loads a guarded screen, and sees data that only that subject's token could fetch. It then signs out and is sent to the sign-in screen.
+- The test signs in, loads a guarded screen, and sees data that only that subject's token could fetch. It then signs out, and the signed-out page shows and stays, without signing back in.
 - It runs in `make check` (via `make check-changed` when `frontend/`, `crates/server/` or `crates/common/web/` change) and in CI.
 - It builds the binary in debug mode with `embed-frontend`, not a release build, to keep the check fast.
 

@@ -13,7 +13,7 @@ Add the check that would have caught the shipped SPA getting `401` everywhere. W
 
 ## Acceptance criteria
 - [ ] The fake OIDC provider is Rust code in the repo's test harness: no extra container or third-party image is needed. It issues RS256 tokens that the server's `JwtVerifier` accepts via JWKS.
-- [ ] A Playwright test starts the fake provider and the debug `embed-frontend` binary on a freshly migrated and seeded test database. It signs in, opens `/access`, and asserts on data that only that subject's token could fetch. Then it signs out and asserts that the sign-in screen shows.
+- [ ] A Playwright test starts the fake provider and the debug `embed-frontend` binary on a freshly migrated and seeded test database. It signs in, opens `/access`, and asserts on data that only that subject's token could fetch. Then it signs out and asserts that the signed-out page shows and stays, without signing back in.
 - [ ] A `make` target runs it and is part of `make check` (and listed in `make help`). `.github/workflows/ci.yml` runs the same step (ADR 0005 / AGENTS.md: a step in one is in the other).
 - [ ] `scripts/check-changed.sh` runs it when `frontend/`, `crates/server/` or `crates/common/web/` change.
 - [ ] The check still runs and passes in the app `make init` produces: `make check-init` passes.
