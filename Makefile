@@ -153,7 +153,7 @@ clippy: ## clippy with per-crate disallowed-types, warnings as errors
 	$(CARGO) clippy --workspace --all-targets --features server/seed -- -D warnings
 
 deny: _require-cargo-bin ## cargo-deny bans/licenses/advisories
-	$(CARGO_BIN) cargo-deny check
+	$(CARGO_BIN) cargo-deny --log-level error check
 
 build-backend-dev: ## Debug build of every crate, including the seed bin (no DB needed)
 	SQLX_OFFLINE=true $(CARGO) build --workspace --features server/seed
