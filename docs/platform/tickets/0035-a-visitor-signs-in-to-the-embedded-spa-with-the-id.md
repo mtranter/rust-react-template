@@ -4,7 +4,7 @@ name: A visitor signs in to the embedded SPA with the identity provider and ever
 status: ready-for-agent
 spec: docs/platform/specs/0002-the-embedded-spa-signs-users-in-with-the-identity-provider-and-sends-their-token.md
 blocked_by: [docs/platform/tickets/0034-the-binary-serves-the-spa-s-sign-in-settings-at-au.md]
-blocks: []
+blocks: [docs/platform/tickets/0036-the-spa-renews-the-access-token-before-it-expires.md]
 ---
 
 # A visitor signs in to the embedded SPA with the identity provider and every API request carries their token
