@@ -1,7 +1,7 @@
 ---
 id: 0042
 name: "Draft a Spec, for a human to decide, for hosting environments on AWS Lambda"
-status: in-progress
+status: in-review
 priority: P2
 size: M
 blocked_by: []
