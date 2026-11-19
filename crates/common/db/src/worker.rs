@@ -154,6 +154,33 @@ impl Worker {
         }
     }
 
+    /// [`run`](Self::run)'s poll, once: relays, backfills and runs until
+    /// nothing is due by the worker's clock, compacts if due, and returns, so
+    /// an external timer can drive the worker instead. With a `budget`, it
+    /// returns once that is spent, dropping what is in flight as a stopped
+    /// worker would: a handler's writes roll back and its job runs again after
+    /// its lease. Unlike `run`, a failure to reach the database is returned;
+    /// failed jobs are retried and dead-lettered as usual, and aren't.
+    pub async fn drain(&self, budget: Option<Duration>) -> AppResult<()> {
+        self.check_subscriptions().await?;
+        let pass = async {
+            self.run_until_idle().await?;
+            if let Err(err) = self.compact_if_due().await {
+                tracing::error!(error = %describe(&err), "outbox compaction failed");
+            }
+            Ok(())
+        };
+        let Some(budget) = budget else {
+            return pass.await;
+        };
+        tokio::time::timeout(budget, pass)
+            .await
+            .unwrap_or_else(|_| {
+                tracing::info!(?budget, "drain stopped: its budget is spent");
+                Ok(())
+            })
+    }
+
     /// Fails unless `migrate` registered every subscription this worker serves,
     /// under the same topic; one retired since still runs its pending jobs.
     /// Warns of each live subscription it doesn't serve: one another build's
