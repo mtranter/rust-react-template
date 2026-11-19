@@ -15,7 +15,7 @@ pub struct CreateNoteRequest {
     #[oai(default)]
     pub body: String,
     /// When to archive the note (RFC 3339), if ever: from then on it is
-    /// read-only.
+    /// read-only. A time already past archives it at once.
     pub archive_at: Option<String>,
 }
 
@@ -28,7 +28,8 @@ pub struct EditNoteRequest {
     pub title: String,
     pub body: String,
     /// When to archive the note (RFC 3339), if ever; a new time reschedules
-    /// it.
+    /// it, and a time already past archives it at once. Send back the one read
+    /// to keep it.
     pub archive_at: Option<String>,
 }
 

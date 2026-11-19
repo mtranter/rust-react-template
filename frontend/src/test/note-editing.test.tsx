@@ -35,6 +35,26 @@ test("edits a note's title and body, sending the version it read", async () => {
   expect(api.ifMatches).toEqual(['"3"']);
 });
 
+test("sends back the note's archiveAt, which it doesn't show, so its archive stands", async () => {
+  const archiveAt = "2026-03-01T00:00:00Z";
+  const edits: unknown[] = [];
+  const api = notesApi([note(1, { archiveAt })]);
+  server.use(
+    http.patch("*/api/notes/:id", async ({ request }) => {
+      edits.push(await request.clone().json());
+    }),
+    ...api.handlers,
+  );
+  renderAt("/");
+
+  const { user, dialog } = await openEditor("Note 1");
+  await user.type(within(dialog).getByLabelText("Title"), ", renamed");
+  await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByText("Note 1, renamed")).toBeInTheDocument();
+  expect(edits).toEqual([{ title: "Note 1, renamed", body: "", archiveAt }]);
+});
+
 test("when someone else changed the note meanwhile, it reloads, says so and keeps the edit", async () => {
   const items = [note(1)];
   const api = notesApi(items);

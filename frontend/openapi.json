@@ -3905,7 +3905,7 @@
           },
           "archiveAt": {
             "type": "string",
-            "description": "When to archive the note (RFC 3339), if ever: from then on it is\nread-only."
+            "description": "When to archive the note (RFC 3339), if ever: from then on it is\nread-only. A time already past archives it at once."
           }
         }
       },
@@ -3943,7 +3943,7 @@
           },
           "archiveAt": {
             "type": "string",
-            "description": "When to archive the note (RFC 3339), if ever; a new time reschedules\nit."
+            "description": "When to archive the note (RFC 3339), if ever; a new time reschedules\nit, and a time already past archives it at once. Send back the one read\nto keep it."
           }
         }
       },

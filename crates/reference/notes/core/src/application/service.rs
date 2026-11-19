@@ -225,7 +225,9 @@ impl NoteService {
 
     /// Archives the note once its `archive_at` has come, in `tx`. A note
     /// already archived, gone, or no longer due (its time cleared or moved
-    /// later) is left as it is, so a stale job does nothing.
+    /// later) is left as it is, so a stale job does nothing. The note is read
+    /// outside `tx`, as `archive_notes_by` reads, so an edit committed meanwhile
+    /// fails the save as stale and costs the job one of its attempts.
     pub async fn archive_when_due(
         &self,
         principal: &Principal,

@@ -684,27 +684,38 @@ impl Worker {
         Ok(())
     }
 
-    /// A slow handler's eventual `complete` still deletes the dead letter.
+    /// A slow handler's eventual `complete` still deletes the dead letter. A
+    /// deferred job rescheduled since it was claimed is the new job, which
+    /// starts its attempts afresh, so it is left to run.
     async fn abandon(&self, job: &Claimed) -> AppResult<()> {
-        tracing::error!(
-            queue = job.queue,
-            attempts = job.max_attempts,
-            error = UNFINISHED,
-            "job dead-lettered"
-        );
-        sqlx::query!(
+        let abandoned = sqlx::query!(
             r#"
             UPDATE messaging.job
             SET dead_at = $2, attempts = max_attempts, last_error = concat_ws(': ', $3::text, last_error)
-            WHERE id = $1
+            WHERE id = $1 AND version = $4
             "#,
             job.id,
             self.clock.now(),
             UNFINISHED,
+            job.version,
         )
         .execute(&self.pool)
         .await
-        .map_err(AppError::internal)?;
+        .map_err(AppError::internal)?
+        .rows_affected();
+        if abandoned == 0 {
+            tracing::warn!(
+                queue = job.queue,
+                "unfinished job rescheduled or cancelled since it was claimed; left as it is"
+            );
+        } else {
+            tracing::error!(
+                queue = job.queue,
+                attempts = job.max_attempts,
+                error = UNFINISHED,
+                "job dead-lettered"
+            );
+        }
         Ok(())
     }
 
