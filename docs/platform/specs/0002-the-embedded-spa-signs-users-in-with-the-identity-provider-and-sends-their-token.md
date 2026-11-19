@@ -1,5 +1,5 @@
 ---
-status: ticketed
+status: done
 ---
 
 # The embedded SPA signs users in with the identity provider and sends their token
