@@ -1,7 +1,7 @@
 ---
 id: 0056
 name: "`worker --drain [--max-seconds N]` runs everything due by its clock, then exits"
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: []
 blocks: []
