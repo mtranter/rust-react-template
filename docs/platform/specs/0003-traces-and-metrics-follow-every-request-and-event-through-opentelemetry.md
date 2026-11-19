@@ -1,5 +1,5 @@
 ---
-status: draft
+status: ready-for-tickets
 ---
 
 # Traces and metrics follow every request and event through OpenTelemetry
