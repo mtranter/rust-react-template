@@ -7,7 +7,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// Publishes to `messaging.outbox`, in the caller's transaction, for the worker
-/// to relay once it commits. The clock stamps each envelope.
+/// to relay once it commits. The clock stamps each envelope, and the current
+/// span its trace.
 pub struct PgEventPublisher {
     clock: Arc<dyn Clock>,
 }
@@ -22,7 +23,10 @@ impl PgEventPublisher {
 impl EventPublisher for PgEventPublisher {
     async fn publish(&self, tx: &mut Tx, event: PendingEvent) -> AppResult<()> {
         let now = self.clock.now();
-        let envelope = event.envelope(Uuid::new_v4(), now)?;
+        let (traceparent, tracestate) = crate::trace::current();
+        let envelope = event
+            .envelope(Uuid::new_v4(), now)?
+            .traced(traceparent, tracestate);
         sqlx::query!(
             r#"
             INSERT INTO messaging.outbox (topic, key, version, event_type, payload, occurred_at)

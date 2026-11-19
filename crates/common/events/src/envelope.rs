@@ -5,6 +5,7 @@ use uuid::Uuid;
 /// The one shape every event is stored and delivered in: a CloudEvents 1.0
 /// envelope (its JSON format) around the event's `data`, its [`EventPayload`](crate::EventPayload),
 /// with extension attributes for its topic and key (CloudEvents' partitioning
+/// extension) and the trace that published it (its distributed-tracing
 /// extension). Subscribers handle `EnvelopeOf<E>`, so they get the id to
 /// deduplicate on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,6 +36,13 @@ pub struct EventEnvelope<T> {
     /// is an integer scoped to one `topic` and `partitionkey`.
     #[serde(rename = "entityversion")]
     pub entity_version: i64,
+    /// The W3C trace context the event was published in, so its handlers
+    /// continue that trace; absent when it was published outside any trace,
+    /// or before envelopes carried one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracestate: Option<String>,
     pub data: T,
 }
 
@@ -64,7 +72,18 @@ impl<T> EventEnvelope<T> {
             topic: attributes.topic.into(),
             partition_key: attributes.key,
             entity_version: attributes.version,
+            traceparent: None,
+            tracestate: None,
             data,
+        }
+    }
+
+    /// Published in the trace `traceparent` (and its vendors' `tracestate`) names.
+    pub fn traced(self, traceparent: Option<String>, tracestate: Option<String>) -> Self {
+        Self {
+            traceparent,
+            tracestate,
+            ..self
         }
     }
 }
@@ -143,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn serializes_as_a_cloudevent_in_json() {
+    fn serializes_as_a_cloudevent_in_json_with_no_trace_when_published_outside_one() {
         let envelope = wrap::<ListRenamed>(EventPayload::new(list()));
 
         let json = serde_json::to_value(&envelope).unwrap();
@@ -168,6 +187,46 @@ mod tests {
             serde_json::from_value::<EnvelopeOf<ListRenamed>>(json).unwrap(),
             envelope
         );
+    }
+
+    const TRACEPARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+    #[test]
+    fn carries_the_trace_it_was_published_in_as_cloudevents_extensions() {
+        let envelope = wrap::<ListRenamed>(EventPayload::new(list()))
+            .traced(Some(TRACEPARENT.into()), Some("vendor=a".into()));
+
+        let json = serde_json::to_value(&envelope).unwrap();
+
+        assert_eq!(json["traceparent"], TRACEPARENT);
+        assert_eq!(json["tracestate"], "vendor=a");
+        assert_eq!(
+            serde_json::from_value::<EnvelopeOf<ListRenamed>>(json).unwrap(),
+            envelope
+        );
+    }
+
+    #[test]
+    fn an_envelope_from_before_traces_still_reads_with_none() {
+        let json = json!({
+            "specversion": "1.0",
+            "id": Uuid::nil(),
+            "source": "/lists",
+            "type": "lists.list_renamed",
+            "subject": LIST.to_string(),
+            "time": "1970-01-01T00:00:00Z",
+            "datacontenttype": "application/json",
+            "topic": "lists.list.v1",
+            "partitionkey": LIST.to_string(),
+            "entityversion": 3,
+            "data": { "entity": { "id": LIST, "itemIds": [] } },
+        });
+
+        let envelope = serde_json::from_value::<EnvelopeOf<ListRenamed>>(json.clone()).unwrap();
+
+        assert_eq!(envelope, wrap::<ListRenamed>(EventPayload::new(list())));
+        assert_eq!(envelope.traceparent, None);
+        assert!(<ListTopic as Subscribable>::decode(json).is_ok());
     }
 
     #[test]

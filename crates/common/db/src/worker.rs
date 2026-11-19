@@ -18,6 +18,8 @@ use sqlx::PgPool;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::field::Empty;
+use tracing::{Instrument, Span};
 
 /// How long a claimed job is hidden from other workers. A handler that runs
 /// longer may run twice at once, but only one run's database writes commit;
@@ -70,6 +72,9 @@ pub struct DeadLetter {
 struct Claimed {
     id: i64,
     queue: String,
+    event_type: String,
+    key: String,
+    version: i64,
     payload: Value,
     attempts: i32,
     max_attempts: i32,
@@ -279,7 +284,17 @@ impl Worker {
         if seqs.is_empty() {
             return Ok(0);
         }
+        // Begun only once there is a batch, so an idle worker's polls export nothing.
+        let span = tracing::info_span!("relay_batch", events = seqs.len());
+        self.dispatch(tx, &seqs).instrument(span).await?;
+        Ok(seqs.len())
+    }
 
+    async fn dispatch(
+        &self,
+        mut tx: sqlx::Transaction<'static, sqlx::Postgres>,
+        seqs: &[i64],
+    ) -> AppResult<()> {
         let now = self.clock.now();
         sqlx::query!(
             r#"
@@ -288,7 +303,7 @@ impl Worker {
             WHERE seq = ANY($2)
             "#,
             now,
-            &seqs,
+            seqs,
         )
         .execute(&mut *tx)
         .await
@@ -303,15 +318,14 @@ impl Worker {
             WHERE seq = ANY($1)
             ORDER BY seq, queue
             "#,
-            &seqs,
+            seqs,
             now,
             MAX_ATTEMPTS,
         )
         .execute(&mut *tx)
         .await
         .map_err(AppError::internal)?;
-        tx.commit().await.map_err(AppError::internal)?;
-        Ok(seqs.len())
+        tx.commit().await.map_err(AppError::internal)
     }
 
     /// Copies the next chunk (1000 events unless
@@ -359,13 +373,19 @@ impl Worker {
         else {
             return Ok(None);
         };
-
-        let now = self.clock.now();
-        let chunk = if backfill.retired {
-            None
-        } else {
-            let chunk = sqlx::query!(
-                r#"
+        let span = tracing::info_span!(
+            "backfill_chunk",
+            queue = backfill.queue,
+            event_type = backfill.event_type,
+            events = Empty,
+        );
+        async move {
+            let now = self.clock.now();
+            let chunk = if backfill.retired {
+                None
+            } else {
+                let chunk = sqlx::query!(
+                    r#"
                 WITH chunk AS (
                     SELECT seq, key, version, payload FROM messaging.outbox
                     WHERE topic = $1 AND event_type = $2
@@ -381,48 +401,52 @@ impl Worker {
                 )
                 SELECT max(seq) AS last_seq, count(*) AS "copied!" FROM chunk
                 "#,
-                backfill.topic,
-                backfill.event_type,
-                backfill.after_seq,
-                backfill.through_batch,
-                self.backfill_chunk,
-                backfill.queue,
-                now,
-                MAX_ATTEMPTS,
-            )
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(AppError::internal)?;
-            chunk.last_seq.map(|last_seq| (last_seq, chunk.copied))
-        };
-        // A retired subscription's backfill completes with nothing copied: its
-        // queue's jobs are dead letters.
-        let (after_seq, completed_at, copied) = match chunk {
-            Some((last_seq, copied)) => (last_seq, None, copied),
-            None => (backfill.after_seq, Some(now), 0),
-        };
-        sqlx::query!(
-            r#"
+                    backfill.topic,
+                    backfill.event_type,
+                    backfill.after_seq,
+                    backfill.through_batch,
+                    self.backfill_chunk,
+                    backfill.queue,
+                    now,
+                    MAX_ATTEMPTS,
+                )
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(AppError::internal)?;
+                chunk.last_seq.map(|last_seq| (last_seq, chunk.copied))
+            };
+            // A retired subscription's backfill completes with nothing copied: its
+            // queue's jobs are dead letters.
+            let (after_seq, completed_at, copied) = match chunk {
+                Some((last_seq, copied)) => (last_seq, None, copied),
+                None => (backfill.after_seq, Some(now), 0),
+            };
+            sqlx::query!(
+                r#"
             UPDATE messaging.backfill SET after_seq = $3, completed_at = $4
             WHERE queue = $1 AND event_type = $2
             "#,
-            backfill.queue,
-            backfill.event_type,
-            after_seq,
-            completed_at,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(AppError::internal)?;
-        if completed_at.is_some() {
-            tracing::info!(
-                queue = backfill.queue,
-                event_type = backfill.event_type,
-                "backfill complete"
-            );
+                backfill.queue,
+                backfill.event_type,
+                after_seq,
+                completed_at,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::internal)?;
+            if completed_at.is_some() {
+                tracing::info!(
+                    queue = backfill.queue,
+                    event_type = backfill.event_type,
+                    "backfill complete"
+                );
+            }
+            tx.commit().await.map_err(AppError::internal)?;
+            Span::current().record("events", copied);
+            Ok(Some(copied as u64))
         }
-        tx.commit().await.map_err(AppError::internal)?;
-        Ok(Some(copied as u64))
+        .instrument(span)
+        .await
     }
 
     /// Deletes every relayed event older than its registered topic's
@@ -435,6 +459,7 @@ impl Worker {
     /// other compactions: a row is deleted only while a later version of its
     /// key exists, which nothing deletes unless a still later one does.
     /// Deliveries are copies, so `messaging.job` is untouched.
+    #[tracing::instrument(name = "compaction", skip_all, fields(deleted = Empty))]
     pub async fn compact(&self) -> AppResult<u64> {
         let now = self.clock.now();
         let mut deleted = 0;
@@ -474,6 +499,7 @@ impl Worker {
                 break;
             }
         }
+        Span::current().record("deleted", deleted);
         tracing::info!(deleted, "outbox compacted");
         Ok(deleted)
     }
@@ -551,7 +577,7 @@ impl Worker {
                 ORDER BY due.run_at, due.id
                 LIMIT 1
             )
-            RETURNING id, queue, payload, attempts, max_attempts
+            RETURNING id, queue, event_type, key, version, payload, attempts, max_attempts
             "#,
             now,
             now + LEASE,
@@ -564,13 +590,19 @@ impl Worker {
         let Some(job) = claimed else {
             return Ok(false);
         };
-
-        if job.attempts > job.max_attempts {
-            self.abandon(&job).await?;
-        } else if let Err(err) = self.complete(&job).await {
-            self.fail(&job, &err).await?;
-        }
+        self.run_job(&job).instrument(job_span(&job)).await?;
         Ok(true)
+    }
+
+    async fn run_job(&self, job: &Claimed) -> AppResult<()> {
+        if job.attempts > job.max_attempts {
+            self.abandon(job).await?;
+            Span::current().record("otel.status_code", "error");
+        } else if let Err(err) = self.complete(job).await {
+            self.fail(job, &err).await?;
+            Span::current().record("otel.status_code", "error");
+        }
+        Ok(())
     }
 
     /// The handler's writes and the job's removal commit together, and only
@@ -751,6 +783,25 @@ fn apart(skew: TimeDelta) -> String {
         "behind"
     };
     format!("{}s {side}", skew.num_seconds().abs())
+}
+
+/// One run of `job`: a child of the span that published its event, so each
+/// retry is a sibling in that trace; the root of a new trace when its envelope
+/// names none. Its own root either way, never a child of the worker's poll.
+fn job_span(job: &Claimed) -> Span {
+    let span = tracing::info_span!(
+        parent: None,
+        "job",
+        otel.kind = "consumer",
+        otel.status_code = Empty,
+        messaging.destination.name = job.queue,
+        event_type = job.event_type,
+        key = job.key,
+        version = job.version,
+        attempt = job.attempts,
+    );
+    crate::trace::continue_published(&span, &job.payload);
+    span
 }
 
 /// 10s, doubling per attempt, at most an hour.
