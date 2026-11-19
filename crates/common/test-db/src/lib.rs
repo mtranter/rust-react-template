@@ -69,6 +69,8 @@ where
             let pool = PgPoolOptions::new()
                 .max_connections(10)
                 .idle_timeout(Duration::from_secs(1))
+                // As `app_db::connect`'s, so a test can measure its waits.
+                .acquire_time_level(log::LevelFilter::Debug)
                 .connect_with(server().database(&database))
                 .await
                 .expect("connect to the test's database");

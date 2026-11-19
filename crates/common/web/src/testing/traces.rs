@@ -21,11 +21,7 @@ pub struct Traces {
 
 impl Traces {
     pub fn install() -> Self {
-        static UNDECIDED: Once = Once::new();
-        UNDECIDED.call_once(|| {
-            // Fails only where a test already set its own global subscriber.
-            let _ = tracing::subscriber::set_global_default(Undecided);
-        });
+        undecided();
         let exporter = InMemorySpanExporter::default();
         let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter.clone())
@@ -78,6 +74,16 @@ impl Traces {
             .find(|kv| kv.key.as_str() == key)
             .map(|kv| kv.value.to_string())
     }
+}
+
+/// Installs [`Undecided`] as the global subscriber, once, before a test sets
+/// a subscriber for its thread.
+pub(super) fn undecided() {
+    static UNDECIDED: Once = Once::new();
+    UNDECIDED.call_once(|| {
+        // Fails only where a test already set its own global subscriber.
+        let _ = tracing::subscriber::set_global_default(Undecided);
+    });
 }
 
 /// tracing-core caches each callsite's interest, and the most verbose level

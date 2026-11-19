@@ -8,5 +8,6 @@ publish = false
 
 [dependencies]
 app-test-db-macros.workspace = true
+log.workspace = true
 sqlx.workspace = true
 tokio = { workspace = true, features = ["rt"] }

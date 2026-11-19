@@ -6,6 +6,7 @@ mod health;
 mod idempotency;
 mod listing;
 pub mod mcp;
+mod metrics;
 mod provide;
 mod public_url;
 mod queries;
@@ -24,6 +25,7 @@ pub use error::{
 pub use health::health_routes;
 pub use idempotency::{IDEMPOTENCY_KEY, Idempotency, IdempotencyEndpoint, Idempotent};
 pub use listing::{ListResult, SortParam, paged, sorts};
+pub use metrics::PoolWaits;
 pub use provide::{Accept, Provide};
 pub use public_url::PublicUrl;
 pub use queries::QuerySpans;

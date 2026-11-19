@@ -89,15 +89,22 @@ arc-swap = "1"
 strum = { version = "0.28", features = ["derive"] }
 figment = { version = "0.10", features = ["env", "toml"] }
 tracing = "0.1"
+# Only for the level `sqlx::pool::PoolOptions::acquire_time_level` takes.
+log = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 # OpenTelemetry (ADR 0026): opentelemetry, opentelemetry_sdk, opentelemetry-otlp and
 # opentelemetry-http 0.33.x <-> tracing-opentelemetry 0.34.x are a matched set; bump them together.
-opentelemetry = { version = "0.33", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.33", default-features = false, features = ["trace", "metrics"] }
 # `internal-logs`: the SDK's own warnings (a dropped span, a failed export) as
 # `tracing` events, which `server::telemetry` lets through at most once a minute.
-opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace", "internal-logs"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = [
+    "trace",
+    "metrics",
+    "internal-logs",
+] }
 opentelemetry-otlp = { version = "0.33", default-features = false, features = [
     "trace",
+    "metrics",
     "http-proto",
     "http-json",
     "internal-logs",

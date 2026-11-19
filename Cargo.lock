@@ -114,6 +114,7 @@ dependencies = [
  "app-web",
  "async-trait",
  "chrono",
+ "log",
  "opentelemetry",
  "opentelemetry_sdk",
  "serde",
@@ -190,6 +191,7 @@ name = "app-test-db"
 version = "0.1.0"
 dependencies = [
  "app-test-db-macros",
+ "log",
  "sqlx",
  "tokio",
 ]

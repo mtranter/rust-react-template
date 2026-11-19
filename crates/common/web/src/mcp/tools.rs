@@ -3,6 +3,7 @@
 
 use super::schema::{Definitions, json_schema};
 use super::sessions::Presented;
+use crate::metrics::ToolCalls;
 use crate::render_error;
 use crate::request_id::current_request_id;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -69,6 +70,7 @@ const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
 pub struct OpenApiTools<S> {
     api: Arc<BoxEndpoint<'static, Response>>,
     presented: Presented,
+    calls: ToolCalls,
     surface: PhantomData<fn() -> S>,
 }
 
@@ -77,6 +79,7 @@ impl<S> OpenApiTools<S> {
         Self {
             api,
             presented,
+            calls: ToolCalls::new(),
             surface: PhantomData,
         }
     }
@@ -108,12 +111,17 @@ impl<S: Surface> Tools for OpenApiTools<S> {
             .ok_or_else(|| RpcError::method_not_found(format!("no tool is named `{name}`")))?;
         let request = operation
             .request(S::BASE, arguments, &self.presented.token())
-            .map_err(RpcError::invalid_params)?;
+            .map_err(|err| {
+                self.calls.add(operation.name, true);
+                RpcError::invalid_params(err)
+            })?;
         let response = match self.api.call(request).await {
             Ok(response) => response,
             Err(error) => render_error(error).await,
         };
-        Ok(answer(response, operation.output_schema.is_some()).await)
+        let answered = answer(response, operation.output_schema.is_some()).await;
+        self.calls.add(operation.name, answered.is_error);
+        Ok(answered)
     }
 }
 
