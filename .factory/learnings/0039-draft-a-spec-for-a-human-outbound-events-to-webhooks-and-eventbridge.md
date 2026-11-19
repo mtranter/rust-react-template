@@ -1,0 +1,8 @@
+# Learnings: 0039, a Spec for a human on sending events out through sinks
+
+- A Spec for a human follows Spec 0006's pattern: `status: needs-info` only, the body written assuming each recommendation with "(question N)" markers, ending in `## Needs Human Input (factory)`. Six questions fit in about 130 lines when each has one bullet for why, options, recommendation and dependents.
+- Runtime subscriptions clash with ADR 0014: only `migrate` writes `messaging.subscription`, and a worker claims only the `(queue, event type)` pairs its compiled `Handlers` list (`crates/common/persistence/src/messaging.rs`). Anything registering queues at runtime (sinks) has to amend that, e.g. claiming by a queue kind.
+- `messaging.job` already stores `max_attempts` per job (`crates/common/db/migrations/0001_messaging.sql`); the default is `MAX_ATTEMPTS = 5` in `app_persistence`. A longer retry per queue needs no schema change.
+- Events carry each root's whole state (ADR 0012), so anything sending them outside the app bypasses row policies (ADR 0040). Any future outbound feature has to say who sees a whole topic.
+- Outside facts checked 2026-11-19, which may since have changed: EventBridge `PutEvents` takes 10 entries and 1 MB per request (not the older 256 KB), $1.00 per million events per 64 KB chunk; API destinations retry 24 hours / 185 times with a 5-second timeout; Standard Webhooks' asymmetric scheme is `v2a` (`v1a` is deprecated). A web-fetch agent run in the background while reading the repo was enough.
+- Before committing, grep this file for the whole words CI's `init` job rejects outside `docs/platform/` and `crates/reference/` (see Learnings 0038).
