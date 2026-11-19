@@ -4,7 +4,7 @@ name: "A Module defers a keyed job to its own handler in a Unit of Work, and a n
 status: ready-for-agent
 spec: docs/platform/specs/0004-modules-schedule-deferred-and-recurring-work-through-the-existing-queue.md
 blocked_by: []
-blocks: []
+blocks: [docs/platform/tickets/0054-a-module-declares-a-cron-schedule-that-the-worker.md]
 ---
 
 # A Module defers a keyed job to its own handler in a Unit of Work, and a note archives itself at its archiveAt
