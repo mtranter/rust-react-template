@@ -1,7 +1,7 @@
 ---
 id: 0037
 name: An end-to-end check signs in to the embedded SPA through a fake OIDC provider and loads the access screen
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0002-the-embedded-spa-signs-users-in-with-the-identity-provider-and-sends-their-token.md
 blocked_by: [docs/platform/tickets/0035-a-visitor-signs-in-to-the-embedded-spa-with-the-id.md]
 blocks: []
