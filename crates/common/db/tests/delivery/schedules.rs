@@ -495,7 +495,10 @@ async fn retiring_waits_for_a_worker_pass_in_flight_and_removes_the_run_it_creat
     let again = worker.schedule().await.unwrap();
     run(&worker).await;
 
-    assert!(waited.is_err(), "retiring didn't wait for the worker's pass");
+    assert!(
+        waited.is_err(),
+        "retiring didn't wait for the worker's pass"
+    );
     assert_eq!((created, again), (1, 0));
     assert!(messaging.jobs().await.is_empty());
     assert!(messaging.log.handled().is_empty());
@@ -517,7 +520,8 @@ async fn a_worker_pass_racing_retirement_never_leaves_a_run_behind(pool: PgPool)
     let other = messaging.worker_of(nightly(Nightlies::new(&messaging)));
     messaging.later(TimeDelta::hours(3));
 
-    let (created, (), later) = tokio::join!(worker.schedule(), retire(&messaging), other.schedule());
+    let (created, (), later) =
+        tokio::join!(worker.schedule(), retire(&messaging), other.schedule());
     created.unwrap();
     later.unwrap();
     messaging.later(TimeDelta::days(2));
