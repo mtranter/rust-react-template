@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: ticketed
 ---
 
 # Traces and metrics follow every request and event through OpenTelemetry
