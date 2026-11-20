@@ -4,7 +4,7 @@ name: "Writes the assistant asks for wait for the user's approval"
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md]
-blocks: []
+blocks: [docs/platform/tickets/0068-journey-the-assistant-acts-for-alice-and-can-t-see.md]
 ---
 
 # Writes the assistant asks for wait for the user's approval
