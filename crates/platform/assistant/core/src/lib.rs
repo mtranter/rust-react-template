@@ -12,9 +12,12 @@ mod domain;
 pub mod seed;
 mod web;
 
-pub use application::{ChatModel, ModelError, ModelMessage, ModelReply, ModelRequest, Settings};
+pub use application::{
+    ChatModel, ModelError, ModelMessage, ModelReply, ModelRequest, ModelTool, ModelToolCall,
+    ModelToolResult, Settings,
+};
 pub use db::{ConversationColumns, MIGRATOR, SCHEMA, migrations};
-pub use di::{AssistantProvider, module, policies, provider};
+pub use di::{AssistantProvider, module, module_with, policies, provider};
 pub use domain::{
     Assistant, AssistantAction, Content, Conversation, ConversationAction, ConversationError,
     ConversationId, Message, MessageId, Outcome, ToolCall, ToolCallId, ToolCallStatus,

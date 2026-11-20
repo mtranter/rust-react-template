@@ -12,6 +12,10 @@ publish = false
 [dependencies]
 access.workspace = true
 app-module.workspace = true
+assistant.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 server.workspace = true
 users.workspace = true
 notes.workspace = true
@@ -26,7 +30,6 @@ app-events.workspace = true
 app-test-db.workspace = true
 app-web = { workspace = true, features = ["test"] }
 chrono.workspace = true
-serde_json.workspace = true
 sqlx.workspace = true
 # The seeds, and the seeded ids the journeys name.
 users = { workspace = true, features = ["seed"] }

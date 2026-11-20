@@ -46,8 +46,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &config.cors_origin,
     );
 
+    let draining = ctx.draining();
+    let shutdown = async move {
+        shutdown_signal().await;
+        // Open streams end, so the graceful shutdown isn't held by them.
+        draining.begin();
+    };
     Server::new(TcpListener::bind(config.bind_addr()))
-        .run_with_graceful_shutdown(app, shutdown_signal(), None)
+        .run_with_graceful_shutdown(app, shutdown, None)
         .await?;
     tracing::info!("server stopped");
     telemetry.shutdown();

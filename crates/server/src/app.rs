@@ -5,7 +5,7 @@ use crate::{
 };
 use app_db::Pool;
 use app_module::Context;
-use app_web::mcp::{self, Discovery};
+use app_web::mcp::{self, Discovery, Toolbox};
 use app_web::{
     Idempotent, JwtVerifier, RequestIdMiddleware, TraceRequests, health_routes, render_error,
 };
@@ -31,7 +31,9 @@ pub fn build_app<C: Composition>(
     let service = build_service::<C>();
     let ui = service.swagger_ui();
     let spec = spec::<C>();
-    let api = Arc::new(api::<C>(ctx, service, verifier.clone()));
+    let toolbox = Toolbox::new::<Tools<C>>();
+    let api = Arc::new(api::<C>(ctx, service, verifier.clone(), toolbox.clone()));
+    toolbox.serve(&api);
 
     let app = Route::new()
         .nest_no_strip(API_BASE, api.clone())
@@ -100,13 +102,16 @@ fn is_same_origin(req: &Request) -> bool {
 /// in-process: with its error rendering, idempotency and each module's data,
 /// and what a `Caller` needs: the verifier, and the context's authorizer, which
 /// also resolves a token's subject to its Principal from the roles `access`
-/// assigns (an `Arc<dyn PrincipalResolver>` in data would replace it).
-/// Idempotency is inside the error rendering's catch, so its records keep the
-/// answer a client got.
+/// assigns (an `Arc<dyn PrincipalResolver>` in data would replace it). And
+/// for a module acting as its caller, such as the assistant, the app's tools,
+/// called back through this same endpoint, and the server's draining, which
+/// ends its streams. Idempotency is inside the error rendering's catch, so its
+/// records keep the answer a client got.
 fn api<C: Composition>(
     ctx: &Context,
     service: OpenApiService<app_web::Idempotent<C::Endpoints>, ()>,
     verifier: JwtVerifier,
+    toolbox: Toolbox,
 ) -> BoxEndpoint<'static> {
     let api = Route::new()
         .nest(API_BASE, service)
@@ -118,6 +123,8 @@ fn api<C: Composition>(
         .fold(api, |api, module| module.provide(ctx, api))
         .data(verifier)
         .data(ctx.authorizer())
+        .data(toolbox)
+        .data(ctx.draining())
         .boxed()
 }
 

@@ -7,22 +7,24 @@ use app_error::{AppError, AppResult};
 use app_persistence::Tx;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 const USER: &str = "user";
 const ASSISTANT: &str = "assistant";
 const TOOL_CALLS: &str = "tool_calls";
+const FAILED: &str = "error";
 const OK: &str = "ok";
 const ERROR: &str = "error";
 
-/// Each of `conversations`' messages, oldest first.
+/// Each of `conversations`' messages, oldest first. Read in one snapshot with the conversations'
+/// rows, or a turn saving meanwhile could mix one version's messages with another's calls.
 pub(super) async fn of(
-    pool: &PgPool,
+    db: &mut PgConnection,
     conversations: &[Uuid],
 ) -> AppResult<HashMap<Uuid, Vec<Message>>> {
-    let mut calls = calls_of(pool, conversations).await?;
+    let mut calls = calls_of(db, conversations).await?;
     let rows = sqlx::query!(
         r#"
         SELECT conversation_id, id, posted_at, kind, text FROM assistant.message
@@ -31,7 +33,7 @@ pub(super) async fn of(
         "#,
         conversations,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *db)
     .await
     .map_err(AppError::internal)?;
 
@@ -40,6 +42,7 @@ pub(super) async fn of(
         let content = match (row.kind.as_str(), row.text) {
             (USER, Some(text)) => Content::User(text),
             (ASSISTANT, Some(text)) => Content::Assistant(text),
+            (FAILED, Some(text)) => Content::Error(text),
             (TOOL_CALLS, None) => Content::ToolCalls(calls.remove(&row.id).unwrap_or_default()),
             (kind, _) => {
                 return Err(unknown(format!(
@@ -58,7 +61,7 @@ pub(super) async fn of(
 
 /// Each tool-calls message's calls, by the message's id, in the order they were asked for.
 async fn calls_of(
-    pool: &PgPool,
+    db: &mut PgConnection,
     conversations: &[Uuid],
 ) -> AppResult<HashMap<Uuid, Vec<ToolCall>>> {
     let rows = sqlx::query!(
@@ -69,7 +72,7 @@ async fn calls_of(
         "#,
         conversations,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *db)
     .await
     .map_err(AppError::internal)?;
 
@@ -146,6 +149,7 @@ pub(super) async fn replace(
         let (kind, text) = match message.content() {
             Content::User(text) => (USER, Some(text.clone())),
             Content::Assistant(text) => (ASSISTANT, Some(text.clone())),
+            Content::Error(text) => (FAILED, Some(text.clone())),
             Content::ToolCalls(asked) => {
                 for call in asked {
                     calls.message_ids.push(message.id().as_uuid());

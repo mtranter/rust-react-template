@@ -8,7 +8,7 @@ use crate::render_error;
 use crate::request_id::current_request_id;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use poem::endpoint::BoxEndpoint;
-use poem::http::{Method, header, uri::Scheme};
+use poem::http::{Method, StatusCode, header, uri::Scheme};
 use poem::web::{LocalAddr, RemoteAddr};
 use poem::{Endpoint, Request, RequestParts, Response};
 use poem_mcpserver::protocol::content::Content;
@@ -110,70 +110,120 @@ impl<S: Surface> Tools for OpenApiTools<S> {
             .0
             .into_iter()
             .find(|operation| operation.name == name);
-        // `mcp.method.name` and `gen_ai.tool.name` are OpenTelemetry's MCP
-        // semantic conventions; `is_error` is the result's `isError`. A name
-        // that is no tool doesn't name the span, so a client can't mint names.
-        let span = tracing::info_span!(
-            "tool_call",
-            otel.name = operation
-                .as_ref()
-                .map_or("tools/call", |operation| operation.name),
-            otel.status_code = Empty,
-            mcp.method.name = "tools/call",
-            gen_ai.tool.name = name,
-            is_error = Empty,
-        );
-        let called = self
-            .call_operation(name, operation, arguments)
-            .instrument(span.clone())
-            .await;
-        match &called {
-            Ok(result) => {
-                span.record("is_error", result.is_error);
-                if result.is_error {
-                    span.record("otel.status_code", "error");
-                }
-            }
-            Err(_) => {
-                span.record("otel.status_code", "error");
-            }
-        }
-        called
+        let structured = operation
+            .as_ref()
+            .is_some_and(|operation| operation.output_schema.is_some());
+        let answer = send(
+            &self.api,
+            &self.calls,
+            S::BASE,
+            name,
+            operation.as_ref(),
+            arguments,
+            &self.presented.token(),
+        )
+        .await
+        .map_err(|unsent| match unsent {
+            Unsent::NoSuchTool => RpcError::method_not_found(format!("no tool is named `{name}`")),
+            Unsent::Arguments(err) => RpcError::invalid_params(err),
+        })?;
+        Ok(answer.into_tool_result(structured))
     }
 }
 
-impl<S: Surface> OpenApiTools<S> {
-    async fn call_operation(
-        &self,
-        name: &str,
-        operation: Option<Described>,
-        arguments: Value,
-    ) -> Result<ToolsCallResponse, RpcError> {
-        let operation = operation
-            .ok_or_else(|| RpcError::method_not_found(format!("no tool is named `{name}`")))?;
-        let request = operation
-            .request(S::BASE, arguments, &self.presented.token())
-            .map_err(|err| {
-                self.calls.add(operation.name, true);
-                RpcError::invalid_params(err)
-            })?;
-        let response = match self.api.call(request).await {
+/// Why a tool call sent no request.
+pub(super) enum Unsent {
+    NoSuchTool,
+    /// The arguments make no request of the operation.
+    Arguments(String),
+}
+
+/// An operation's answer to a tool call.
+pub(super) struct Answer {
+    pub(super) status: StatusCode,
+    pub(super) body: Vec<u8>,
+}
+
+impl Answer {
+    /// The body as text, and as structured content where the tool declares a
+    /// schema for it; a refusal as its error body, flagged as an error.
+    fn into_tool_result(self, structured: bool) -> ToolsCallResponse {
+        let succeeded = self.status.is_success();
+        let structured_content = (succeeded && structured)
+            .then(|| serde_json::from_slice(&self.body).ok())
+            .flatten();
+        ToolsCallResponse {
+            content: vec![Content::Text {
+                text: String::from_utf8_lossy(&self.body).into_owned(),
+            }],
+            structured_content,
+            is_error: !succeeded,
+        }
+    }
+}
+
+/// Calls the tool `name`, `operation` if it is one, by sending the request
+/// `arguments` make of it through `api`, presenting `token`: in a span of its
+/// own, counted in `calls`.
+pub(super) async fn send(
+    api: &BoxEndpoint<'static, Response>,
+    calls: &ToolCalls,
+    base: &str,
+    name: &str,
+    operation: Option<&Described>,
+    arguments: Value,
+    token: &str,
+) -> Result<Answer, Unsent> {
+    // `mcp.method.name` and `gen_ai.tool.name` are OpenTelemetry's MCP
+    // semantic conventions; `is_error` is the result's `isError`. A name
+    // that is no tool doesn't name the span, so a client can't mint names.
+    let span = tracing::info_span!(
+        "tool_call",
+        otel.name = operation.map_or("tools/call", |operation| operation.name),
+        otel.status_code = Empty,
+        mcp.method.name = "tools/call",
+        gen_ai.tool.name = name,
+        is_error = Empty,
+    );
+    let sent = async {
+        let operation = operation.ok_or(Unsent::NoSuchTool)?;
+        let request = operation.request(base, arguments, token).map_err(|err| {
+            calls.add(operation.name, true);
+            Unsent::Arguments(err)
+        })?;
+        let response = match api.call(request).await {
             Ok(response) => response,
             Err(error) => render_error(error).await,
         };
-        let answered = answer(response, operation.output_schema.is_some()).await;
-        self.calls.add(operation.name, answered.is_error);
-        Ok(answered)
+        let status = response.status();
+        let body = response.into_body().into_vec().await.unwrap_or_default();
+        calls.add(operation.name, !status.is_success());
+        Ok(Answer { status, body })
     }
+    .instrument(span.clone())
+    .await;
+    match &sent {
+        Ok(answer) => {
+            let failed = !answer.status.is_success();
+            span.record("is_error", failed);
+            if failed {
+                span.record("otel.status_code", "error");
+            }
+        }
+        Err(_) => {
+            span.record("otel.status_code", "error");
+        }
+    }
+    sent
 }
 
 /// An operation as a tool.
-struct Described {
-    name: &'static str,
-    description: &'static str,
-    input_schema: Value,
+pub(super) struct Described {
+    pub(super) name: &'static str,
+    pub(super) description: &'static str,
+    pub(super) input_schema: Value,
     output_schema: Option<Value>,
-    method: Method,
+    pub(super) method: Method,
     path: String,
     arguments: Vec<Argument>,
 }
@@ -192,7 +242,7 @@ enum Sent {
 }
 
 /// The tools of `S`, and what keeps any other operation from being one.
-fn described<S: Surface>() -> (Vec<Described>, Vec<String>) {
+pub(super) fn described<S: Surface>() -> (Vec<Described>, Vec<String>) {
     let mut registry = Registry::new();
     S::Api::register(&mut registry);
     let definitions = Definitions::of(&registry);
@@ -446,24 +496,6 @@ fn as_received(request: Request) -> Request {
         Scheme::HTTP,
     ));
     Request::from_parts(parts, body)
-}
-
-/// What a tool answers for the operation's `response`: a body as text, and
-/// as structured content where the tool declares a schema for it; a refusal
-/// as its error body, flagged as an error.
-async fn answer(response: Response, structured: bool) -> ToolsCallResponse {
-    let succeeded = response.status().is_success();
-    let body = response.into_body().into_vec().await.unwrap_or_default();
-    let structured_content = (succeeded && structured)
-        .then(|| serde_json::from_slice(&body).ok())
-        .flatten();
-    ToolsCallResponse {
-        content: vec![Content::Text {
-            text: String::from_utf8_lossy(&body).into_owned(),
-        }],
-        structured_content,
-        is_error: !succeeded,
-    }
 }
 
 /// A scalar argument as it is written in a path, query or header.

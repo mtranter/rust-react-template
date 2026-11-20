@@ -1,10 +1,10 @@
 //! Ids, timestamps, and the version are plain strings so the generated TS client stays
 //! dependency-free.
 
-use crate::application::{ConversationSortKey, ConversationSummary, Status, Versioned};
+use crate::application::{ConversationSortKey, ConversationSummary, Status, TurnEvent, Versioned};
 use crate::domain::{Content, Conversation, Message, Outcome, ToolCall, ToolCallStatus};
 use app_persistence::{Direction, Sort};
-use app_web::SortParam;
+use app_web::{ApiError, ErrorBody, SortParam};
 use poem_openapi::{Enum, Object, Union};
 
 #[derive(Debug, Object)]
@@ -82,6 +82,8 @@ pub enum MessageResponse {
     Assistant(AssistantMessageResponse),
     #[oai(mapping = "toolCalls")]
     ToolCalls(ToolCallsMessageResponse),
+    #[oai(mapping = "error")]
+    Error(ErrorMessageResponse),
 }
 
 /// What the caller wrote.
@@ -97,6 +99,16 @@ pub struct UserMessageResponse {
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct AssistantMessageResponse {
+    pub id: String,
+    pub posted_at: String,
+    pub text: String,
+}
+
+/// Why a turn ended in failure: the model failed, or the caller's sign-in expired. Shown to the
+/// caller, never sent to the model.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ErrorMessageResponse {
     pub id: String,
     pub posted_at: String,
     pub text: String,
@@ -154,6 +166,11 @@ impl From<&Message> for MessageResponse {
                 posted_at,
                 text: text.clone(),
             }),
+            Content::Error(text) => Self::Error(ErrorMessageResponse {
+                id,
+                posted_at,
+                text: text.clone(),
+            }),
             Content::ToolCalls(calls) => Self::ToolCalls(ToolCallsMessageResponse {
                 id,
                 posted_at,
@@ -163,13 +180,20 @@ impl From<&Message> for MessageResponse {
     }
 }
 
+/// An outcome as `result` and `error`, one of which it has.
+fn result_and_error(
+    outcome: Option<&Outcome>,
+) -> (Option<serde_json::Value>, Option<serde_json::Value>) {
+    match outcome {
+        None => (None, None),
+        Some(Outcome::Ok(body)) => (Some(body.clone()), None),
+        Some(Outcome::Error(body)) => (None, Some(body.clone())),
+    }
+}
+
 impl From<&ToolCall> for ToolCallResponse {
     fn from(call: &ToolCall) -> Self {
-        let (result, error) = match call.outcome() {
-            None => (None, None),
-            Some(Outcome::Ok(body)) => (Some(body.clone()), None),
-            Some(Outcome::Error(body)) => (None, Some(body.clone())),
-        };
+        let (result, error) = result_and_error(call.outcome());
         Self {
             id: call.id().to_string(),
             tool: call.tool().to_string(),
@@ -205,6 +229,124 @@ impl SortParam for ConversationSort {
         Sort {
             key: ConversationSortKey::CreatedAt,
             direction,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct SendMessageRequest {
+    /// What the caller says to the assistant.
+    pub text: String,
+}
+
+/// One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with
+/// `error` when what it had to store couldn't be.
+#[derive(Debug, Union)]
+#[oai(discriminator_name = "kind", one_of)]
+pub enum TurnEventResponse {
+    #[oai(mapping = "text")]
+    Text(TextEvent),
+    #[oai(mapping = "toolCallStarted")]
+    ToolCallStarted(ToolCallStartedEvent),
+    #[oai(mapping = "toolResult")]
+    ToolResult(ToolResultEvent),
+    #[oai(mapping = "approvalRequired")]
+    ApprovalRequired(ApprovalRequiredEvent),
+    #[oai(mapping = "finished")]
+    Finished(TurnFinishedEvent),
+    #[oai(mapping = "error")]
+    Error(TurnErrorEvent),
+}
+
+/// A piece of the assistant's words, as they are generated: append it to those before.
+#[derive(Debug, Object)]
+pub struct TextEvent {
+    pub text: String,
+}
+
+/// The assistant asked to run one of the app's operations as the caller.
+#[derive(Debug, Object)]
+pub struct ToolCallStartedEvent {
+    pub id: String,
+    /// The operation's id, which is its tool's name.
+    pub tool: String,
+    pub arguments: serde_json::Value,
+}
+
+/// A read's answer: `result` when it succeeded, `error` (its error body) when refused.
+#[derive(Debug, Object)]
+pub struct ToolResultEvent {
+    /// The tool call's, as `toolCallStarted` named it.
+    pub id: String,
+    #[oai(skip_serializing_if_is_none)]
+    pub result: Option<serde_json::Value>,
+    #[oai(skip_serializing_if_is_none)]
+    pub error: Option<serde_json::Value>,
+}
+
+/// A write the assistant asked for, stored `awaiting_approval` and not run: the caller decides
+/// it, and the turn ends here.
+#[derive(Debug, Object)]
+pub struct ApprovalRequiredEvent {
+    pub id: String,
+    pub tool: String,
+    pub arguments: serde_json::Value,
+}
+
+/// The turn ended: the messages it stored, the caller's first, and the conversation's version
+/// now, for the next `If-Match`.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct TurnFinishedEvent {
+    pub message_ids: Vec<String>,
+    pub version: String,
+}
+
+/// What went wrong mid-turn, as an error body: the model failed (`unavailable`), the caller's
+/// sign-in expired (`unauthorized`), or the turn couldn't be stored.
+#[derive(Debug, Object)]
+pub struct TurnErrorEvent {
+    pub error: ErrorBody,
+}
+
+impl From<TurnEvent> for TurnEventResponse {
+    fn from(event: TurnEvent) -> Self {
+        match event {
+            TurnEvent::Text(text) => Self::Text(TextEvent { text }),
+            TurnEvent::ToolCallStarted {
+                id,
+                tool,
+                arguments,
+            } => Self::ToolCallStarted(ToolCallStartedEvent {
+                id: id.to_string(),
+                tool,
+                arguments,
+            }),
+            TurnEvent::ToolResult { id, outcome } => {
+                let (result, error) = result_and_error(Some(&outcome));
+                Self::ToolResult(ToolResultEvent {
+                    id: id.to_string(),
+                    result,
+                    error,
+                })
+            }
+            TurnEvent::ApprovalRequired {
+                id,
+                tool,
+                arguments,
+            } => Self::ApprovalRequired(ApprovalRequiredEvent {
+                id: id.to_string(),
+                tool,
+                arguments,
+            }),
+            TurnEvent::Finished { messages, version } => Self::Finished(TurnFinishedEvent {
+                message_ids: messages.iter().map(ToString::to_string).collect(),
+                version: version.as_i64().to_string(),
+            }),
+            TurnEvent::Failed(err) => Self::Error(TurnErrorEvent {
+                error: ApiError::from(err).into_body(),
+            }),
         }
     }
 }

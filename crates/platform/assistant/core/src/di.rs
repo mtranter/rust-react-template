@@ -23,9 +23,14 @@ impl Provide for AssistantProvider {
 }
 
 /// `model` is `None` while none is configured, and the assistant is off; tests pass a fake.
-pub fn provider(ctx: &Context, model: Option<Arc<dyn ChatModel>>) -> AssistantProvider {
+pub fn provider(
+    ctx: &Context,
+    model: Option<Arc<dyn ChatModel>>,
+    settings: Settings,
+) -> AssistantProvider {
     AssistantProvider(AssistantService::new(
         model,
+        settings,
         Arc::new(PgConversationRepository::new(ctx.pool())),
         ctx.publisher(),
         ctx.transactions(),
@@ -44,19 +49,32 @@ pub fn policies() -> PoliciesBuilder {
         .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
-/// `settings` are read when the API is built, so `dump-spec` and `migrate` need none.
+/// `settings` are read when the API is built, so `dump-spec` and `migrate` need none. With a
+/// model configured, it is Bedrock's.
 pub fn module(settings: fn() -> Settings) -> Module {
-    let module = Module::new(move |ctx| provider(ctx, model(&settings())))
-        .with_policies(policies)
-        .performing(OPERATIONS)
-        .publishes::<ConversationTopic>()
-        .with_migrations(migrations());
+    module_with(settings, bedrock)
+}
+
+/// [`module`] with the model `model` makes of the settings, for a composition that must not call
+/// Bedrock, such as the journeys'.
+pub fn module_with(
+    settings: fn() -> Settings,
+    model: fn(&Settings) -> Option<Arc<dyn ChatModel>>,
+) -> Module {
+    let module = Module::new(move |ctx| {
+        let settings = settings();
+        provider(ctx, model(&settings), settings)
+    })
+    .with_policies(policies)
+    .performing(OPERATIONS)
+    .publishes::<ConversationTopic>()
+    .with_migrations(migrations());
     #[cfg(feature = "seed")]
     let module = module.with_seed(|ctx| async move { crate::seed::standard(&ctx.pool()).await });
     module
 }
 
-fn model(settings: &Settings) -> Option<Arc<dyn ChatModel>> {
+fn bedrock(settings: &Settings) -> Option<Arc<dyn ChatModel>> {
     let model = settings.model.as_deref()?;
     Some(Arc::new(Bedrock::new(model)))
 }

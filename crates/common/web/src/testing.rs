@@ -336,6 +336,48 @@ impl Call<'_> {
         }
     }
 
+    /// For an operation that answers `text/event-stream`: each event's data as
+    /// JSON, once the stream has ended, or the refusal as the driver's `R`
+    /// when it was refused before streaming.
+    pub async fn stream<R: From<Refused>>(self) -> Result<Vec<Value>, R> {
+        let response = self.0.send().await.0;
+        if !response.status().is_success() {
+            return Err(refused(response).await.into());
+        }
+        let content_type = response.content_type().unwrap_or_default().to_owned();
+        assert!(
+            content_type.starts_with("text/event-stream"),
+            "a stream answers text/event-stream, not {content_type:?}"
+        );
+        let body = response
+            .into_body()
+            .into_string()
+            .await
+            .expect("read the stream");
+        Ok(body
+            .split("\n\n")
+            .filter_map(|event| {
+                let data: Vec<&str> = event
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data:"))
+                    .map(str::trim_start)
+                    .collect();
+                (!data.is_empty()).then(|| data.join("\n"))
+            })
+            .map(|data| serde_json::from_str(&data).expect("each event's data is JSON"))
+            .collect())
+    }
+
+    /// Sends it, then drops the answer unread once it has begun, as a client hanging up
+    /// mid-stream does. Panics on a refusal.
+    pub async fn hang_up(self) {
+        let response = self.0.send().await.0;
+        assert!(
+            response.status().is_success(),
+            "a hung-up request was answered, not refused"
+        );
+    }
+
     /// For an operation that answers with no body, like a delete.
     pub async fn send_empty<R: From<Refused>>(self) -> Result<(), R> {
         let response = self.0.send().await.0;

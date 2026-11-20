@@ -216,8 +216,16 @@ The platform's `assistant` Module and the chat it serves (Spec 0012): a model th
 _Avoid_: Agent (an MCP client outside the app), bot, copilot
 
 **Conversation**:
-An Aggregate Root of the Assistant: a chat between one signed-in user, its owner (the subject of the token that started it), and the Assistant. It owns its Messages as Child Entities, each the owner's text, the Assistant's text, or the Tool calls the Assistant asked for, each recorded with the Tool's name, its arguments, its status (`ran`, `awaiting_approval`, `approved`, `rejected`) and its result or error body. Untitled until the owner's first message, whose start becomes its title. Only its owner may list, open or delete it: an admin included, anyone else is answered `404`.
+An Aggregate Root of the Assistant: a chat between one signed-in user, its owner (the subject of the token that started it), and the Assistant. It owns its Messages as Child Entities, each the owner's text, the Assistant's text, why a Turn failed, or the Tool calls the Assistant asked for, each recorded with the Tool's name, its arguments, its status (`ran`, `awaiting_approval`, `approved`, `rejected`) and its result or error body. Untitled until the owner's first message, whose start becomes its title. Only its owner may list, open or delete it: an admin included, anyone else is answered `404`.
 _Avoid_: Chat (the Assistant's screen), thread, session (a sign-in)
+
+**Turn**:
+What one message of a Conversation's owner sets off (ADR 0045): the owner's message is stored, then the model is sent the system prompt, the Conversation's latest messages and every Tool, and loops (its words, the reads it asks for, the model again) until it answers in words, asks for a write, or reaches a limit (`APP_AGENT_MAX_TOOL_CALLS`, `APP_AGENT_MAX_OUTPUT_TOKENS`). Its events stream to the owner as `text/event-stream`; each message is stored as it is posted, so a Turn runs to its end even if no one reads the stream. A model failure, or the owner's token refused mid-Turn, ends it with an error message, shown to the owner and never sent to the model.
+_Avoid_: Request, run, exchange
+
+**Pending tool call**:
+A Tool call the model asked for whose operation isn't a `GET`, so a Turn doesn't run it: it is stored `awaiting_approval`, the stream names it and its arguments, and the Turn ends there until the owner approves or rejects it. Several asked for in one step are all pending. While one is, the Conversation takes no new message (`409`).
+_Avoid_: Draft action, proposal
 
 ## Testing
 

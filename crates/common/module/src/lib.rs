@@ -12,7 +12,7 @@ use app_domain::Clock;
 use app_error::AppResult;
 use app_events::{PublishedTopic, Topic};
 use app_persistence::{DeferredJobs, EventPublisher, Handlers, Transactions};
-use app_web::{Accept, Idempotency, Performs, Provide};
+use app_web::{Accept, Draining, Idempotency, Performs, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
 use std::future::Future;
@@ -28,6 +28,7 @@ pub struct Context {
     clock: Arc<dyn Clock>,
     bus: Arc<dyn Bus>,
     authorizer: Arc<Authorizer>,
+    draining: Draining,
 }
 
 impl Context {
@@ -38,7 +39,14 @@ impl Context {
             clock,
             bus: Arc::new(NoBus),
             authorizer: Arc::new(Authorizer::new(RuleSet::default())),
+            draining: Draining::default(),
         }
+    }
+
+    /// Begins when the server begins to shut down, ending its open streams;
+    /// never, for a context no server drains.
+    pub fn draining(&self) -> Draining {
+        self.draining.clone()
     }
 
     /// The rule set every service plans its actions with and every `Caller`

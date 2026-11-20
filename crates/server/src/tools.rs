@@ -39,6 +39,10 @@ impl<C: Composition> Surface for Tools<C> {
             operation_id: "delete_conversation",
             reason: ASSISTANT,
         },
+        RestOnly {
+            operation_id: "send_message",
+            reason: ASSISTANT,
+        },
     ];
 }
 
