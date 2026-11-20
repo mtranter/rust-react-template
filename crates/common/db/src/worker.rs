@@ -9,6 +9,7 @@
 //! turn each schedule's slot that falls due into a job.
 
 use crate::cron::Cron;
+use crate::figures::{Attempts, Figures, FiguresReader};
 use crate::schedules::parse_schedules;
 use crate::unit_of_work::{begin, conn};
 use app_domain::Clock;
@@ -58,6 +59,8 @@ pub struct Worker {
     /// By the worker's clock; in memory only, so a restarted worker compacts
     /// at its first poll.
     last_compacted: Mutex<Option<DateTime<Utc>>>,
+    figures: FiguresReader,
+    attempts: Attempts,
 }
 
 /// A delivery that ran out of attempts; the later versions of its key run past
@@ -86,6 +89,8 @@ struct Claimed {
 impl Worker {
     pub fn new(pool: PgPool, clock: Arc<dyn Clock>, handlers: Handlers) -> Self {
         Self {
+            figures: FiguresReader::new(pool.clone()),
+            attempts: Attempts::new(),
             pool,
             clock,
             handlers: Arc::new(handlers),
@@ -133,7 +138,9 @@ impl Worker {
     }
 
     /// Polls every `interval` until `shutdown` resolves, compacting the
-    /// outbox after each poll that it's due. Refuses to start unless
+    /// outbox after each poll that it's due, and meanwhile reads the delivery
+    /// figures every [`FIGURES_EVERY`](Self::FIGURES_EVERY) while it is the
+    /// worker that reads them. Refuses to start unless
     /// [`check_subscriptions`](Self::check_subscriptions) and
     /// [`check_schedules`](Self::check_schedules) pass; after that, a failure
     /// to reach the database is logged and retried at the next poll.
@@ -145,18 +152,52 @@ impl Worker {
         self.check_subscriptions().await?;
         self.check_schedules().await?;
         tokio::pin!(shutdown);
-        loop {
-            if let Err(err) = self.run_until_idle().await {
-                tracing::error!(error = %describe(&err), "worker poll failed");
+        let polling = async {
+            loop {
+                if let Err(err) = self.run_until_idle().await {
+                    tracing::error!(error = %describe(&err), "worker poll failed");
+                }
+                if let Err(err) = self.compact_if_due().await {
+                    tracing::error!(error = %describe(&err), "outbox compaction failed");
+                }
+                tokio::select! {
+                    _ = &mut shutdown => return,
+                    _ = tokio::time::sleep(interval) => {}
+                }
             }
-            if let Err(err) = self.compact_if_due().await {
-                tracing::error!(error = %describe(&err), "outbox compaction failed");
+        };
+        // Beside the polling rather than after each poll, so a long backlog
+        // doesn't hold the figures back; dropped mid-read at shutdown.
+        let reading = async {
+            let mut every = tokio::time::interval(Self::FIGURES_EVERY);
+            every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                every.tick().await;
+                if let Err(err) = self.read_figures().await {
+                    tracing::error!(error = %describe(&err), "reading the delivery figures failed");
+                }
             }
-            tokio::select! {
-                _ = &mut shutdown => return Ok(()),
-                _ = tokio::time::sleep(interval) => {}
-            }
+        };
+        tokio::select! {
+            () = polling => {}
+            () = reading => {}
         }
+        Ok(())
+    }
+
+    /// How often [`run`](Self::run) reads the delivery figures.
+    pub const FIGURES_EVERY: Duration = Duration::from_secs(15);
+
+    /// Reads the delivery figures the worker exports as gauges: each queue's
+    /// due, waiting and dead jobs and the age of its oldest due one, the
+    /// relay's undispatched events and the age of the oldest, and each
+    /// backfill's events still to copy, ages by the worker's clock. Only one
+    /// worker at a time reads them, the first to call this, for as long as
+    /// it lives and its database connection holds; any other gets `None` and
+    /// exports nothing. A failure exports nothing until a later read
+    /// succeeds, and lets another worker take over.
+    pub async fn read_figures(&self) -> AppResult<Option<Figures>> {
+        self.figures.read(self.clock.now()).await
     }
 
     /// [`run`](Self::run)'s poll, once: relays, backfills and runs until
@@ -736,7 +777,10 @@ impl Worker {
         if job.attempts > job.max_attempts {
             self.abandon(job).await?;
             Span::current().record("otel.status_code", "error");
-        } else if let Err(err) = self.complete(job).await {
+            return Ok(());
+        }
+        self.attempts.record(&job.queue, job.attempts);
+        if let Err(err) = self.complete(job).await {
             self.fail(job, &err).await?;
             Span::current().record("otel.status_code", "error");
         }

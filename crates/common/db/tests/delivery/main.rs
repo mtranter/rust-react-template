@@ -12,6 +12,7 @@ mod deploys;
 mod drain;
 mod earliest;
 mod effects;
+mod figures;
 mod order;
 mod polling;
 mod projection;

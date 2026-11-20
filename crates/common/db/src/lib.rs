@@ -5,6 +5,7 @@
 mod cron;
 mod deferral;
 mod errors;
+mod figures;
 mod idempotency;
 mod listing;
 mod metrics;
@@ -21,6 +22,7 @@ mod worker;
 pub use cron::{Cron, CronError};
 pub use deferral::PgDeferredJobs;
 pub use errors::map_db_error;
+pub use figures::{BackfillFigures, Figures, QueueFigures, RelayFigures};
 pub use idempotency::PgIdempotencyRecords;
 pub use listing::push_list_clauses;
 pub use metrics::observe_pool;
