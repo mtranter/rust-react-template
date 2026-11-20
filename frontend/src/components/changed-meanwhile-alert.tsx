@@ -1,7 +1,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TriangleAlertIcon } from "lucide-react";
 
-type Retry = "save" | "delete";
+type Retry = "save" | "delete" | "send";
 
 /** What to tell the user after a `412 precondition_failed`, once `subject` has been refetched. */
 export function changedMeanwhileMessage(retry: Retry, subject: string) {

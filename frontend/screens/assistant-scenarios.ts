@@ -2,6 +2,7 @@ import type {
   ConversationResponse,
   ConversationSummaryResponse,
   ListResultConversationSummaryResponse,
+  TurnEventResponse,
 } from "@/api";
 import { http, HttpResponse } from "msw";
 import type { Scenario } from "./scenarios.ts";
@@ -76,6 +77,42 @@ function conversationsOf(conversations: ConversationResponse[]) {
   ];
 }
 
+/** A turn caught mid-stream: `events` sent, and the stream left open. */
+function turnStreaming(events: TurnEventResponse[]) {
+  return http.post("*/api/assistant/conversations/:id/messages", () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        for (const event of events) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        }
+      },
+    });
+    return new HttpResponse(body, { headers: { "Content-Type": "text/event-stream" } });
+  });
+}
+
+const failed: ConversationResponse = {
+  id: "conversation-failed",
+  title: "Summarise my week",
+  createdAt: "2026-01-03T09:00:00Z",
+  messages: [
+    {
+      kind: "user",
+      id: "message-1",
+      postedAt: "2026-01-03T09:00:00Z",
+      text: "Summarise my week",
+    },
+    {
+      kind: "error",
+      id: "message-2",
+      postedAt: "2026-01-03T09:00:01Z",
+      text: "The assistant couldn't answer: the model is throttled.",
+    },
+  ],
+  version: "2",
+};
+
 export const assistantScenarios: Scenario[] = [
   {
     name: "assistant",
@@ -97,5 +134,28 @@ export const assistantScenarios: Scenario[] = [
       await page.getByRole("button", { name: /list_roles/ }).click();
     },
     shows: (page) => page.getByText("Result"),
+  },
+  {
+    name: "assistant-streaming",
+    route: "/assistant?conversation=conversation-untitled",
+    handlers: [
+      turnStreaming([
+        { kind: "toolCallStarted", id: "call-1", tool: "list_roles", arguments: {} },
+        { kind: "toolResult", id: "call-1", result: { items: [{ name: "admin" }], total: 1 } },
+        { kind: "text", text: "There is **one** role so far:\n\n- `admin`\n\nI'm checking" },
+      ]),
+      ...conversationsOf([untitled, roles]),
+    ],
+    steps: async (page) => {
+      await page.getByRole("textbox", { name: "Message" }).fill("Which roles are there?");
+      await page.getByRole("button", { name: "Send" }).click();
+    },
+    shows: (page) => page.getByText("I'm checking"),
+  },
+  {
+    name: "assistant-error",
+    route: "/assistant?conversation=conversation-failed",
+    handlers: conversationsOf([failed, untitled, roles]),
+    shows: (page) => page.getByText(/couldn't answer/),
   },
 ];
