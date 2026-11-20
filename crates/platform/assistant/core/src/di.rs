@@ -1,10 +1,15 @@
+// Naming the pool to wire the repository is this module's DI seam (ADR 0007).
+#![allow(clippy::disallowed_types)]
+
 use crate::application::{AssistantService, ChatModel, Settings};
 use crate::bedrock::Bedrock;
-use crate::domain::Assistant;
+use crate::db::{PgConversationRepository, migrations};
+use crate::domain::{Assistant, Conversation};
 use crate::web::OPERATIONS;
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_module::{Context, Module};
 use app_web::Provide;
+use assistant_api::events::v1::ConversationTopic;
 use std::sync::Arc;
 
 pub struct AssistantProvider(AssistantService);
@@ -19,22 +24,36 @@ impl Provide for AssistantProvider {
 
 /// `model` is `None` while none is configured, and the assistant is off; tests pass a fake.
 pub fn provider(ctx: &Context, model: Option<Arc<dyn ChatModel>>) -> AssistantProvider {
-    AssistantProvider(AssistantService::new(model, ctx.authorizer()))
+    AssistantProvider(AssistantService::new(
+        model,
+        Arc::new(PgConversationRepository::new(ctx.pool())),
+        ctx.publisher(),
+        ctx.transactions(),
+        ctx.clock(),
+        ctx.authorizer(),
+    ))
 }
 
-/// The assistant's gate and its `assistant` resource, whose `chat` every `user` is granted by
-/// default (ADR 0040).
+/// The assistant's gate, its `assistant` resource, whose `chat` every `user` is granted by
+/// default (ADR 0040), and its `conversation` resource, scoped to each one's `owner`.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("assistant")
         .resource::<Assistant>(policy_file!("policies/assistant.yaml"))
+        .resource::<Conversation>(policy_file!("policies/conversation.yaml"))
+        .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
 }
 
 /// `settings` are read when the API is built, so `dump-spec` and `migrate` need none.
 pub fn module(settings: fn() -> Settings) -> Module {
-    Module::new(move |ctx| provider(ctx, model(&settings())))
+    let module = Module::new(move |ctx| provider(ctx, model(&settings())))
         .with_policies(policies)
         .performing(OPERATIONS)
+        .publishes::<ConversationTopic>()
+        .with_migrations(migrations());
+    #[cfg(feature = "seed")]
+    let module = module.with_seed(|ctx| async move { crate::seed::standard(&ctx.pool()).await });
+    module
 }
 
 fn model(settings: &Settings) -> Option<Arc<dyn ChatModel>> {

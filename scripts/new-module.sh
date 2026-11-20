@@ -43,7 +43,8 @@ entity_type=$(pascal "$entity")
 
 cores=(crates/modules/*/core/Cargo.toml crates/platform/*/core/Cargo.toml crates/reference/*/core/Cargo.toml)
 existing=$( ((${#cores[@]})) && sed -nE 's/^name = "([^"]+)"/\1/p' "${cores[@]}" | paste -sd '|' - || true)
-seeds=(crates/modules/*/*/src/seed.rs crates/platform/*/*/src/seed.rs crates/reference/*/*/src/seed.rs)
+# The platform's modules number from 1000, clear of the app's, so they don't count here.
+seeds=(crates/modules/*/*/src/seed.rs crates/reference/*/*/src/seed.rs)
 last=$( ((${#seeds[@]})) && sed -nE 's/^pub const MODULE: u32 = ([0-9]+);/\1/p' "${seeds[@]}" | sort -n | tail -1 || true)
 number=$((${last:-0} + 1))
 

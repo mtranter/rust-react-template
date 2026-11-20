@@ -1,0 +1,9 @@
+apiVersion: auth.flagrante.io/v1
+derivedRoles:
+  name: assistant_scopes
+  definitions:
+    - name: owner
+      parentRoles: ["*"]
+      condition:
+        match:
+          expr: R.attr.ownerId == P.id

@@ -1692,6 +1692,592 @@
         "operationId": "get_assistant_status"
       }
     },
+    "/assistant/conversations": {
+      "post": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Start a conversation with the assistant, owned by the caller: empty and untitled until\nits first message. Refused with `403` to a caller who may not chat.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "start_conversation"
+      },
+      "get": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "List the caller's own conversations, without their messages, paginated. Newest first\nunless `sort` says otherwise (`-` prefix for descending). No one, an admin included,\nlists another's.",
+        "parameters": [
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ConversationSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_ConversationSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "list_conversations"
+      }
+    },
+    "/assistant/conversations/{id}": {
+      "get": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Fetch one of the caller's conversations with its messages, oldest first, and each tool\ncall the assistant made in it. Its version is in the `ETag` header (and body). Another's\nconversation is refused with `404`.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "get_conversation"
+      },
+      "delete": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Delete one of the caller's conversations and its messages. Requires `If-Match` with the\nversion the client last read; a stale value is refused with `412` and deletes nothing.\nAnother's conversation is refused with `404`.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "delete_conversation"
+      }
+    },
     "/users": {
       "post": {
         "tags": [
@@ -3920,6 +4506,27 @@
           }
         }
       },
+      "AssistantMessageResponse": {
+        "type": "object",
+        "title": "AssistantMessageResponse",
+        "description": "What the assistant answered in words.",
+        "required": [
+          "id",
+          "postedAt",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "postedAt": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "AssistantStatusResponse": {
         "type": "object",
         "title": "AssistantStatusResponse",
@@ -4017,6 +4624,74 @@
         "properties": {
           "displayName": {
             "type": "string"
+          }
+        }
+      },
+      "ConversationResponse": {
+        "type": "object",
+        "title": "ConversationResponse",
+        "required": [
+          "id",
+          "title",
+          "createdAt",
+          "messages",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The start of the caller's first message; empty until there is one."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          },
+          "version": {
+            "type": "string",
+            "description": "Optimistic-concurrency version. Echo it back in `If-Match` to change or delete this\nconversation; a stale value is refused with `412 Precondition Failed`. Also mirrored in\nthe `ETag` response header."
+          }
+        }
+      },
+      "ConversationSort": {
+        "type": "string",
+        "enum": [
+          "createdAt",
+          "-createdAt"
+        ]
+      },
+      "ConversationSummaryResponse": {
+        "type": "object",
+        "title": "ConversationSummaryResponse",
+        "description": "A conversation as a list shows it, without its messages.",
+        "required": [
+          "id",
+          "title",
+          "createdAt",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The start of the caller's first message; empty until there is one."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Its version, as `getConversation` answers it."
           }
         }
       },
@@ -4255,6 +4930,36 @@
           }
         }
       },
+      "ListResult_ConversationSummaryResponse": {
+        "type": "object",
+        "title": "ListResult_ConversationSummaryResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummaryResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ListResult_GrantResponse": {
         "type": "object",
         "title": "ListResult_GrantResponse",
@@ -4434,6 +5139,98 @@
             "format": "int64"
           }
         }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "description": "One of a conversation's messages, told apart by its `kind`.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MessageResponse_UserMessageResponse"
+          },
+          {
+            "$ref": "#/components/schemas/MessageResponse_AssistantMessageResponse"
+          },
+          {
+            "$ref": "#/components/schemas/MessageResponse_ToolCallsMessageResponse"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "user": "#/components/schemas/MessageResponse_UserMessageResponse",
+            "assistant": "#/components/schemas/MessageResponse_AssistantMessageResponse",
+            "toolCalls": "#/components/schemas/MessageResponse_ToolCallsMessageResponse"
+          }
+        }
+      },
+      "MessageResponse_AssistantMessageResponse": {
+        "description": "One of a conversation's messages, told apart by its `kind`.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "assistant"
+                ],
+                "example": "assistant"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/AssistantMessageResponse"
+          }
+        ]
+      },
+      "MessageResponse_ToolCallsMessageResponse": {
+        "description": "One of a conversation's messages, told apart by its `kind`.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "toolCalls"
+                ],
+                "example": "toolCalls"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallsMessageResponse"
+          }
+        ]
+      },
+      "MessageResponse_UserMessageResponse": {
+        "description": "One of a conversation's messages, told apart by its `kind`.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ],
+                "example": "user"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/UserMessageResponse"
+          }
+        ]
       },
       "NoteResponse": {
         "type": "object",
@@ -4664,6 +5461,91 @@
           "lastSeen",
           "-lastSeen"
         ]
+      },
+      "ToolCallResponse": {
+        "type": "object",
+        "title": "ToolCallResponse",
+        "required": [
+          "id",
+          "tool",
+          "arguments",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string",
+            "description": "The operation's id, which is its tool's name."
+          },
+          "arguments": {},
+          "status": {
+            "$ref": "#/components/schemas/ToolCallStatusResponse"
+          },
+          "result": {
+            "description": "The operation's answer when it succeeded."
+          },
+          "error": {
+            "description": "The operation's error body when it was refused or failed, or why it didn't run."
+          }
+        }
+      },
+      "ToolCallStatusResponse": {
+        "type": "string",
+        "description": "`ran`: a read, run at once; `awaiting_approval`: a write waiting for the caller to approve\nor reject it; `approved`, `rejected`: the caller's decision.",
+        "enum": [
+          "ran",
+          "awaiting_approval",
+          "approved",
+          "rejected"
+        ]
+      },
+      "ToolCallsMessageResponse": {
+        "type": "object",
+        "title": "ToolCallsMessageResponse",
+        "description": "The app's operations the assistant asked to run as the caller.",
+        "required": [
+          "id",
+          "postedAt",
+          "toolCalls"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "postedAt": {
+            "type": "string"
+          },
+          "toolCalls": {
+            "type": "array",
+            "description": "In the order the assistant asked for them.",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallResponse"
+            }
+          }
+        }
+      },
+      "UserMessageResponse": {
+        "type": "object",
+        "title": "UserMessageResponse",
+        "description": "What the caller wrote.",
+        "required": [
+          "id",
+          "postedAt",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "postedAt": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
       },
       "UserResponse": {
         "type": "object",

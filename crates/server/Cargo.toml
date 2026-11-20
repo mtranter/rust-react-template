@@ -80,7 +80,7 @@ rust-embed = { version = "8", optional = true, features = ["mime-guess"] }
 default = []
 embed-frontend = ["dep:rust-embed", "poem/embed"]
 # Builds the `seed` bin; prod images are built without it (ADR 0021).
-seed = ["users/seed", "notes/seed"]
+seed = ["assistant/seed", "users/seed", "notes/seed"]
 
 [dev-dependencies]
 app-test-db.workspace = true

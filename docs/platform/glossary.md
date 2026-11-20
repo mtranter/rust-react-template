@@ -215,6 +215,10 @@ _Avoid_: Decision (for a `Where`), verdict
 The platform's `assistant` Module and the chat it serves (Spec 0012): a model that acts in the app as the signed-in user, through the same Tools `/mcp` offers, so it can do exactly what that user can. On only while a model is configured (`APP_AGENT_MODEL`, a Bedrock model id) and the user holds `chat` on the `assistant` resource, granted to `user` by default; the SPA shows its page and link only then, as the status operation (`get_assistant_status`) says. Its operations are REST-only. The model sits behind one seam, `ChatModel`: Bedrock in production, a scripted Fake in tests.
 _Avoid_: Agent (an MCP client outside the app), bot, copilot
 
+**Conversation**:
+An Aggregate Root of the Assistant: a chat between one signed-in user, its owner (the subject of the token that started it), and the Assistant. It owns its Messages as Child Entities, each the owner's text, the Assistant's text, or the Tool calls the Assistant asked for, each recorded with the Tool's name, its arguments, its status (`ran`, `awaiting_approval`, `approved`, `rejected`) and its result or error body. Untitled until the owner's first message, whose start becomes its title. Only its owner may list, open or delete it: an admin included, anyone else is answered `404`.
+_Avoid_: Chat (the Assistant's screen), thread, session (a sign-in)
+
 ## Testing
 
 **Integration Test**:

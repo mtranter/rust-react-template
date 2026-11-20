@@ -18,10 +18,28 @@ impl<C: Composition> Surface for Tools<C> {
     /// An operation an agent shouldn't be offered, by its operation id, with
     /// why (a browser-only redirect, a file upload). One whose body isn't JSON
     /// must be listed.
-    const REST_ONLY: &'static [RestOnly] = &[RestOnly {
-        operation_id: "get_assistant_status",
-        reason: ASSISTANT,
-    }];
+    const REST_ONLY: &'static [RestOnly] = &[
+        RestOnly {
+            operation_id: "get_assistant_status",
+            reason: ASSISTANT,
+        },
+        RestOnly {
+            operation_id: "start_conversation",
+            reason: ASSISTANT,
+        },
+        RestOnly {
+            operation_id: "list_conversations",
+            reason: ASSISTANT,
+        },
+        RestOnly {
+            operation_id: "get_conversation",
+            reason: ASSISTANT,
+        },
+        RestOnly {
+            operation_id: "delete_conversation",
+            reason: ASSISTANT,
+        },
+    ];
 }
 
 /// Why the `assistant`'s operations are REST-only (Spec 0012).

@@ -1,0 +1,6 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: conversation
+  version: default
+  importDerivedRoles: [assistant_scopes]
+  rules: []
