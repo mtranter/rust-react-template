@@ -1,4 +1,4 @@
-# Learnings: 0062 users approve or reject the assistant's pending writes
+# Learnings: 0062 deciding the assistant's pending writes
 
 - **The outbox holds one event per (topic, key, version)** (`messaging.outbox_event_idx`). A use case that has several things to announce on one root (rejecting each pending call, then posting the message) saves once per event, each bumping the version, rather than publishing several events at one version.
 - **The `idempotency_key` reaches a tool only if its operation is served through `app_web::Idempotent`.** `Toolbox` refuses an argument the tool doesn't declare, so `CallerTools::call` adds the key only when the tool's input schema has `idempotency_key`. The assistant driver's stand-in API is now `Idempotent<AppOperations>` behind `ctx.idempotency()`, as the server's is. Declaring `Idempotency-Key` yourself on an operation that `Idempotent` also wraps makes "two arguments named `idempotency_key`", and `Toolbox` drops that tool without a word (the tests saw "no tool is named `create_list`"). Read the header from `&poem::Request` instead.
