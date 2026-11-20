@@ -1,0 +1,30 @@
+[package]
+name = "assistant"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+app-authz.workspace = true
+app-error.workspace = true
+app-module.workspace = true
+app-web.workspace = true
+async-trait.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+rig-bedrock.workspace = true
+rig-core.workspace = true
+serde.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+app-authz = { workspace = true, features = ["testing"] }
+app-domain.workspace = true
+app-test-db.workspace = true
+app-web = { workspace = true, features = ["test"] }
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true

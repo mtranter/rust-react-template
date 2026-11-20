@@ -39,8 +39,17 @@ struct Redis {
     ca: Option<String>,
 }
 
+/// What redis's `rediss://` connections encrypt with: they take the process's
+/// default provider, which rustls can't choose itself while more than one is
+/// built in (ring, and the AWS SDK's aws-lc-rs).
+pub(crate) fn install_crypto_provider() {
+    // Already installed, by this or anything else, is as good.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 impl Redis {
     fn client(&self) -> RedisResult<Client> {
+        install_crypto_provider();
         match &self.ca {
             None => Client::open(self.url.as_str()),
             Some(ca) => Client::build_with_tls(

@@ -21,7 +21,8 @@ pub enum Environment {
 
 /// Taken raw, not through `Env`, which parses each value: an all-digit subject
 /// or client id (as Google issues) would be a number, and `true` a bool.
-const RAW: [&str; 4] = [
+const RAW: [&str; 5] = [
+    "agent_model",
     "bootstrap_admins",
     "oidc_client_id",
     "oidc_scopes",
@@ -74,6 +75,15 @@ pub struct AppConfig {
     /// Parameters the SPA adds to its authorization request, space-separated
     /// `key=value` pairs (`audience=https://api.example.com`).
     pub oidc_extra_params: String,
+    /// The assistant's Bedrock model or inference-profile id (Spec 0012).
+    /// Unset (or empty), the assistant is off.
+    pub agent_model: Option<String>,
+    /// The tool calls one of the assistant's turns may make.
+    pub agent_max_tool_calls: u32,
+    /// The tokens the model may answer with, per turn.
+    pub agent_max_output_tokens: u32,
+    /// How many of a conversation's latest messages the model is sent.
+    pub agent_history_messages: u32,
 }
 
 impl Default for AppConfig {
@@ -97,6 +107,10 @@ impl Default for AppConfig {
             oidc_client_id: None,
             oidc_scopes: String::new(),
             oidc_extra_params: String::new(),
+            agent_model: None,
+            agent_max_tool_calls: assistant::Settings::default().max_tool_calls,
+            agent_max_output_tokens: assistant::Settings::default().max_output_tokens,
+            agent_history_messages: assistant::Settings::default().history_messages,
         }
     }
 }
@@ -104,14 +118,18 @@ impl Default for AppConfig {
 impl AppConfig {
     /// The error is boxed: `figment::Error` is large, and this is a cold path.
     pub fn load() -> Result<Self, Box<figment::Error>> {
+        let config = Self::read()?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn read() -> Result<Self, Box<figment::Error>> {
         let raw = RAW.into_iter().filter_map(|key| {
             std::env::var(format!("APP_{}", key.to_ascii_uppercase()))
                 .ok()
                 .map(|value| (key, value))
         });
-        let config: Self = Self::figment(raw).extract().map_err(Box::new)?;
-        config.validate()?;
-        Ok(config)
+        Self::figment(raw).extract().map_err(Box::new)
     }
 
     fn figment<'a>(raw: impl IntoIterator<Item = (&'a str, String)>) -> Figment {
@@ -147,6 +165,12 @@ impl AppConfig {
             return refuse(
                 "refusing to start in prod with APP_JWT_ISSUER set but APP_OIDC_CLIENT_ID unset: \
                  the embedded SPA signs in at the issuer as that client",
+            );
+        }
+        if self.agent_max_output_tokens == 0 || self.agent_history_messages == 0 {
+            return refuse(
+                "refusing to start with APP_AGENT_MAX_OUTPUT_TOKENS or APP_AGENT_HISTORY_MESSAGES \
+                 0: the assistant could answer nothing, or send the model no message",
             );
         }
         self.extra_params().map(|_| ()).map_err(|message| {
@@ -193,6 +217,21 @@ impl AppConfig {
             .collect()
     }
 
+    /// The assistant's settings, `APP_AGENT_*`.
+    pub fn agent(&self) -> assistant::Settings {
+        assistant::Settings {
+            model: self
+                .agent_model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(str::to_owned),
+            max_tool_calls: self.agent_max_tool_calls,
+            max_output_tokens: self.agent_max_output_tokens,
+            history_messages: self.agent_history_messages,
+        }
+    }
+
     /// A `RedisBus` when `APP_REDIS_URL` is set. Unset, nothing is broadcast,
     /// which a server or worker refuses when `required`: a module that
     /// broadcasts would otherwise work nowhere and say so nowhere.
@@ -230,7 +269,20 @@ impl AppConfig {
     }
 }
 
+/// The assistant's settings as `AppConfig::load` reads them, for its module to build its model
+/// from. Every binary that serves the assistant loads its config first, refusing to start on
+/// one that doesn't read, so the defaults stand in only for `dump-spec`, which builds no model.
+pub fn agent() -> assistant::Settings {
+    AppConfig::read()
+        .map(|config| config.agent())
+        .unwrap_or_default()
+}
+
+/// A test reading the environment does so in a `figment::Jail`, which runs one at a time, so
+/// none sees the variables another sets.
 #[cfg(test)]
+// `Jail::expect_with` takes figment's own (large) error as the closure's.
+#[allow(clippy::result_large_err)]
 mod tests {
     use super::*;
 
@@ -386,16 +438,18 @@ mod tests {
 
     #[test]
     fn the_sign_in_settings_are_read_as_strings_however_they_look() {
-        let config: AppConfig = AppConfig::figment([
-            ("oidc_client_id", "12345".to_string()),
-            ("oidc_scopes", "true".to_string()),
-            ("oidc_extra_params", "a=1".to_string()),
-        ])
-        .extract()
-        .expect("extracts");
-        assert_eq!(config.oidc_client_id.as_deref(), Some("12345"));
-        assert_eq!(config.oidc_scopes, "true");
-        assert_eq!(config.oidc_extra_params, "a=1");
+        figment::Jail::expect_with(|_| {
+            let config: AppConfig = AppConfig::figment([
+                ("oidc_client_id", "12345".to_string()),
+                ("oidc_scopes", "true".to_string()),
+                ("oidc_extra_params", "a=1".to_string()),
+            ])
+            .extract()?;
+            assert_eq!(config.oidc_client_id.as_deref(), Some("12345"));
+            assert_eq!(config.oidc_scopes, "true");
+            assert_eq!(config.oidc_extra_params, "a=1");
+            Ok(())
+        });
     }
 
     #[test]
@@ -425,11 +479,88 @@ mod tests {
 
     #[test]
     fn a_bootstrap_admin_whose_subject_reads_as_a_number_or_bool_is_still_a_subject() {
-        for raw in ["12345", "true", "109876543210987654321", "12345,ada"] {
-            let config: AppConfig = AppConfig::figment([("bootstrap_admins", raw.to_string())])
-                .extract()
-                .unwrap_or_else(|err| panic!("{raw}: {err}"));
-            assert_eq!(config.bootstrap_admins.as_str(), raw);
+        figment::Jail::expect_with(|_| {
+            for raw in ["12345", "true", "109876543210987654321", "12345,ada"] {
+                let config: AppConfig = AppConfig::figment([("bootstrap_admins", raw.to_string())])
+                    .extract()
+                    .unwrap_or_else(|err| panic!("{raw}: {err}"));
+                assert_eq!(config.bootstrap_admins.as_str(), raw);
+            }
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_assistant_is_off_with_the_specs_limits_by_default() {
+        figment::Jail::expect_with(|_| {
+            let config: AppConfig = AppConfig::figment([]).extract()?;
+            assert_eq!(
+                config.agent(),
+                assistant::Settings {
+                    model: None,
+                    max_tool_calls: 10,
+                    max_output_tokens: 4096,
+                    history_messages: 50,
+                }
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn each_agent_setting_is_overridden_by_its_variable() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("APP_AGENT_MAX_TOOL_CALLS", "3");
+            jail.set_env("APP_AGENT_MAX_OUTPUT_TOKENS", "1024");
+            jail.set_env("APP_AGENT_HISTORY_MESSAGES", "20");
+            let model = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0";
+            let config: AppConfig =
+                AppConfig::figment([("agent_model", model.to_string())]).extract()?;
+            assert_eq!(
+                config.agent(),
+                assistant::Settings {
+                    model: Some(model.to_string()),
+                    max_tool_calls: 3,
+                    max_output_tokens: 1024,
+                    history_messages: 20,
+                }
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn an_agent_limit_that_isnt_a_number_doesnt_load() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("APP_AGENT_MAX_TOOL_CALLS", "ten");
+            assert!(AppConfig::figment([]).extract::<AppConfig>().is_err());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn an_empty_agent_model_leaves_the_assistant_off() {
+        let config = AppConfig {
+            agent_model: Some("  ".to_string()),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.agent().model, None);
+    }
+
+    #[test]
+    fn no_output_tokens_or_history_refuses_to_start() {
+        for config in [
+            AppConfig {
+                agent_max_output_tokens: 0,
+                ..AppConfig::default()
+            },
+            AppConfig {
+                agent_history_messages: 0,
+                ..AppConfig::default()
+            },
+        ] {
+            let error = config.validate().expect_err("refused");
+            assert!(error.to_string().contains("APP_AGENT_"), "{error}");
         }
     }
 

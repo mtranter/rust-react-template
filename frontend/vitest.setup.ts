@@ -5,9 +5,11 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { client } from "./src/api/client.gen";
 
-// Every screen's layout asks whether the caller manages access: unless a test says otherwise,
-// they don't, as the server answers a caller who isn't an admin.
+// Every screen's layout asks whether the caller manages access and whether the assistant is on:
+// unless a test says otherwise, they don't, as the server answers a caller who isn't an admin, and
+// it is off, as with no model configured.
 export const server = setupServer(
+  http.get("*/api/assistant/status", () => HttpResponse.json({ on: false })),
   http.get("*/api/access/catalog", () =>
     HttpResponse.json(
       { code: "forbidden", message: "forbidden", requestId: "test" },

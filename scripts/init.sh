@@ -2,7 +2,7 @@
 # Turns a fresh clone of the template into a greenfield app, once, in one
 # commit: its own name and domain docs, the reference modules registered with
 # no server, the UI down to a shell. The platform's modules (`crates/platform/`,
-# `access`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
+# `access` and `assistant`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
 # tested, for agents to copy until the app's ticket 0001 retires it. Then it
 # removes itself, its make targets and its CI job.
 #
@@ -90,7 +90,7 @@ Once this app's own code shows the same patterns, the reference code is dead wei
 - [ ] The app's first feature covers \`frontend/AGENTS.md\`'s: a server-paged list with its page and sort in the URL, a create form showing server field errors, an edit dialog sending \`If-Match\` and handling a \`412\`.
 - [ ] Both tables, \`docs/agents/domain.md\` and \`frontend/AGENTS.md\`'s links point at the app's code instead.
 - [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
-- [ ] \`crates/platform/\` stays: \`access\` is the platform's, registered in every app, not reference code.
+- [ ] \`crates/platform/\` stays: \`access\` and \`assistant\` are the platform's, registered in every app, not reference code.
 - [ ] \`crates/reference/\`, its workspace members and dependencies in the root \`Cargo.toml\`, its packages in \`deny.toml\`, its queries in \`.sqlx\` (\`make prepare\`) and its mentions in \`scripts/\` are gone, and \`make check\` passes.
 EOF
 
@@ -105,14 +105,16 @@ perl -0 -i -pe '
 ' AGENTS.md
 
 # 4. The reference modules off the server: compiled and tested, registered nowhere.
-# The platform's `access` stays, granting from whatever the app registers.
+# The platform's `access` stays, granting from whatever the app registers, and
+# so does its `assistant`.
 cat >crates/server/src/modules.rs <<'EOF'
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
-//! it grants from every module's policies, so it is built from this list.
+//! it grants from every module's policies, so it is built from this list; its
+//! `assistant` follows.
 
-use crate::Composition;
+use crate::{Composition, config};
 use app_module::Module;
 
 /// What the server, `worker`, `migrate`, `seed` and `dump-spec` run.
@@ -121,10 +123,13 @@ pub struct Registered;
 impl Composition for Registered {
     /// Nest sub-tuples past 12 entries, where std stops deriving `Default` for
     /// tuples (poem-openapi's own cap is 16).
-    type Endpoints = access::AccessEndpoints;
+    type Endpoints = (access::AccessEndpoints, assistant::AssistantEndpoints);
 
     fn modules() -> Vec<Module> {
-        vec![access::module(Self::modules)]
+        vec![
+            access::module(Self::modules),
+            assistant::module(config::agent),
+        ]
     }
 }
 EOF
@@ -141,7 +146,7 @@ perl -0 -i -pe 's{^(dev: )}{# No seed assigns the dev sign-in (frontend/vite.con
 perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
 
 # 5. The UI down to a shell: the root layout, a placeholder home page, and the
-# platform's access screen.
+# platform's access and assistant screens.
 git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/pages/search-page.tsx frontend/src/test/fixtures.ts \
   frontend/src/test/notes-list.test.tsx frontend/src/test/note-editing.test.tsx \
@@ -161,6 +166,7 @@ import type { GrantSort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
 import { type GrantFilter, grantSortKeys } from "@/features/access";
 import { AccessPage } from "@/pages/access-page";
+import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { RootLayout } from "@/pages/root-layout";
 import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
@@ -212,8 +218,14 @@ const accessRoute = createRoute({
   component: AccessPage,
 });
 
+const assistantRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/assistant",
+  component: AssistantPage,
+});
+
 const routeTree = rootRoute.addChildren([
-  appRoute.addChildren([indexRoute, accessRoute]),
+  appRoute.addChildren([indexRoute, accessRoute, assistantRoute]),
   callbackRoute,
   signedOutRoute,
 ]);
@@ -255,6 +267,7 @@ cat >frontend/screens/scenarios.ts <<EOF
 import type { SignInProvider } from "@/lib/sign-in";
 import type { RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
+import { assistantScenarios } from "./assistant-scenarios.ts";
 import { signInScenarios } from "./sign-in-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
@@ -291,6 +304,7 @@ export const scenarios: Scenario[] = [
     },
     shows: (page) => page.locator("html.dark").getByRole("heading", { name: "$title" }),
   },
+  ...assistantScenarios,
   ...signInScenarios,
 ];
 EOF

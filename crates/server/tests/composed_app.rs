@@ -114,6 +114,36 @@ async fn every_module_answers_its_reads_without_a_server_error(pool: PgPool) {
     );
 }
 
+/// As CI and `make e2e` run it: with no `APP_AGENT_MODEL`, the server serves as usual with the
+/// assistant off.
+#[app_test_db::test(TEMPLATE)]
+async fn without_a_model_the_assistant_is_off(pool: PgPool) {
+    let verifier = JwtVerifier::new("test-secret");
+    let bearer = format!(
+        "Bearer {}",
+        verifier.issue(NIL_ID, 60).expect("issue token")
+    );
+    let ctx = context(pool).await;
+    let client = TestClient::new(server::build_app::<Registered>(
+        &ctx,
+        verifier,
+        Discovery::default(),
+        None,
+        "http://localhost",
+    ));
+
+    let response = client
+        .get(format!("{}/assistant/status", server::API_BASE))
+        .header("Authorization", &bearer)
+        .send()
+        .await;
+
+    response.assert_status_is_ok();
+    response
+        .assert_json(serde_json::json!({ "on": false }))
+        .await;
+}
+
 fn with_params(path: &str) -> String {
     path.split('/')
         .map(|segment| {

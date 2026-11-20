@@ -9,7 +9,7 @@ Extends `crates/AGENTS.md`, which you must have read: its layers, aggregates, ac
 
 ## Scaffold
 
-`make new-module NAME=widgets [ENTITY=<aggregate>]` (Postgres up: `make db-up`) copies `crates/module-template/{core,api}` (workspace crates, packages `widgets` and `widgets-api`, compiled and tested but registered with no server) into a module that compiles, passes its tests and is registered everywhere: every layer, a gate, a resource policy with no rules, default grants for `user` and `admin` and an `OPERATIONS` table, a versioned aggregate with create/read/rename/list publishing its events, a projection of its own topic behind a search operation, migrations, seed and tests. It allocates the next module number, applies the migrations to the dev DB and refreshes `.sqlx`. It refuses a name a platform module has (`access`).
+`make new-module NAME=widgets [ENTITY=<aggregate>]` (Postgres up: `make db-up`) copies `crates/module-template/{core,api}` (workspace crates, packages `widgets` and `widgets-api`, compiled and tested but registered with no server) into a module that compiles, passes its tests and is registered everywhere: every layer, a gate, a resource policy with no rules, default grants for `user` and `admin` and an `OPERATIONS` table, a versioned aggregate with create/read/rename/list publishing its events, a projection of its own topic behind a search operation, migrations, seed and tests. It allocates the next module number, applies the migrations to the dev DB and refreshes `.sqlx`. It refuses a name a platform module has (`access`, `assistant`).
 
 ## Then
 

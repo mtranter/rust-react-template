@@ -4,6 +4,7 @@ import { type GrantFilter, grantSortKeys } from "@/features/access";
 import { noteSummarySortKeys } from "@/features/note-search";
 import { noteSortKeys } from "@/features/notes";
 import { AccessPage } from "@/pages/access-page";
+import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { RootLayout } from "@/pages/root-layout";
 import { SearchPage } from "@/pages/search-page";
@@ -78,8 +79,14 @@ const accessRoute = createRoute({
   component: AccessPage,
 });
 
+const assistantRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/assistant",
+  component: AssistantPage,
+});
+
 const routeTree = rootRoute.addChildren([
-  appRoute.addChildren([indexRoute, homeRoute, searchRoute, accessRoute]),
+  appRoute.addChildren([indexRoute, homeRoute, searchRoute, accessRoute, assistantRoute]),
   callbackRoute,
   signedOutRoute,
 ]);

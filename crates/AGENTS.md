@@ -4,7 +4,7 @@ Rules for the Rust backend, a modular monolith: each module is a crate that owns
 
 **Copy the reference code.** This file holds what the code can't show you: the rules, the reasons, and what isn't built yet.
 
-The platform's own modules are in `crates/platform/` (today `access`, ADR 0040): registered with the server like the app's in `crates/modules/`, kept registered by `make init`, and pulled with the platform's later changes (`TEMPLATE_VERSION`), so an app never edits them. The reference modules are in `crates/reference/`, and the journeys over them in `crates/reference/journeys/`: compiled, linted and tested, and registered with the server in the template only (`make init` registers them with no server, until an app's own code shows the same). Below, `notes` is `crates/reference/notes/core` and `notes_api` its `api`, and so on.
+The platform's own modules are in `crates/platform/` (today `access`, ADR 0040, and `assistant`, Spec 0012): registered with the server like the app's in `crates/modules/`, kept registered by `make init`, and pulled with the platform's later changes (`TEMPLATE_VERSION`), so an app never edits them. The reference modules are in `crates/reference/`, and the journeys over them in `crates/reference/journeys/`: compiled, linted and tested, and registered with the server in the template only (`make init` registers them with no server, until an app's own code shows the same). Below, `notes` is `crates/reference/notes/core` and `notes_api` its `api`, and so on.
 
 | Doing | Copy |
 |---|---|
@@ -22,6 +22,7 @@ The platform's own modules are in `crates/platform/` (today `access`, ADR 0040):
 | A cross-module journey | `crates/reference/journeys/`, written in `crates/server/tests/journeys/` over the registered modules |
 | MCP tools for an operation | nothing to write: see `app_web::mcp` and `crates/server/src/tools.rs` |
 | Who may do what at runtime: roles, grants, assignments, defaults, the rule set's rebuild | `crates/platform/access` (its `application/rules.rs`, `application/roles.rs`, `application/assignments.rs`, `apply_defaults`), wired in `server::rules` / `server::apply_default_grants`, journeys in `crates/reference/journeys/tests/journeys/granting.rs` and `assigning.rs` |
+| An external model behind a seam, its configuration, a fake in tests | `crates/platform/assistant` (`ChatModel` in `application/model.rs`, its Bedrock adapter in `bedrock/`, `module(config::agent)` in `crates/server/src/modules.rs`, its driver's `ScriptedModel`) |
 
 **Load the skill before the task.** These hold the how-to for tasks that need more than the rules below; the rules below still hold. Before any of these, invoke the skill (Skill tool, or read `.claude/skills/<name>/SKILL.md`), even when the change looks small: its details are the ones a build doesn't catch.
 
@@ -120,6 +121,15 @@ Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persisten
   - Its action is in the resource's closed `Action` enum, granted in `policies/default_grants.yaml` (applied once by `migrate`, then data admins edit) and listed in `OPERATIONS`.
   - **Never hand-roll a role check in a module.**
 - **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); the `opentelemetry` crates `0.33.x` ↔ `tracing-opentelemetry` `0.34.x`; MSRV 1.97.1, set by `rig-bedrock` 0.46.
+
+### The assistant (Spec 0012)
+
+`assistant` (`crates/platform/assistant`) is the platform's chat in which a model acts in the app as the signed-in user. Today it serves only `get_assistant_status`, guarded by `chat` on its `assistant` resource (granted to `user` by default), which says whether it is on: a model is configured. It owns no data yet, so it has no `db/`, migrations or seed.
+
+- **The model sits behind one seam**, `ChatModel` in `application/model.rs`, in the module's own types, so rig (pre-1.0) stops at the adapter: Bedrock in `bedrock/` (rig-bedrock's Converse, region and credentials from the AWS SDK's default chain, loaded on first call), a `ScriptedModel` in its tests' driver, passed to `provider(ctx, model)`. No test or CI step calls Bedrock. Another provider is a new adapter.
+- **Its settings are the server's** (`APP_AGENT_MODEL`, unset = off; `APP_AGENT_MAX_TOOL_CALLS` 10; `APP_AGENT_MAX_OUTPUT_TOKENS` 4096; `APP_AGENT_HISTORY_MESSAGES` 50), read in `AppConfig` and handed over as `assistant::Settings` by `module(config::agent)`, which reads them when the API is built.
+- **Its operations are REST-only** (`REST_ONLY` in `crates/server/src/tools.rs`): an agent over MCP already has the tools, and its turn operations will stream.
+- rig-bedrock brings the AWS SDK's rustls on `aws-lc-rs` beside the `ring` the rest uses (ADR 0005): a crate taking rustls' process-default provider (redis) needs `app_bus`'s `install_crypto_provider` first, or panics.
 
 ### Running and deploying
 

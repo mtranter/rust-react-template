@@ -35,3 +35,18 @@ Migrations run explicitly (`make migrate`, a pre-start task in a deployment), ne
 - Each instance rebuilds its access rule set from the database every 5 s, so a grant or assignment reaches every instance within that.
 - A module that broadcasts makes the server and worker refuse to start without `APP_REDIS_URL`; give them the same one (ElastiCache Serverless for Valkey over TLS in production: `rediss://<user>:<password>@<endpoint>:6379`).
 - `APP_ENV=prod` refuses the built-in dev `APP_JWT_SECRET` when no issuer is set.
+
+## The assistant (Spec 0012)
+
+The server's `assistant` is off unless `APP_AGENT_MODEL` is set: the server starts as usual, its status operation says off, and the SPA hides its page. With it set:
+
+| Variable | Default | What |
+|---|---|---|
+| `APP_AGENT_MODEL` | none (off) | The Bedrock model or inference-profile id, e.g. an Anthropic Claude Sonnet profile. |
+| `APP_AGENT_MAX_TOOL_CALLS` | `10` | Tool calls per turn. |
+| `APP_AGENT_MAX_OUTPUT_TOKENS` | `4096` | Tokens the model may answer with per turn; `0` refuses to start. |
+| `APP_AGENT_HISTORY_MESSAGES` | `50` | A conversation's latest messages sent to the model; `0` refuses to start. |
+
+- **AWS region and credentials** come from the AWS SDK's default chain (`AWS_REGION`, `AWS_PROFILE`, an instance or task role, ...), loaded on the first call to the model, so a missing credential shows then, not at start-up.
+- **IAM**: the server's role needs `bedrock:InvokeModelWithResponseStream` and `bedrock:InvokeModel` on that model (and, for an inference profile, on the profile and the models it routes to). The worker and `migrate` need none.
+- **Data residency**: whatever the tools return for a user, their data included, is sent to the configured model in its region. An app with data-residency or contractual limits picks its region and model (or a geographic inference profile, `eu.` ...) to suit, or leaves the assistant off.
