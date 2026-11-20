@@ -229,7 +229,10 @@ pub const LIST_ID: &str = "11111111-1111-1111-1111-111111111111";
 struct AppOperations;
 
 #[derive(Clone, Default)]
-struct Written(Arc<Mutex<Vec<(Value, Option<String>)>>>);
+struct Written(Arc<Mutex<Vec<Write>>>);
+
+/// A body the write was sent, and its `Idempotency-Key`.
+pub type Write = (Value, Option<String>);
 
 #[OpenApi]
 impl AppOperations {
@@ -411,7 +414,7 @@ impl Assistant {
 
     /// What the app's write operation was sent, oldest first, each with the `Idempotency-Key`
     /// it came with.
-    pub fn written_with_keys(&self) -> Vec<(Value, Option<String>)> {
+    pub fn written_with_keys(&self) -> Vec<Write> {
         self.written.0.lock().unwrap().clone()
     }
 
