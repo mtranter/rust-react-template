@@ -24,5 +24,5 @@ pub use model::{
 pub use repository::{ConversationRepository, ConversationSortKey, ConversationSummary};
 pub use service::{AssistantService, Status};
 pub use settings::Settings;
-pub use tools::{Answered, AppTool, AppTools};
-pub use turns::TurnEvent;
+pub use tools::{Answered, AppTool, AppTools, summary};
+pub use turns::{TurnEvent, Verdict};

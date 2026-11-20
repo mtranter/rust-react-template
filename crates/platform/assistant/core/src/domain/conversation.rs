@@ -1,4 +1,7 @@
-use super::{Content, ConversationError, ConversationEvent, ConversationId, Message};
+use super::{
+    Content, ConversationError, ConversationEvent, ConversationId, Decision, Message, ToolCall,
+    ToolCallId, ToolCallStatus,
+};
 use chrono::{DateTime, Utc};
 
 /// A title is the start of the first thing its owner said.
@@ -45,14 +48,44 @@ impl Conversation {
     /// The owner says `message`, opening a turn: refused while the assistant waits for their
     /// decision on an action, which a turn can't go on without.
     pub fn ask(&mut self, message: Message) -> Result<ConversationEvent, ConversationError> {
-        if self
-            .messages
-            .iter()
-            .any(|m| m.awaiting_approval().next().is_some())
-        {
+        if self.awaiting_approval().next().is_some() {
             return Err(ConversationError::AwaitingApproval);
         }
         Ok(self.post(message))
+    }
+
+    /// Every tool call still waiting for the owner's decision, oldest first.
+    pub fn awaiting_approval(&self) -> impl Iterator<Item = &ToolCall> {
+        self.messages.iter().flat_map(Message::awaiting_approval)
+    }
+
+    /// Call `id`, if it is still waiting for the owner's decision.
+    pub fn awaiting(&self, id: ToolCallId) -> Result<&ToolCall, ConversationError> {
+        let call = self
+            .messages
+            .iter()
+            .flat_map(Message::calls)
+            .find(|call| call.id() == id)
+            .ok_or(ConversationError::NoSuchToolCall)?;
+        match call.status() {
+            ToolCallStatus::AwaitingApproval => Ok(call),
+            _ => Err(ConversationError::NotAwaitingApproval),
+        }
+    }
+
+    /// Records the owner's `decision` on call `id`: refused once it has had one.
+    pub fn decide(
+        &mut self,
+        id: ToolCallId,
+        decision: Decision,
+    ) -> Result<ConversationEvent, ConversationError> {
+        self.messages
+            .iter_mut()
+            .flat_map(Message::calls_mut)
+            .find(|call| call.id() == id)
+            .ok_or(ConversationError::NoSuchToolCall)?
+            .decide(decision)?;
+        Ok(ConversationEvent::ToolCallDecided(id))
     }
 
     /// What deleting it says happened.
@@ -112,7 +145,7 @@ fn title(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{MessageId, ToolCall, ToolCallId, ToolCallStatus};
+    use crate::domain::{MessageId, Outcome};
     use serde_json::json;
 
     fn started() -> Conversation {
@@ -178,6 +211,66 @@ mod tests {
             None,
         );
         assert!(Message::tool_calls(MessageId::new(), vec![call], Utc::now()).is_ok());
+    }
+
+    fn awaiting(conversation: &mut Conversation) -> ToolCallId {
+        let id = ToolCallId::new();
+        let call = ToolCall::new(
+            id,
+            "create_list".into(),
+            json!({}),
+            ToolCallStatus::AwaitingApproval,
+            None,
+        );
+        let _ = conversation
+            .post(Message::tool_calls(MessageId::new(), vec![call], Utc::now()).unwrap());
+        id
+    }
+
+    #[test]
+    fn an_approved_call_keeps_its_answer_and_a_rejected_one_none() {
+        let mut conversation = started();
+        let (approved, rejected) = (awaiting(&mut conversation), awaiting(&mut conversation));
+        let answer = Outcome::Ok(json!({ "id": 1 }));
+        assert_eq!(
+            conversation.decide(approved, Decision::Approved(answer.clone())),
+            Ok(ConversationEvent::ToolCallDecided(approved))
+        );
+        assert_eq!(
+            conversation.decide(rejected, Decision::Rejected),
+            Ok(ConversationEvent::ToolCallDecided(rejected))
+        );
+        let calls: Vec<_> = conversation
+            .messages()
+            .iter()
+            .flat_map(Message::calls)
+            .collect();
+        assert_eq!(calls[0].status(), ToolCallStatus::Approved);
+        assert_eq!(calls[0].outcome(), Some(&answer));
+        assert_eq!(calls[1].status(), ToolCallStatus::Rejected);
+        assert_eq!(calls[1].outcome(), None);
+        assert!(conversation.awaiting_approval().next().is_none());
+        assert!(conversation.ask(said("Thanks")).is_ok());
+    }
+
+    #[test]
+    fn a_call_is_decided_once() {
+        let mut conversation = started();
+        let id = awaiting(&mut conversation);
+        assert!(conversation.awaiting(id).is_ok());
+        let _ = conversation.decide(id, Decision::Rejected).unwrap();
+        assert_eq!(
+            conversation.awaiting(id).map(ToolCall::id),
+            Err(ConversationError::NotAwaitingApproval)
+        );
+        assert_eq!(
+            conversation.decide(id, Decision::Rejected),
+            Err(ConversationError::NotAwaitingApproval)
+        );
+        assert_eq!(
+            conversation.decide(ToolCallId::new(), Decision::Rejected),
+            Err(ConversationError::NoSuchToolCall)
+        );
     }
 
     #[test]

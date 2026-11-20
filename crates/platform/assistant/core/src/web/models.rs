@@ -1,7 +1,9 @@
 //! Ids, timestamps, and the version are plain strings so the generated TS client stays
 //! dependency-free.
 
-use crate::application::{ConversationSortKey, ConversationSummary, Status, TurnEvent, Versioned};
+use crate::application::{
+    ConversationSortKey, ConversationSummary, Status, TurnEvent, Verdict, Versioned,
+};
 use crate::domain::{Content, Conversation, Message, Outcome, ToolCall, ToolCallStatus};
 use app_persistence::{Direction, Sort};
 use app_web::{ApiError, ErrorBody, SortParam};
@@ -33,6 +35,20 @@ pub struct ConversationResponse {
     /// conversation; a stale value is refused with `412 Precondition Failed`. Also mirrored in
     /// the `ETag` response header.
     pub version: String,
+}
+
+impl ConversationResponse {
+    /// With each tool call's summary, as `summary_of` tells it by the tool's name.
+    pub fn summarised(mut self, summary_of: impl Fn(&str) -> Option<String>) -> Self {
+        for message in &mut self.messages {
+            if let MessageResponse::ToolCalls(message) = message {
+                for call in &mut message.tool_calls {
+                    call.summary = summary_of(&call.tool);
+                }
+            }
+        }
+        self
+    }
 }
 
 impl From<Versioned<Conversation>> for ConversationResponse {
@@ -130,6 +146,9 @@ pub struct ToolCallResponse {
     pub id: String,
     /// The operation's id, which is its tool's name.
     pub tool: String,
+    /// The operation's summary, saying what it does; absent for a tool the app no longer has.
+    #[oai(skip_serializing_if_is_none)]
+    pub summary: Option<String>,
     pub arguments: serde_json::Value,
     pub status: ToolCallStatusResponse,
     /// The operation's answer when it succeeded.
@@ -191,19 +210,26 @@ fn result_and_error(
     }
 }
 
+impl From<ToolCallStatus> for ToolCallStatusResponse {
+    fn from(status: ToolCallStatus) -> Self {
+        match status {
+            ToolCallStatus::Ran => Self::Ran,
+            ToolCallStatus::AwaitingApproval => Self::AwaitingApproval,
+            ToolCallStatus::Approved => Self::Approved,
+            ToolCallStatus::Rejected => Self::Rejected,
+        }
+    }
+}
+
 impl From<&ToolCall> for ToolCallResponse {
     fn from(call: &ToolCall) -> Self {
         let (result, error) = result_and_error(call.outcome());
         Self {
             id: call.id().to_string(),
             tool: call.tool().to_string(),
+            summary: None,
             arguments: call.arguments().clone(),
-            status: match call.status() {
-                ToolCallStatus::Ran => ToolCallStatusResponse::Ran,
-                ToolCallStatus::AwaitingApproval => ToolCallStatusResponse::AwaitingApproval,
-                ToolCallStatus::Approved => ToolCallStatusResponse::Approved,
-                ToolCallStatus::Rejected => ToolCallStatusResponse::Rejected,
-            },
+            status: call.status().into(),
             result,
             error,
         }
@@ -240,6 +266,30 @@ pub struct SendMessageRequest {
     pub text: String,
 }
 
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DecideToolCallRequest {
+    pub decision: DecisionRequest,
+}
+
+/// `approve` runs the operation as the caller; `reject` doesn't, and tells the assistant the
+/// caller declined it.
+#[derive(Debug, Clone, Copy, Enum)]
+#[oai(rename_all = "snake_case")]
+pub enum DecisionRequest {
+    Approve,
+    Reject,
+}
+
+impl From<DecisionRequest> for Verdict {
+    fn from(decision: DecisionRequest) -> Self {
+        match decision {
+            DecisionRequest::Approve => Verdict::Approve,
+            DecisionRequest::Reject => Verdict::Reject,
+        }
+    }
+}
+
 /// One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with
 /// `error` when what it had to store couldn't be.
 #[derive(Debug, Union)]
@@ -253,6 +303,8 @@ pub enum TurnEventResponse {
     ToolResult(ToolResultEvent),
     #[oai(mapping = "approvalRequired")]
     ApprovalRequired(ApprovalRequiredEvent),
+    #[oai(mapping = "decided")]
+    Decided(ToolCallDecidedEvent),
     #[oai(mapping = "finished")]
     Finished(TurnFinishedEvent),
     #[oai(mapping = "error")]
@@ -291,7 +343,18 @@ pub struct ToolResultEvent {
 pub struct ApprovalRequiredEvent {
     pub id: String,
     pub tool: String,
+    /// The operation's summary, saying what approving it would do.
+    pub summary: String,
     pub arguments: serde_json::Value,
+}
+
+/// The caller's decision on a call that awaited it, `approved` or `rejected`: a call approved
+/// has run, and its answer follows as a `toolResult`.
+#[derive(Debug, Object)]
+pub struct ToolCallDecidedEvent {
+    /// The tool call's, as `approvalRequired` named it.
+    pub id: String,
+    pub status: ToolCallStatusResponse,
 }
 
 /// The turn ended: the messages it stored, the caller's first, and the conversation's version
@@ -334,11 +397,17 @@ impl From<TurnEvent> for TurnEventResponse {
             TurnEvent::ApprovalRequired {
                 id,
                 tool,
+                summary,
                 arguments,
             } => Self::ApprovalRequired(ApprovalRequiredEvent {
                 id: id.to_string(),
                 tool,
+                summary,
                 arguments,
+            }),
+            TurnEvent::Decided { id, status } => Self::Decided(ToolCallDecidedEvent {
+                id: id.to_string(),
+                status: status.into(),
             }),
             TurnEvent::Finished { messages, version } => Self::Finished(TurnFinishedEvent {
                 message_ids: messages.iter().map(ToString::to_string).collect(),

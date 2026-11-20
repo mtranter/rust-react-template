@@ -1,11 +1,11 @@
 use super::Caller;
 use super::models::{
     AssistantStatusResponse, ConversationResponse, ConversationSort, ConversationSummaryResponse,
-    SendMessageRequest, TurnEventResponse,
+    DecideToolCallRequest, SendMessageRequest, TurnEventResponse,
 };
 use super::tools::CallerTools;
-use crate::application::{AssistantService, Versioned};
-use crate::domain::{Conversation, ConversationId};
+use crate::application::{AssistantService, TurnEvent, Versioned, summary};
+use crate::domain::{Conversation, ConversationId, ToolCallId};
 use app_error::AppError;
 use app_web::mcp::Toolbox;
 use app_web::{ApiResult, Draining, ListResult, WithETag, if_match_version, paged, sorts};
@@ -17,6 +17,7 @@ use poem_openapi::{
     payload::{EventStream, Json},
 };
 use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 type Turn = EventStream<BoxStream<'static, TurnEventResponse>>;
 
@@ -38,9 +39,39 @@ fn conversation_id(raw: &str) -> ApiResult<ConversationId> {
         .map_err(|_| AppError::validation("invalid conversation id").into())
 }
 
+fn call_id(raw: &str) -> ApiResult<ToolCallId> {
+    raw.parse()
+        .map_err(|_| AppError::validation("invalid tool call id").into())
+}
+
+/// A turn's events as a stream the server ends on shutdown; the turn runs on regardless.
+fn followed(events: UnboundedReceiver<TurnEvent>, draining: &Draining) -> Turn {
+    let events = stream::unfold(events, |mut events| async move {
+        events.recv().await.map(|event| (event, events))
+    })
+    .map(TurnEventResponse::from);
+    EventStream::new(draining.bounding(events).boxed())
+}
+
 fn tagged(conversation: Versioned<Conversation>) -> ConversationResult {
     let version = conversation.version;
     ConversationResult::new(conversation.into(), version)
+}
+
+/// With each tool call's summary, from the app's tools.
+fn tagged_with_summaries(
+    conversation: Versioned<Conversation>,
+    toolbox: &Toolbox,
+) -> ConversationResult {
+    let version = conversation.version;
+    let response = ConversationResponse::from(conversation).summarised(|tool| {
+        toolbox
+            .tools()
+            .iter()
+            .find(|candidate| candidate.name == tool)
+            .map(|found| summary(found.description).to_string())
+    });
+    ConversationResult::new(response, version)
 }
 
 /// Unit struct so `dump-spec` can build the spec without a database.
@@ -112,6 +143,7 @@ impl AssistantEndpoints {
     async fn get(
         &self,
         assistant: Data<&AssistantService>,
+        toolbox: Data<&Toolbox>,
         caller: Caller,
         id: Path<String>,
     ) -> ApiResult<ConversationResult> {
@@ -119,7 +151,7 @@ impl AssistantEndpoints {
             .0
             .conversation(&caller, conversation_id(&id.0)?)
             .await?;
-        Ok(tagged(conversation))
+        Ok(tagged_with_summaries(conversation, toolbox.0))
     }
 
     /// Delete one of the caller's conversations and its messages. Requires `If-Match` with the
@@ -149,10 +181,11 @@ impl AssistantEndpoints {
     /// it runs as a stream of events: its words as they are generated, each of the app's
     /// operations it calls as the caller and the answer, and the stored messages and new version
     /// when it ends. Operations that only read run at once; one that would change anything is
-    /// stored `awaiting_approval` and not run, and the turn ends there. Requires `If-Match` with
-    /// the version the client last read (`412` when stale). Refused before the stream with
-    /// `503` while the assistant is off, `409` while an action awaits the caller's decision, and
-    /// `404` for another's conversation. A turn whose stream is dropped still runs to its end.
+    /// stored `awaiting_approval` and not run, and the turn ends there (`decide_tool_call` goes
+    /// on). Any action still awaiting the caller's decision is rejected first. Requires
+    /// `If-Match` with the version the client last read (`412` when stale). Refused before the
+    /// stream with `503` while the assistant is off and `404` for another's conversation. A turn
+    /// whose stream is dropped still runs to its end.
     #[oai(
         path = "/conversations/:id/messages",
         method = "post",
@@ -181,10 +214,43 @@ impl AssistantEndpoints {
                 tools,
             )
             .await?;
-        let events = stream::unfold(events, |mut events| async move {
-            events.recv().await.map(|event| (event, events))
-        })
-        .map(TurnEventResponse::from);
-        Ok(EventStream::new(draining.0.bounding(events).boxed()))
+        Ok(followed(events, draining.0))
+    }
+
+    /// Approve or reject an action the assistant asked to take as the caller, stored
+    /// `awaiting_approval`, and follow the turn it resumes as a stream of events, as
+    /// `send_message` does, beginning with the decision. Approving runs the operation as the
+    /// caller, once however often it is approved or retried; rejecting tells the assistant the
+    /// caller declined it. The turn goes on once every action of its step is decided. Refused
+    /// before the stream with `409` when the call isn't awaiting a decision, `503` while the
+    /// assistant is off, and `404` for another's conversation or a call it doesn't hold.
+    #[oai(
+        path = "/conversations/:id/tool-calls/:tool_call_id/decision",
+        method = "post",
+        operation_id = "decide_tool_call"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn decide(
+        &self,
+        assistant: Data<&AssistantService>,
+        toolbox: Data<&Toolbox>,
+        draining: Data<&Draining>,
+        caller: Caller,
+        id: Path<String>,
+        tool_call_id: Path<String>,
+        body: Json<DecideToolCallRequest>,
+    ) -> ApiResult<Turn> {
+        let tools = Arc::new(CallerTools::new(toolbox.0.clone(), caller.token()));
+        let events = assistant
+            .0
+            .decide(
+                &caller,
+                conversation_id(&id.0)?,
+                call_id(&tool_call_id.0)?,
+                body.0.decision.into(),
+                tools,
+            )
+            .await?;
+        Ok(followed(events, draining.0))
     }
 }

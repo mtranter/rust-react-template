@@ -6,4 +6,8 @@ pub enum ConversationError {
     NoToolCalls,
     #[error("the assistant is waiting for a decision on an action it asked to take")]
     AwaitingApproval,
+    #[error("the conversation has no such tool call")]
+    NoSuchToolCall,
+    #[error("the tool call isn't awaiting a decision: it was decided already")]
+    NotAwaitingApproval,
 }

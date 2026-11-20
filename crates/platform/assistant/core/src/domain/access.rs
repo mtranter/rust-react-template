@@ -30,7 +30,8 @@ pub enum ConversationAction {
     List,
     View,
     Delete,
-    /// Say something to the assistant in it, running a turn.
+    /// Say something to the assistant in it, or decide an action it asked to take, running a
+    /// turn.
     Post,
 }
 

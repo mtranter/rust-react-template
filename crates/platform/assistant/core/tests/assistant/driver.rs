@@ -8,7 +8,9 @@ use app_persistence::{Handlers, Version};
 use app_test_db::Template;
 use app_web::mcp::{RestOnly, Surface, Toolbox};
 use app_web::testing::{Call, Page, Refused, TestApi};
-use app_web::{Accept, ApiResult, JwtAuth, JwtVerifier, json_newtype, render_error};
+use app_web::{
+    Accept, ApiResult, Idempotency, Idempotent, JwtAuth, JwtVerifier, json_newtype, render_error,
+};
 use assistant::{
     AssistantEndpoints, ChatModel, Content, Conversation, ModelError, ModelReply, ModelRequest,
     ModelToolCall, Outcome as ToolOutcome, Settings, ToolCall, ToolCallStatus, seed,
@@ -221,12 +223,13 @@ pub const LIST_ID: &str = "11111111-1111-1111-1111-111111111111";
 
 /// The app's operations, standing in for those the server composes beside the assistant: a
 /// read, `get_list`, answering who read it, and a write, `create_list`, which keeps what it is
-/// sent.
+/// sent and the `Idempotency-Key` it was sent with. Served idempotent, as the server serves
+/// the app's, so a retry with a key is replayed rather than written again.
 #[derive(Default)]
 struct AppOperations;
 
 #[derive(Clone, Default)]
-struct Written(Arc<Mutex<Vec<Value>>>);
+struct Written(Arc<Mutex<Vec<(Value, Option<String>)>>>);
 
 #[OpenApi]
 impl AppOperations {
@@ -249,9 +252,11 @@ impl AppOperations {
         &self,
         _auth: JwtAuth,
         written: Data<&Written>,
+        request: &poem::Request,
         body: PoemJson<Value>,
     ) -> ApiResult<PoemJson<Value>> {
-        written.0.0.lock().unwrap().push(body.0.clone());
+        let key = request.header(app_web::IDEMPOTENCY_KEY).map(str::to_string);
+        written.0.0.lock().unwrap().push((body.0.clone(), key));
         Ok(PoemJson(body.0))
     }
 }
@@ -259,7 +264,7 @@ impl AppOperations {
 struct AppSurface;
 
 impl Surface for AppSurface {
-    type Api = AppOperations;
+    type Api = Idempotent<AppOperations>;
     const BASE: &'static str = "/api";
     const NAME: &'static str = "Test app";
     const VERSION: &'static str = "1.0";
@@ -272,12 +277,17 @@ impl Surface for AppSurface {
 fn app_tools(
     verifier: JwtVerifier,
     authorizer: Arc<Authorizer>,
+    idempotency: Idempotency,
 ) -> (Toolbox, Arc<BoxEndpoint<'static>>, Written) {
     let written = Written::default();
     let api: Arc<BoxEndpoint<'static>> = Arc::new(
         Route::new()
-            .nest("/api", OpenApiService::new(AppOperations, "test", "1.0"))
+            .nest(
+                "/api",
+                OpenApiService::new(Idempotent(AppOperations), "test", "1.0"),
+            )
             .catch_all_error(render_error)
+            .with(idempotency)
             .data(verifier)
             .data(authorizer)
             .data(written.clone())
@@ -355,7 +365,8 @@ impl Assistant {
             Tokens::Valid => verifier.clone(),
             Tokens::RefusedByTheApp => JwtVerifier::new("another-secret"),
         };
-        let (toolbox, tools_api, written) = app_tools(apps_verifier, ctx.authorizer());
+        let (toolbox, tools_api, written) =
+            app_tools(apps_verifier, ctx.authorizer(), ctx.idempotency());
         let model = Arc::new(ScriptedModel::default());
         let api = TestApi::new(AssistantEndpoints, ctx.idempotency(), |app| {
             provide(&ctx, app, model.clone())
@@ -392,6 +403,15 @@ impl Assistant {
 
     /// What the app's write operation was sent, oldest first.
     pub fn written(&self) -> Vec<Value> {
+        self.written_with_keys()
+            .into_iter()
+            .map(|(body, _)| body)
+            .collect()
+    }
+
+    /// What the app's write operation was sent, oldest first, each with the `Idempotency-Key`
+    /// it came with.
+    pub fn written_with_keys(&self) -> Vec<(Value, Option<String>)> {
         self.written.0.lock().unwrap().clone()
     }
 
@@ -549,6 +569,33 @@ impl Assistant {
         self.api
             .post(format!("/api/assistant/conversations/{id}/messages"))
             .json(&json!({ "text": text }))
+    }
+
+    /// Approves tool call `call` in conversation `id`: the turn's events, once it has ended.
+    pub async fn approve(&self, id: impl Display, call: impl Display) -> Outcome<Vec<Value>> {
+        self.decide(id, call, "approve").await
+    }
+
+    /// Rejects tool call `call` in conversation `id`: the turn's events, once it has ended.
+    pub async fn reject(&self, id: impl Display, call: impl Display) -> Outcome<Vec<Value>> {
+        self.decide(id, call, "reject").await
+    }
+
+    async fn decide(
+        &self,
+        id: impl Display,
+        call: impl Display,
+        decision: &str,
+    ) -> Outcome<Vec<Value>> {
+        self.signed(
+            self.api
+                .post(format!(
+                    "/api/assistant/conversations/{id}/tool-calls/{call}/decision"
+                ))
+                .json(&json!({ "decision": decision })),
+        )
+        .stream()
+        .await
     }
 
     /// The conversation once it holds `messages` messages, as a turn still running stores

@@ -15,8 +15,9 @@ pub trait AppTools: Send + Sync {
     fn instructions(&self) -> &str;
     fn tools(&self) -> Vec<AppTool>;
     /// A tool that doesn't exist, or arguments that make no request of it, is refused like
-    /// any other call.
-    async fn call(&self, name: &str, arguments: Value) -> Answered;
+    /// any other call. `idempotency_key`, for a tool that takes one, replaces any the model
+    /// gave.
+    async fn call(&self, name: &str, arguments: Value, idempotency_key: Option<&str>) -> Answered;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +29,18 @@ pub struct AppTool {
     pub input_schema: Value,
     /// Whether its operation only reads (a `GET`), so it runs without the owner's approval.
     pub reads: bool,
+}
+
+impl AppTool {
+    /// Its operation's summary: the first paragraph of its description.
+    pub fn summary(&self) -> &str {
+        summary(&self.description)
+    }
+}
+
+/// The first paragraph of a tool's `description`, which is its operation's summary.
+pub fn summary(description: &str) -> &str {
+    description.split("\n\n").next().unwrap_or_default().trim()
 }
 
 /// The operation's answer: its status, and its body or `ErrorBody`.

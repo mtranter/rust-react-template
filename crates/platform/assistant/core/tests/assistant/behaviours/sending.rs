@@ -247,6 +247,7 @@ async fn a_write_is_stored_awaiting_approval_and_not_run(pool: PgPool) {
     let pending = of_kind(&events, "approvalRequired");
     assert_eq!(pending.len(), 2, "every write of the step waits");
     assert_eq!(pending[0]["tool"], "create_list");
+    assert_eq!(pending[0]["summary"], "Write a list, owned by the caller.");
     assert_eq!(pending[0]["arguments"], note);
     assert_eq!(events.last().unwrap()["kind"], "finished");
     assert_eq!(
@@ -273,11 +274,17 @@ async fn a_write_is_stored_awaiting_approval_and_not_run(pool: PgPool) {
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
-async fn a_message_while_an_action_awaits_approval_is_refused_and_changes_nothing(pool: PgPool) {
+async fn a_message_while_actions_await_approval_rejects_them_before_the_new_turn(pool: PgPool) {
     let assistant = Assistant::on(pool).await;
-    assistant.scripted([calls("create_list", json!({ "body": {} }))]);
+    assistant.scripted([
+        calls_all(&[
+            ("create_list", json!({ "body": { "title": "Groceries" } })),
+            ("create_list", json!({ "body": { "title": "Chores" } })),
+        ]),
+        says("Something else, then."),
+    ]);
     let events = assistant
-        .send(ALICE_CONVERSATION_ID_UNTITLED, 1, "Write a note")
+        .send(ALICE_CONVERSATION_ID_UNTITLED, 1, "Write two lists")
         .await
         .unwrap();
     let version: i64 = events.last().unwrap()["version"]
@@ -285,17 +292,32 @@ async fn a_message_while_an_action_awaits_approval_is_refused_and_changes_nothin
         .unwrap()
         .parse()
         .unwrap();
-    let before = assistant.get(ALICE_CONVERSATION_ID_UNTITLED).await.unwrap();
 
+    let events = assistant
+        .send(ALICE_CONVERSATION_ID_UNTITLED, version, "Something else")
+        .await
+        .expect("the new turn streams");
+
+    assert_eq!(streamed_text(&events), "Something else, then.");
+    assert_eq!(assistant.written(), Vec::<Value>::new(), "neither ran");
+    let conversation = assistant.get(ALICE_CONVERSATION_ID_UNTITLED).await.unwrap();
+    let calls = conversation["messages"][1]["toolCalls"].as_array().unwrap();
+    assert!(calls.iter().all(|call| call["status"] == "rejected"));
+    assert_eq!(conversation["messages"][2]["text"], "Something else");
+    let declined = &assistant.model_requests()[1].messages[2];
     assert_eq!(
-        assistant
-            .send(ALICE_CONVERSATION_ID_UNTITLED, version, "Something else")
-            .await,
-        Err(Refusal::Conflict)
-    );
-    assert_eq!(
-        assistant.get(ALICE_CONVERSATION_ID_UNTITLED).await,
-        Ok(before)
+        declined,
+        &ModelMessage::ToolResults(
+            calls
+                .iter()
+                .map(|call| ModelToolResult {
+                    id: call["id"].as_str().unwrap().to_string(),
+                    name: "create_list".to_string(),
+                    content: "the user declined this action".to_string(),
+                    is_error: true,
+                })
+                .collect()
+        )
     );
 }
 

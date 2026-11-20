@@ -43,6 +43,10 @@ impl<C: Composition> Surface for Tools<C> {
             operation_id: "send_message",
             reason: ASSISTANT,
         },
+        RestOnly {
+            operation_id: "decide_tool_call",
+            reason: ASSISTANT,
+        },
     ];
 }
 

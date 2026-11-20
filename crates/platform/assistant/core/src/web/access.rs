@@ -18,4 +18,5 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("get_conversation", "conversation", "view"),
     Performs::new("delete_conversation", "conversation", "delete"),
     Performs::new("send_message", "conversation", "post"),
+    Performs::new("decide_tool_call", "conversation", "post"),
 ];

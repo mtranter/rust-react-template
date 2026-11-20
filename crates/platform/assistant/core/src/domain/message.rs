@@ -46,6 +46,14 @@ pub enum ToolCallStatus {
     Rejected,
 }
 
+/// What the owner decided on a call awaiting approval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Decision {
+    /// Approved, and run: what the operation answered.
+    Approved(Outcome),
+    Rejected,
+}
+
 /// The operation's answer: its body on success, its `ErrorBody` on a refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -108,13 +116,23 @@ impl Message {
 
     /// Its tool calls still waiting for the owner's decision.
     pub fn awaiting_approval(&self) -> impl Iterator<Item = &ToolCall> {
-        let calls = match &self.content {
-            Content::ToolCalls(calls) => calls.as_slice(),
-            _ => &[],
-        };
-        calls
+        self.calls()
             .iter()
             .filter(|call| call.status == ToolCallStatus::AwaitingApproval)
+    }
+
+    pub(super) fn calls(&self) -> &[ToolCall] {
+        match &self.content {
+            Content::ToolCalls(calls) => calls.as_slice(),
+            _ => &[],
+        }
+    }
+
+    pub(super) fn calls_mut(&mut self) -> &mut [ToolCall] {
+        match &mut self.content {
+            Content::ToolCalls(calls) => calls.as_mut_slice(),
+            _ => &mut [],
+        }
     }
 }
 
@@ -151,9 +169,21 @@ impl ToolCall {
         self.status
     }
 
-    /// None until it has run, or been rejected.
+    /// None until it has run, and for a call the owner rejected.
     pub fn outcome(&self) -> Option<&Outcome> {
         self.outcome.as_ref()
+    }
+
+    /// Records the owner's decision on it, which only one awaiting it can take.
+    pub(super) fn decide(&mut self, decision: Decision) -> Result<(), ConversationError> {
+        if self.status != ToolCallStatus::AwaitingApproval {
+            return Err(ConversationError::NotAwaitingApproval);
+        }
+        (self.status, self.outcome) = match decision {
+            Decision::Approved(outcome) => (ToolCallStatus::Approved, Some(outcome)),
+            Decision::Rejected => (ToolCallStatus::Rejected, None),
+        };
+        Ok(())
     }
 }
 

@@ -4,6 +4,7 @@
 mod driver;
 
 mod behaviours {
+    mod deciding;
     mod deleting;
     mod ending;
     mod listing;

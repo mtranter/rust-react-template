@@ -2,11 +2,14 @@
 //! the request running the turn.
 
 use crate::application::{Answered, AppTool, AppTools};
-use app_web::mcp::{NotSent, Toolbox};
+use app_web::mcp::{AgentTool, NotSent, Toolbox};
 use app_web::{ErrorBody, ErrorCode};
 use async_trait::async_trait;
 use poem_openapi::types::ToJSON;
 use serde_json::Value;
+
+/// The argument a tool takes the `Idempotency-Key` header as.
+const IDEMPOTENCY_KEY: &str = "idempotency_key";
 
 pub(super) struct CallerTools {
     toolbox: Toolbox,
@@ -45,7 +48,20 @@ impl AppTools for CallerTools {
             .collect()
     }
 
-    async fn call(&self, name: &str, arguments: Value) -> Answered {
+    async fn call(
+        &self,
+        name: &str,
+        mut arguments: Value,
+        idempotency_key: Option<&str>,
+    ) -> Answered {
+        let takes_key = |tool: &AgentTool| {
+            tool.name == name && tool.input_schema["properties"][IDEMPOTENCY_KEY].is_object()
+        };
+        if let (Some(key), Value::Object(arguments)) = (idempotency_key, &mut arguments)
+            && self.toolbox.tools().iter().any(takes_key)
+        {
+            arguments.insert(IDEMPOTENCY_KEY.to_owned(), key.into());
+        }
         match self.toolbox.call(name, arguments, &self.token).await {
             Ok(answer) => Answered {
                 status: answer.status,
