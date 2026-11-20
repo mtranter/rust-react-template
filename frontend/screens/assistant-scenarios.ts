@@ -113,6 +113,35 @@ const failed: ConversationResponse = {
   version: "2",
 };
 
+const awaitingApproval: ConversationResponse = {
+  id: "conversation-awaiting",
+  title: "Delete the admin role",
+  createdAt: "2026-01-04T09:00:00Z",
+  messages: [
+    {
+      kind: "user",
+      id: "message-1",
+      postedAt: "2026-01-04T09:00:00Z",
+      text: "Delete the admin role",
+    },
+    {
+      kind: "toolCalls",
+      id: "message-2",
+      postedAt: "2026-01-04T09:00:01Z",
+      toolCalls: [
+        {
+          id: "call-1",
+          tool: "delete_role",
+          summary: "Delete a role and every grant and assignment of it.",
+          arguments: { name: "admin", expected_version: "3" },
+          status: "awaiting_approval",
+        },
+      ],
+    },
+  ],
+  version: "3",
+};
+
 export const assistantScenarios: Scenario[] = [
   {
     name: "assistant",
@@ -151,6 +180,12 @@ export const assistantScenarios: Scenario[] = [
       await page.getByRole("button", { name: "Send" }).click();
     },
     shows: (page) => page.getByText("I'm checking"),
+  },
+  {
+    name: "assistant-approval",
+    route: "/assistant?conversation=conversation-awaiting",
+    handlers: conversationsOf([awaitingApproval, untitled, roles]),
+    shows: (page) => page.getByRole("button", { name: "Approve" }),
   },
   {
     name: "assistant-error",

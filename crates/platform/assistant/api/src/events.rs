@@ -27,6 +27,13 @@ pub mod v1 {
         pub message_id: Uuid,
     }
 
+    /// Which of the conversation's tool calls an event is about.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct OfToolCall {
+        pub tool_call_id: Uuid,
+    }
+
     app_events::topic! {
         /// Everything that happens to a conversation, keyed by its id.
         pub topic ConversationTopic("assistant.conversation.v1") {
@@ -37,6 +44,7 @@ pub mod v1 {
             events: ConversationEvent, ConversationEventKind;
             ConversationStarted => Started: "assistant.conversation_started",
             ConversationMessagePosted => MessagePosted(OfMessage): "assistant.conversation_message_posted",
+            ConversationToolCallDecided => ToolCallDecided(OfToolCall): "assistant.conversation_tool_call_decided",
             ConversationDeleted => Deleted: "assistant.conversation_deleted",
         }
     }
@@ -51,6 +59,9 @@ pub mod v1 {
                 ConversationEvent::Started,
                 ConversationEvent::MessagePosted(OfMessage {
                     message_id: Uuid::nil(),
+                }),
+                ConversationEvent::ToolCallDecided(OfToolCall {
+                    tool_call_id: Uuid::nil(),
                 }),
                 ConversationEvent::Deleted,
             ];

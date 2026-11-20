@@ -15,6 +15,11 @@ pub(crate) fn pending(
                 message_id: message.as_uuid(),
             })
         }
+        ConversationEvent::ToolCallDecided(call) => {
+            v1::ConversationEvent::ToolCallDecided(v1::OfToolCall {
+                tool_call_id: call.as_uuid(),
+            })
+        }
         ConversationEvent::Deleted => v1::ConversationEvent::Deleted,
     };
     PendingEvent::on::<ConversationTopic>(version, &state(conversation), event)

@@ -1,6 +1,7 @@
 import type {
   ConversationResponse,
   ConversationSummaryResponse,
+  DecideToolCallRequest,
   ErrorBody,
   ListResultConversationSummaryResponse,
   SendMessageRequest,
@@ -102,11 +103,14 @@ export function scriptedTurn() {
  * newest first, each one with its `ETag`, deletes guarded by `If-Match`, and a started one given the
  * next id. `ifMatches` records each delete's `If-Match`. A message sent at the conversation's
  * version is stored, its version moved on, and answered with the next of `turns`; `sent` records
- * each one's text and `If-Match`.
+ * each one's text and `If-Match`. A decision on a call awaiting one is recorded on the call, the
+ * version moved on, and answered with the next of `turns` too (`decided` records each); on any
+ * other call it is a `409`.
  */
 export function assistantApi(conversations: ConversationResponse[], turns: ScriptedTurn[] = []) {
   const ifMatches: (string | null)[] = [];
   const sent: { text: string; ifMatch: string | null }[] = [];
+  const decided: { callId: string; decision: DecideToolCallRequest["decision"] }[] = [];
   let started = 0;
   const handlers = [
     assistantOn,
@@ -186,6 +190,35 @@ export function assistantApi(conversations: ConversationResponse[], turns: Scrip
       conversation.version = String(Number(conversation.version) + 1);
       return new HttpResponse(turn.body, { headers: { "Content-Type": "text/event-stream" } });
     }),
+    http.post(
+      "*/api/assistant/conversations/:id/tool-calls/:callId/decision",
+      async ({ params, request }) => {
+        const { decision } = (await request.json()) as DecideToolCallRequest;
+        const callId = String(params.callId);
+        decided.push({ callId, decision });
+        const conversation = conversations.find((c) => c.id === params.id);
+        if (!conversation) return notFound();
+        const call = conversation.messages
+          .flatMap((message) => (message.kind === "toolCalls" ? message.toolCalls : []))
+          .find((c) => c.id === callId);
+        if (!call) return notFound();
+        if (call.status !== "awaiting_approval") {
+          return HttpResponse.json(
+            {
+              code: "conflict",
+              message: "the tool call isn't awaiting a decision",
+              requestId: "test",
+            } satisfies ErrorBody,
+            { status: 409 },
+          );
+        }
+        const turn = turns.shift();
+        if (!turn) throw new Error("no turn scripted for this decision");
+        call.status = decision === "approve" ? "approved" : "rejected";
+        conversation.version = String(Number(conversation.version) + 1);
+        return new HttpResponse(turn.body, { headers: { "Content-Type": "text/event-stream" } });
+      },
+    ),
   ];
-  return { handlers, ifMatches, sent };
+  return { handlers, ifMatches, sent, decided };
 }

@@ -475,6 +475,21 @@ impl Session<'_> {
         .await
     }
 
+    /// Approves the assistant's tool call `call` in conversation `id`: the resumed turn's
+    /// events, once it has ended.
+    pub async fn approve(
+        &self,
+        id: impl Display,
+        call: impl Display,
+    ) -> Outcome<Vec<serde_json::Value>> {
+        self.signed(self.app.api.post(format!(
+            "/api/assistant/conversations/{id}/tool-calls/{call}/decision"
+        )))
+        .json(&json!({ "decision": "approve" }))
+        .stream()
+        .await
+    }
+
     pub async fn conversation(&self, id: impl Display) -> Outcome<serde_json::Value> {
         self.signed(
             self.app

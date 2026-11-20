@@ -2283,7 +2283,7 @@
         "tags": [
           "Assistant"
         ],
-        "summary": "Say something to the assistant in one of the caller's conversations, and follow the turn\nit runs as a stream of events: its words as they are generated, each of the app's\noperations it calls as the caller and the answer, and the stored messages and new version\nwhen it ends. Operations that only read run at once; one that would change anything is\nstored `awaiting_approval` and not run, and the turn ends there. Requires `If-Match` with\nthe version the client last read (`412` when stale). Refused before the stream with\n`503` while the assistant is off, `409` while an action awaits the caller's decision, and\n`404` for another's conversation. A turn whose stream is dropped still runs to its end.",
+        "summary": "Say something to the assistant in one of the caller's conversations, and follow the turn\nit runs as a stream of events: its words as they are generated, each of the app's\noperations it calls as the caller and the answer, and the stored messages and new version\nwhen it ends. Operations that only read run at once; one that would change anything is\nstored `awaiting_approval` and not run, and the turn ends there (`decide_tool_call` goes\non). Any action still awaiting the caller's decision is rejected first. Requires\n`If-Match` with the version the client last read (`412` when stale). Refused before the\nstream with `503` while the assistant is off and `404` for another's conversation. A turn\nwhose stream is dropped still runs to its end.",
         "parameters": [
           {
             "name": "id",
@@ -2449,6 +2449,179 @@
           }
         ],
         "operationId": "send_message"
+      }
+    },
+    "/assistant/conversations/{id}/tool-calls/{tool_call_id}/decision": {
+      "post": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Approve or reject an action the assistant asked to take as the caller, stored\n`awaiting_approval`, and follow the turn it resumes as a stream of events, as\n`send_message` does, beginning with the decision. Approving runs the operation as the\ncaller, once however often it is approved or retried; rejecting tells the assistant the\ncaller declined it. The turn goes on once every action of its step is decided. Takes no\n`If-Match`: the call's status is its guard, so it is never `412` or `428`. Refused\nbefore the stream with `409` when the call isn't awaiting a decision, `503` while the\nassistant is off, and `404` for another's conversation or a call it doesn't hold.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "tool_call_id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideToolCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "array",
+                  "format": "event-stream",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "decide_tool_call"
       }
     },
     "/users": {
@@ -4638,6 +4811,7 @@
         "required": [
           "id",
           "tool",
+          "summary",
           "arguments"
         ],
         "properties": {
@@ -4646,6 +4820,10 @@
           },
           "tool": {
             "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "description": "The operation's summary, saying what approving it would do."
           },
           "arguments": {}
         }
@@ -4924,6 +5102,26 @@
             "type": "string"
           }
         }
+      },
+      "DecideToolCallRequest": {
+        "type": "object",
+        "title": "DecideToolCallRequest",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DecisionRequest"
+          }
+        }
+      },
+      "DecisionRequest": {
+        "type": "string",
+        "description": "`approve` runs the operation as the caller; `reject` doesn't, and tells the assistant the\ncaller declined it.",
+        "enum": [
+          "approve",
+          "reject"
+        ]
       },
       "EditNoteRequest": {
         "type": "object",
@@ -5728,6 +5926,24 @@
           }
         }
       },
+      "ToolCallDecidedEvent": {
+        "type": "object",
+        "title": "ToolCallDecidedEvent",
+        "description": "The caller's decision on a call that awaited it, `approved` or `rejected`: a call approved\nhas run, and its answer follows as a `toolResult`.",
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The tool call's, as `approvalRequired` named it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ToolCallStatusResponse"
+          }
+        }
+      },
       "ToolCallResponse": {
         "type": "object",
         "title": "ToolCallResponse",
@@ -5744,6 +5960,10 @@
           "tool": {
             "type": "string",
             "description": "The operation's id, which is its tool's name."
+          },
+          "summary": {
+            "type": "string",
+            "description": "The operation's summary, saying what it does; absent for a tool the app no longer has."
           },
           "arguments": {},
           "status": {
@@ -5858,6 +6078,9 @@
             "$ref": "#/components/schemas/TurnEventResponse_ApprovalRequiredEvent"
           },
           {
+            "$ref": "#/components/schemas/TurnEventResponse_ToolCallDecidedEvent"
+          },
+          {
             "$ref": "#/components/schemas/TurnEventResponse_TurnFinishedEvent"
           },
           {
@@ -5871,6 +6094,7 @@
             "toolCallStarted": "#/components/schemas/TurnEventResponse_ToolCallStartedEvent",
             "toolResult": "#/components/schemas/TurnEventResponse_ToolResultEvent",
             "approvalRequired": "#/components/schemas/TurnEventResponse_ApprovalRequiredEvent",
+            "decided": "#/components/schemas/TurnEventResponse_ToolCallDecidedEvent",
             "finished": "#/components/schemas/TurnEventResponse_TurnFinishedEvent",
             "error": "#/components/schemas/TurnEventResponse_TurnErrorEvent"
           }
@@ -5919,6 +6143,29 @@
           },
           {
             "$ref": "#/components/schemas/TextEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_ToolCallDecidedEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "decided"
+                ],
+                "example": "decided"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallDecidedEvent"
           }
         ]
       },

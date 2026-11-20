@@ -224,7 +224,7 @@ What one message of a Conversation's owner sets off (ADR 0045): the owner's mess
 _Avoid_: Request, run, exchange
 
 **Pending tool call**:
-A Tool call the model asked for whose operation isn't a `GET`, so a Turn doesn't run it: it is stored `awaiting_approval`, the stream names it and its arguments, and the Turn ends there until the owner approves or rejects it. Several asked for in one step are all pending. While one is, the Conversation takes no new message (`409`).
+A Tool call the model asked for whose operation isn't a `GET`, so a Turn doesn't run it: it is stored `awaiting_approval`, the stream names it and its arguments, and the Turn ends there until the owner approves or rejects it. Several asked for in one step are all pending. The owner approves (it runs, once, under an `idempotency_key` derived from its id) or rejects (the model reads "the user declined this action") each; the Turn goes on once none of its step is pending. A new message rejects any still pending.
 _Avoid_: Draft action, proposal
 
 ## Testing

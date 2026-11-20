@@ -2,12 +2,17 @@ import {
   getAssistantConversationsByIdOptions,
   getAssistantConversationsQueryKey,
 } from "@/api/@tanstack/react-query.gen";
-import type { ConversationResponse, ToolCallResponse, TurnEventResponse } from "@/api/types.gen";
+import type {
+  ConversationResponse,
+  DecisionRequest,
+  ToolCallResponse,
+  TurnEventResponse,
+} from "@/api/types.gen";
 import { changedMeanwhileMessage } from "@/components/changed-meanwhile-alert";
 import { errorMessage, isErrorBody, isPreconditionFailed } from "@/lib/api-errors";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sendMessage } from "./turn-stream";
+import { decideToolCall, sendMessage } from "./turn-stream";
 
 /** A tool call as the stream tells it: `running` until its result comes. */
 export type LiveToolCall = Omit<ToolCallResponse, "status"> & {
@@ -16,16 +21,25 @@ export type LiveToolCall = Omit<ToolCallResponse, "status"> & {
 
 export type LiveItem = { kind: "text"; text: string } | { kind: "toolCall"; call: LiveToolCall };
 
-/** A turn while it runs: what the caller said, and what has streamed back so far. */
-export type LiveTurn = { said: string; items: LiveItem[]; error?: string };
+/**
+ * A turn while it runs: what the caller said, or the stored call they decided on, and what has
+ * streamed back so far. `decided` is that call as the stream has told it since.
+ */
+export type LiveTurn = {
+  said?: string;
+  decided?: LiveToolCall;
+  items: LiveItem[];
+  error?: string;
+};
 
 const LOST =
   "The connection to the assistant was lost. The turn may still finish: reopen this conversation to see how it ended.";
 
 /**
- * Sends messages to conversation `id` and follows each turn's stream. Once a turn ends the
- * conversation is refetched, so its stored messages replace the streamed ones, and when the turn
- * ran a write, every query is invalidated so other screens show what it changed.
+ * Sends messages to conversation `id`, and decides the tool calls awaiting approval in it, then
+ * follows the stream of the turn each runs or resumes. Once a turn ends the conversation is
+ * refetched, so its stored messages replace the streamed ones, and when the turn ran a write,
+ * every query is invalidated so other screens show what it changed.
  */
 export function useTurn(id: string) {
   const queryClient = useQueryClient();
@@ -34,20 +48,25 @@ export function useTurn(id: string) {
   const controller = useRef<AbortController>(undefined);
   useEffect(() => () => controller.current?.abort(), []);
 
-  const send = useCallback(
-    async (text: string, version: string): Promise<"ran" | "refused"> => {
+  const follow = useCallback(
+    async (
+      start: LiveTurn,
+      events: (signal: AbortSignal) => AsyncGenerator<TurnEventResponse>,
+    ): Promise<"ran" | "refused"> => {
       const abort = new AbortController();
       controller.current = abort;
       setError(undefined);
-      setTurn({ said: text, items: [] });
+      setTurn(start);
+      let live = start;
       let finished: string[] | undefined;
       let failed: string | undefined;
       let refused = false;
       try {
-        for await (const event of sendMessage(id, version, text, abort.signal)) {
+        for await (const event of events(abort.signal)) {
           if (event.kind === "finished") finished = event.messageIds;
           if (event.kind === "error") failed = errorMessage(event.error);
-          setTurn((live) => live && apply(live, event));
+          live = apply(live, event);
+          setTurn(live);
         }
       } catch (err) {
         if (abort.signal.aborted) return "ran";
@@ -64,7 +83,7 @@ export function useTurn(id: string) {
         .fetchQuery({ ...getAssistantConversationsByIdOptions({ path: { id } }), staleTime: 0 })
         .catch(() => undefined);
       if (abort.signal.aborted) return "ran";
-      if (fresh && finished && ranAWrite(fresh, finished)) {
+      if ((fresh && finished && ranAWrite(fresh, finished)) || ran(live.decided)) {
         void queryClient.invalidateQueries();
       } else {
         void queryClient.invalidateQueries({ queryKey: getAssistantConversationsQueryKey() });
@@ -77,7 +96,26 @@ export function useTurn(id: string) {
     [id, queryClient],
   );
 
-  return { turn, error, running: turn !== undefined, send };
+  const send = useCallback(
+    (text: string, version: string) =>
+      follow({ said: text, items: [] }, (signal) => sendMessage(id, version, text, signal)),
+    [id, follow],
+  );
+
+  const decide = useCallback(
+    (call: ToolCallResponse, decision: DecisionRequest) =>
+      follow({ decided: { ...call, status: "running" }, items: [] }, (signal) =>
+        decideToolCall(id, call.id, decision, signal),
+      ),
+    [id, follow],
+  );
+
+  return { turn, error, running: turn !== undefined, send, decide };
+}
+
+/** Whether `call`, decided in this turn, was approved and ran without an error. */
+function ran(call: LiveToolCall | undefined) {
+  return call?.status === "approved" && call.error === undefined;
 }
 
 function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
@@ -102,6 +140,9 @@ function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
       });
       return { ...turn, items };
     case "toolResult":
+      if (turn.decided?.id === event.id) {
+        return { ...turn, decided: { ...turn.decided, result: event.result, error: event.error } };
+      }
       update(event.id, (call) => ({
         ...call,
         status: "ran",
@@ -109,6 +150,9 @@ function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
         error: event.error,
       }));
       return { ...turn, items };
+    case "decided":
+      if (turn.decided?.id !== event.id) return turn;
+      return { ...turn, decided: { ...turn.decided, status: event.status } };
     case "approvalRequired": {
       const awaiting = (call: LiveToolCall): LiveToolCall => ({
         ...call,
@@ -120,6 +164,7 @@ function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
           call: awaiting({
             id: event.id,
             tool: event.tool,
+            summary: event.summary,
             arguments: event.arguments,
             status: "running",
           }),

@@ -3,12 +3,12 @@
 //! stored as it is posted, so a turn whose stream nobody reads still runs to its end.
 
 use super::{
-    AppTools, AssistantService, ChatModel, Expected, ModelMessage, ModelRequest, ModelTool,
-    ModelToolCall, ModelToolResult, Version, Versioned, events,
+    Answered, AppTools, AssistantService, ChatModel, Expected, ModelMessage, ModelRequest,
+    ModelTool, ModelToolCall, ModelToolResult, Version, Versioned, events,
 };
 use crate::domain::{
-    Content, Conversation, ConversationAction, ConversationEvent, ConversationId, Message,
-    MessageId, Outcome, ToolCall, ToolCallId, ToolCallStatus,
+    Content, Conversation, ConversationAction, ConversationEvent, ConversationId, Decision,
+    Message, MessageId, Outcome, ToolCall, ToolCallId, ToolCallStatus,
 };
 use app_authz::Principal;
 use app_error::{AppError, AppResult};
@@ -37,7 +37,15 @@ pub enum TurnEvent {
     ApprovalRequired {
         id: ToolCallId,
         tool: String,
+        /// Its operation's summary, saying what approving it would do.
+        summary: String,
         arguments: Value,
+    },
+    /// The owner's decision on a call that awaited it: `Approved` or `Rejected`. An approved
+    /// call's answer follows as its `ToolResult`.
+    Decided {
+        id: ToolCallId,
+        status: ToolCallStatus,
     },
     /// The messages the turn stored, the owner's first, and the conversation's version after.
     Finished {
@@ -74,12 +82,27 @@ const SIGNED_OUT: &str =
 const NOT_RUN_SIGNED_OUT: &str = "not run: the user's sign-in expired";
 const DECLINED: &str = "the user declined this action";
 const AWAITING: &str = "this action is waiting for the user's approval";
+/// How often a decision is retried when a save beside it changed the conversation first.
+const DECISION_ATTEMPTS: u32 = 3;
+
+/// What the owner decides on a tool call awaiting their approval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Approve,
+    Reject,
+}
+
+/// The `Idempotency-Key` an approved call runs with (ADR 0032): the same for every attempt to
+/// run it, so however often it is approved or retried, the write happens once.
+fn idempotency_key(call: ToolCallId) -> String {
+    format!("assistant-tool-call-{call}")
+}
 
 impl AssistantService {
     /// Stores `text` as the owner's message and runs a turn on it, as the owner, through
-    /// `tools`: its events, as they happen. Refused before anything is stored when the
-    /// assistant is off (`503`), the conversation isn't the caller's (`404`), `expected` is
-    /// stale (`412`), or an action awaits the owner's decision (`409`).
+    /// `tools`: its events, as they happen. Any action still awaiting the owner's decision is
+    /// recorded as rejected first. Refused before anything is stored when the assistant is off
+    /// (`503`), the conversation isn't the caller's (`404`), or `expected` is stale (`412`).
     pub async fn send(
         &self,
         principal: &Principal,
@@ -101,6 +124,16 @@ impl AssistantService {
         }
         let message = Message::user(MessageId::new(), text, self.clock.now())?;
         let asked = message.id();
+        let pending: Vec<ToolCallId> = conversation
+            .entity
+            .awaiting_approval()
+            .map(ToolCall::id)
+            .collect();
+        // One save each: the outbox holds one event per version of a conversation.
+        for call in pending {
+            let event = conversation.entity.decide(call, Decision::Rejected)?;
+            self.save_posted(&mut conversation, event).await?;
+        }
         let event = conversation.entity.ask(message)?;
         self.save_posted(&mut conversation, event).await?;
 
@@ -114,6 +147,75 @@ impl AssistantService {
             stored: vec![asked],
         };
         tokio::spawn(turn.run());
+        Ok(receiver)
+    }
+
+    /// Records the owner's `verdict` on tool call `call`, running it as the owner through
+    /// `tools` if approved, then follows the turn it resumes: its events, the decision's first.
+    /// The turn goes on to the model once no other call of it awaits a decision. Refused when
+    /// the assistant is off (`503`), the conversation or the call isn't the caller's (`404`),
+    /// or the call isn't awaiting a decision (`409`).
+    pub async fn decide(
+        &self,
+        principal: &Principal,
+        id: ConversationId,
+        call: ToolCallId,
+        verdict: Verdict,
+        tools: Arc<dyn AppTools>,
+    ) -> AppResult<mpsc::UnboundedReceiver<TurnEvent>> {
+        let plan = self.authorize_conversation(principal, ConversationAction::Post)?;
+        let model = self
+            .model
+            .clone()
+            .ok_or_else(|| AppError::unavailable("the assistant is off: no model is configured"))?;
+        let mut attempt = 1;
+        let (conversation, answered) = loop {
+            let mut conversation = self.load_for(principal, &plan, id).await?;
+            let pending = conversation.entity.awaiting(call)?;
+            let (decision, answered) = match verdict {
+                Verdict::Reject => (Decision::Rejected, None),
+                Verdict::Approve => {
+                    let key = idempotency_key(call);
+                    let answered = tools
+                        .call(pending.tool(), pending.arguments().clone(), Some(&key))
+                        .await;
+                    (Decision::Approved(outcome_of(&answered)), Some(answered))
+                }
+            };
+            let event = conversation.entity.decide(call, decision)?;
+            // Another save got in first (a decision on another call of the same step): run
+            // this one again on what it saved, the write replayed rather than repeated.
+            match self.save_posted(&mut conversation, event).await {
+                Ok(()) => break (conversation, answered),
+                Err(AppError::PreconditionFailed(_)) if attempt < DECISION_ATTEMPTS => {
+                    attempt += 1;
+                }
+                Err(err) => return Err(err),
+            }
+        };
+
+        let (events, receiver) = mpsc::unbounded_channel();
+        let status = match verdict {
+            Verdict::Approve => ToolCallStatus::Approved,
+            Verdict::Reject => ToolCallStatus::Rejected,
+        };
+        let _ = events.send(TurnEvent::Decided { id: call, status });
+        if let Some(answered) = &answered {
+            let _ = events.send(TurnEvent::ToolResult {
+                id: call,
+                outcome: outcome_of(answered),
+            });
+        }
+        let signed_out = answered.as_ref().is_some_and(Answered::unauthorized);
+        let turn = Turn {
+            service: self.clone(),
+            model,
+            tools,
+            conversation,
+            events,
+            stored: vec![],
+        };
+        tokio::spawn(turn.resume(signed_out));
         Ok(receiver)
     }
 
@@ -154,7 +256,32 @@ struct Turn {
 
 impl Turn {
     async fn run(mut self) {
-        match self.steps().await {
+        let steps = self.steps().await;
+        self.end(steps);
+    }
+
+    /// Goes on from a decision: to the model, unless another call still awaits one, or the
+    /// approved call found the owner signed out.
+    async fn resume(mut self, signed_out: bool) {
+        let resumed = if signed_out {
+            self.emit(TurnEvent::Failed(AppError::Unauthorized));
+            self.post_error(SIGNED_OUT).await
+        } else if self
+            .conversation
+            .entity
+            .awaiting_approval()
+            .next()
+            .is_some()
+        {
+            Ok(())
+        } else {
+            self.steps().await
+        };
+        self.end(resumed);
+    }
+
+    fn end(&self, steps: AppResult<()>) {
+        match steps {
             Ok(()) => self.emit(TurnEvent::Finished {
                 messages: self.stored.clone(),
                 version: self.conversation.version,
@@ -177,6 +304,10 @@ impl Turn {
         let reads: HashMap<String, bool> = surface
             .iter()
             .map(|tool| (tool.name.clone(), tool.reads))
+            .collect();
+        let summaries: HashMap<String, String> = surface
+            .iter()
+            .map(|tool| (tool.name.clone(), tool.summary().to_string()))
             .collect();
         let tools: Vec<ModelTool> = surface
             .into_iter()
@@ -245,6 +376,7 @@ impl Turn {
                     self.emit(TurnEvent::ApprovalRequired {
                         id: call.id(),
                         tool: call.tool().to_string(),
+                        summary: summaries.get(call.tool()).cloned().unwrap_or_default(),
                         arguments: call.arguments().clone(),
                     });
                 }
@@ -281,13 +413,12 @@ impl Turn {
                 ));
                 continue;
             }
-            let answered = self.tools.call(&asked.name, asked.arguments.clone()).await;
+            let answered = self
+                .tools
+                .call(&asked.name, asked.arguments.clone(), None)
+                .await;
             signed_out |= answered.unauthorized();
-            let outcome = if answered.succeeded() {
-                Outcome::Ok(answered.body)
-            } else {
-                Outcome::Error(answered.body)
-            };
+            let outcome = outcome_of(&answered);
             self.emit(TurnEvent::ToolResult {
                 id,
                 outcome: outcome.clone(),
@@ -400,6 +531,14 @@ fn history(messages: &[Message], limit: u32) -> Vec<ModelMessage> {
             ],
         })
         .collect()
+}
+
+fn outcome_of(answered: &Answered) -> Outcome {
+    if answered.succeeded() {
+        Outcome::Ok(answered.body.clone())
+    } else {
+        Outcome::Error(answered.body.clone())
+    }
 }
 
 fn result(call: &ToolCall) -> ModelToolResult {

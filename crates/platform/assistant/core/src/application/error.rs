@@ -8,7 +8,10 @@ impl From<ConversationError> for AppError {
             ConversationError::EmptyMessage | ConversationError::NoToolCalls => {
                 AppError::invalid_field("text", err.to_string())
             }
-            ConversationError::AwaitingApproval => AppError::conflict(err.to_string()),
+            ConversationError::AwaitingApproval | ConversationError::NotAwaitingApproval => {
+                AppError::conflict(err.to_string())
+            }
+            ConversationError::NoSuchToolCall => AppError::not_found("tool call"),
         }
     }
 }

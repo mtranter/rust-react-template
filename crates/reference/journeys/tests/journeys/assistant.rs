@@ -53,3 +53,59 @@ async fn the_assistant_reads_what_its_user_may_and_not_what_they_may_not(pool: P
         "nothing of Alice's note reaches Bob's conversation"
     );
 }
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn alice_has_the_assistant_add_an_item_to_her_note_once_she_approves(pool: PgPool) {
+    let app = App::seeded(pool).await;
+    let alice = app.as_user(USER_ID_ALICE);
+    let note = alice.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
+    let add_bread = json!({
+        "tool": "add_note_item",
+        "arguments": {
+            "id": ALICE_NOTE_ID_SHOPPING_LIST.to_string(),
+            "expected_version": note.version().to_string(),
+            "body": { "text": "Bread" },
+        },
+    })
+    .to_string();
+
+    let conversation = alice.start_conversation().await.unwrap();
+    let events = alice
+        .ask_assistant(&conversation, &add_bread)
+        .await
+        .unwrap();
+    let [pending] = events
+        .iter()
+        .filter(|event| event["kind"] == "approvalRequired")
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    assert_eq!(pending["tool"], "add_note_item");
+    let unchanged = alice.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
+    assert_eq!(
+        unchanged.version(),
+        note.version(),
+        "nothing runs unapproved"
+    );
+
+    let events = alice
+        .approve(
+            conversation["id"].as_str().unwrap(),
+            pending["id"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    let [added] = tool_results(&events).try_into().unwrap();
+    assert!(added.get("error").is_none(), "{added}");
+    assert_eq!(events.last().unwrap()["kind"], "finished");
+
+    let note = alice.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
+    assert!(
+        note["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["text"] == "Bread"),
+        "{note:?}"
+    );
+}

@@ -1,5 +1,8 @@
-import { postAssistantConversationsByIdMessages } from "@/api/sdk.gen";
-import type { TurnEventResponse } from "@/api/types.gen";
+import {
+  postAssistantConversationsByIdMessages,
+  postAssistantConversationsByIdToolCallsByToolCallIdDecision,
+} from "@/api/sdk.gen";
+import type { DecisionRequest, TurnEventResponse } from "@/api/types.gen";
 import { ifMatch } from "@/lib/if-match";
 
 /**
@@ -19,6 +22,27 @@ export async function* sendMessage(
     path: { id },
     body: { text },
     headers: ifMatch(version),
+    parseAs: "stream",
+    throwOnError: true,
+    signal,
+  });
+  yield* readEvents(data as unknown as ReadableStream<Uint8Array>);
+}
+
+/**
+ * Approves or rejects tool call `callId` awaiting a decision in conversation `id`, and yields the
+ * events of the turn it resumes as they arrive, the decision's first. A refusal before the stream
+ * (`409` once it was decided, `503`, ...) throws its `ErrorBody`, as `sendMessage` does.
+ */
+export async function* decideToolCall(
+  id: string,
+  callId: string,
+  decision: DecisionRequest,
+  signal: AbortSignal,
+): AsyncGenerator<TurnEventResponse> {
+  const { data } = await postAssistantConversationsByIdToolCallsByToolCallIdDecision({
+    path: { id, tool_call_id: callId },
+    body: { decision },
     parseAs: "stream",
     throwOnError: true,
     signal,
