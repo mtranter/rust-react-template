@@ -3,6 +3,7 @@
 //! REST endpoint as `/mcp` sends it, presenting the token the caller gives.
 
 use super::Surface;
+use super::fields::{ToolArgument, ToolField};
 use super::tools::{Described, Unsent, described, send};
 use crate::metrics::ToolCalls;
 use crate::{RequestIdMiddleware, TraceRequests};
@@ -23,6 +24,11 @@ pub struct AgentTool {
     pub input_schema: Value,
     /// Whether its operation is a `GET`, which changes nothing.
     pub reads: bool,
+    /// Its operation's path template under the API's base, such as `/notes/{id}`.
+    pub path: &'static str,
+    pub arguments: Vec<ToolArgument>,
+    /// The values its arguments carry, in the order its schemas declare them.
+    pub fields: Vec<ToolField>,
 }
 
 /// What a tool's operation answered: its status, and its body as JSON (a
@@ -75,6 +81,9 @@ impl Toolbox {
                 description: tool.description,
                 input_schema: tool.input_schema.clone(),
                 reads: tool.method == Method::GET,
+                path: tool.path,
+                arguments: tool.arguments(),
+                fields: tool.fields.clone(),
             })
             .collect();
         Self {

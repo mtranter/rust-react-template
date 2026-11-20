@@ -4825,7 +4825,18 @@
             "type": "string",
             "description": "The operation's summary, saying what approving it would do."
           },
-          "arguments": {}
+          "arguments": {},
+          "proposal": {
+            "description": "What approving it would do, in the caller's terms; absent for a tool the app doesn't\nhave.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProposalResponse"
+              },
+              {
+                "description": "What approving it would do, in the caller's terms; absent for a tool the app doesn't\nhave."
+              }
+            ]
+          }
         }
       },
       "AssignmentRequest": {
@@ -5767,6 +5778,79 @@
           "-createdAt"
         ]
       },
+      "ProposalFieldResponse": {
+        "type": "object",
+        "title": "ProposalFieldResponse",
+        "required": [
+          "label",
+          "value"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "description": "The value as the call sends it."
+          },
+          "format": {
+            "type": "string",
+            "description": "`date` or `date-time`, for a value to show in the caller's locale."
+          },
+          "previous": {
+            "description": "The target's value now, when the call changes it."
+          }
+        }
+      },
+      "ProposalResponse": {
+        "type": "object",
+        "title": "ProposalResponse",
+        "description": "What a call awaiting the caller's approval would do, in their terms: built by the server from\nthe operation and the call's arguments, never from the assistant's words, so it says exactly\nwhat approving runs.",
+        "required": [
+          "action",
+          "fields"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "The operation, in words: `edit_note` is \"Edit note\"."
+          },
+          "target": {
+            "description": "The record it acts on, by its name, when it can be read and named.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProposalTargetResponse"
+              },
+              {
+                "description": "The record it acts on, by its name, when it can be read and named."
+              }
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "description": "The business data it sends, in its schema's order: no headers, ids or versions.",
+            "items": {
+              "$ref": "#/components/schemas/ProposalFieldResponse"
+            }
+          }
+        }
+      },
+      "ProposalTargetResponse": {
+        "type": "object",
+        "title": "ProposalTargetResponse",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "What the record is, such as \"Note\"."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "RoleRequest": {
         "type": "object",
         "title": "RoleRequest",
@@ -5969,6 +6053,17 @@
           "status": {
             "$ref": "#/components/schemas/ToolCallStatusResponse"
           },
+          "proposal": {
+            "description": "What approving it would do, for a call `awaiting_approval`; absent for any other, and\nfor a tool the app no longer has.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProposalResponse"
+              },
+              {
+                "description": "What approving it would do, for a call `awaiting_approval`; absent for any other, and\nfor a tool the app no longer has."
+              }
+            ]
+          },
           "result": {
             "description": "The operation's answer when it succeeded."
           },
@@ -5993,6 +6088,10 @@
           "tool": {
             "type": "string",
             "description": "The operation's id, which is its tool's name."
+          },
+          "summary": {
+            "type": "string",
+            "description": "The operation's summary, saying what it does; absent for a tool the app doesn't have."
           },
           "arguments": {}
         }

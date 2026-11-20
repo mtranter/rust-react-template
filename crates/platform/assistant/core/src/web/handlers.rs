@@ -4,7 +4,7 @@ use super::models::{
     DecideToolCallRequest, SendMessageRequest, TurnEventResponse,
 };
 use super::tools::CallerTools;
-use crate::application::{AssistantService, TurnEvent, Versioned, summary};
+use crate::application::{AssistantService, TurnEvent, Versioned, proposals, summary};
 use crate::domain::{Conversation, ConversationId, ToolCallId};
 use app_error::AppError;
 use app_web::mcp::Toolbox;
@@ -58,12 +58,16 @@ fn tagged(conversation: Versioned<Conversation>) -> ConversationResult {
     ConversationResult::new(conversation.into(), version)
 }
 
-/// With each tool call's summary, from the app's tools.
-fn tagged_with_summaries(
+/// With each tool call's summary, from the app's tools, and the proposal of each awaiting the
+/// caller's approval, read through them as the caller.
+async fn tagged_with_summaries(
     conversation: Versioned<Conversation>,
     toolbox: &Toolbox,
+    caller: &Caller,
 ) -> ConversationResult {
     let version = conversation.version;
+    let tools = CallerTools::new(toolbox.clone(), caller.token());
+    let proposed = proposals(&conversation.entity, &tools).await;
     let response = ConversationResponse::from(conversation).summarised(|tool| {
         toolbox
             .tools()
@@ -71,7 +75,7 @@ fn tagged_with_summaries(
             .find(|candidate| candidate.name == tool)
             .map(|found| summary(found.description).to_string())
     });
-    ConversationResult::new(response, version)
+    ConversationResult::new(response.proposed(proposed), version)
 }
 
 /// Unit struct so `dump-spec` can build the spec without a database.
@@ -151,7 +155,7 @@ impl AssistantEndpoints {
             .0
             .conversation(&caller, conversation_id(&id.0)?)
             .await?;
-        Ok(tagged_with_summaries(conversation, toolbox.0))
+        Ok(tagged_with_summaries(conversation, toolbox.0, &caller).await)
     }
 
     /// Delete one of the caller's conversations and its messages. Requires `If-Match` with the

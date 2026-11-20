@@ -29,6 +29,42 @@ pub struct AppTool {
     pub input_schema: Value,
     /// Whether its operation only reads (a `GET`), so it runs without the owner's approval.
     pub reads: bool,
+    /// Its operation's path template, such as `/notes/{id}`.
+    pub path: String,
+    pub arguments: Vec<ToolArgument>,
+    /// The values its arguments carry, in the order its schemas declare them.
+    pub fields: Vec<ToolField>,
+}
+
+/// Where a tool's argument goes in its operation's request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgumentIn {
+    Path,
+    Query,
+    Header,
+    Body,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolArgument {
+    pub name: String,
+    pub sent: ArgumentIn,
+}
+
+/// One value a tool's argument carries: the argument, or a property within it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolField {
+    pub argument: String,
+    /// The properties, outermost first, it is under within the argument.
+    pub properties: Vec<FieldProperty>,
+    /// Its schema's `format`, or, for a list, its items'.
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldProperty {
+    pub name: String,
+    pub title: Option<String>,
 }
 
 impl AppTool {

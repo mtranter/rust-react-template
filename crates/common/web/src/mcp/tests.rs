@@ -561,3 +561,43 @@ async fn a_tool_call_refused_before_any_request_is_an_error_span_with_no_request
     ));
     assert_eq!(crate::testing::Traces::attribute(&call, "is_error"), None);
 }
+
+#[test]
+fn an_agent_tool_says_its_path_where_each_argument_goes_and_its_fields_in_order() {
+    let toolbox = Toolbox::new::<ThingTools>();
+    let put = toolbox
+        .tools()
+        .iter()
+        .find(|tool| tool.name == "put_thing")
+        .expect("put_thing is a tool");
+
+    assert_eq!(put.path, "/things/{id}");
+    let sent: Vec<_> = put
+        .arguments
+        .iter()
+        .map(|argument| (argument.name.as_str(), argument.sent))
+        .collect();
+    assert_eq!(
+        sent,
+        vec![
+            ("id", ArgumentIn::Path),
+            ("tag", ArgumentIn::Query),
+            ("expected_version", ArgumentIn::Header),
+            ("x_trace_tag", ArgumentIn::Header),
+            ("body", ArgumentIn::Body),
+        ]
+    );
+    let fields: Vec<_> = put
+        .fields
+        .iter()
+        .map(|field| {
+            let mut at = vec![field.argument.as_str()];
+            at.extend(field.properties.iter().map(|p| p.name.as_str()));
+            at.join(".")
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        vec!["id", "tag", "expected_version", "x_trace_tag", "body.name"]
+    );
+}

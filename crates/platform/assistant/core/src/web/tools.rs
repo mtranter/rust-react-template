@@ -1,8 +1,10 @@
 //! The adapter of the assistant's tools port: the server's [`Toolbox`], presenting the token of
 //! the request running the turn.
 
-use crate::application::{Answered, AppTool, AppTools};
-use app_web::mcp::{AgentTool, NotSent, Toolbox};
+use crate::application::{
+    Answered, AppTool, AppTools, ArgumentIn, FieldProperty, ToolArgument, ToolField,
+};
+use app_web::mcp::{self, AgentTool, NotSent, Toolbox};
 use app_web::{ErrorBody, ErrorCode};
 use async_trait::async_trait;
 use poem_openapi::types::ToJSON;
@@ -44,6 +46,9 @@ impl AppTools for CallerTools {
                 description: tool.description.to_owned(),
                 input_schema: tool.input_schema.clone(),
                 reads: tool.reads,
+                path: tool.path.to_owned(),
+                arguments: tool.arguments.iter().map(argument).collect(),
+                fields: tool.fields.iter().map(field).collect(),
             })
             .collect()
     }
@@ -80,5 +85,32 @@ fn refused(status: u16, code: ErrorCode, err: &NotSent) -> Answered {
         body: ErrorBody::new(code, err.to_string())
             .to_json()
             .unwrap_or_default(),
+    }
+}
+
+fn argument(argument: &mcp::ToolArgument) -> ToolArgument {
+    ToolArgument {
+        name: argument.name.clone(),
+        sent: match argument.sent {
+            mcp::ArgumentIn::Path => ArgumentIn::Path,
+            mcp::ArgumentIn::Query => ArgumentIn::Query,
+            mcp::ArgumentIn::Header => ArgumentIn::Header,
+            mcp::ArgumentIn::Body => ArgumentIn::Body,
+        },
+    }
+}
+
+fn field(field: &mcp::ToolField) -> ToolField {
+    ToolField {
+        argument: field.argument.clone(),
+        properties: field
+            .properties
+            .iter()
+            .map(|property| FieldProperty {
+                name: property.name.clone(),
+                title: property.title.clone(),
+            })
+            .collect(),
+        format: field.format.map(str::to_owned),
     }
 }

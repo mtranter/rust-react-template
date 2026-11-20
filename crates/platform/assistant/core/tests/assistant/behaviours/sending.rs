@@ -101,7 +101,7 @@ async fn the_model_is_told_who_it_acts_for_today_and_is_given_the_apps_tools(poo
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>(),
-        ["get_list", "create_list"]
+        ["get_list", "edit_list", "delete_list", "create_list"]
     );
     let get_list = &request.tools[0];
     assert!(get_list.description.starts_with("Fetch a list by its id."));

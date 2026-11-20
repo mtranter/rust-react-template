@@ -20,9 +20,11 @@ use async_trait::async_trait;
 use poem::endpoint::BoxEndpoint;
 use poem::web::Data;
 use poem::{EndpointExt, Route};
-use poem_openapi::param::Path;
+use poem_openapi::param::{Header, Path};
 use poem_openapi::payload::Json as PoemJson;
-use poem_openapi::{OpenApi, OpenApiService};
+use poem_openapi::registry::{MetaSchema, MetaSchemaRef};
+use poem_openapi::types::{ParseError, ParseFromJSON, ParseResult, ToJSON, Type};
+use poem_openapi::{Object, OpenApi, OpenApiService};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::{PgPool, QueryBuilder};
@@ -222,8 +224,9 @@ impl ChatModel for ScriptedModel {
 pub const LIST_ID: &str = "11111111-1111-1111-1111-111111111111";
 
 /// The app's operations, standing in for those the server composes beside the assistant: a
-/// read, `get_list`, answering who read it, and a write, `create_list`, which keeps what it is
-/// sent and the `Idempotency-Key` it was sent with. Served idempotent, as the server serves
+/// read, `get_list`, answering who read it; writes to one list, `edit_list` and `delete_list`;
+/// and a write, `create_list`, which keeps what it is sent and the `Idempotency-Key` it was
+/// sent with. Served idempotent, as the server serves
 /// the app's, so a retry with a key is replayed rather than written again.
 #[derive(Default)]
 struct AppOperations;
@@ -249,6 +252,33 @@ impl AppOperations {
         })))
     }
 
+    /// Replace a list's title, due day and owner. Requires `If-Match`; another's, or one that
+    /// doesn't exist, is refused with `404`.
+    #[oai(path = "/lists/:id", method = "put", operation_id = "edit_list")]
+    async fn edit_list(
+        &self,
+        _auth: JwtAuth,
+        id: Path<String>,
+        #[oai(name = "If-Match")] _if_match: Header<Option<String>>,
+        body: PoemJson<EditList>,
+    ) -> ApiResult<PoemJson<Value>> {
+        if id.0 != LIST_ID {
+            return Err(AppError::not_found("list").into());
+        }
+        Ok(PoemJson(json!({ "id": LIST_ID, "title": body.0.title })))
+    }
+
+    /// Delete a list. Requires `If-Match`.
+    #[oai(path = "/lists/:id", method = "delete", operation_id = "delete_list")]
+    async fn delete_list(
+        &self,
+        _auth: JwtAuth,
+        _id: Path<String>,
+        #[oai(name = "If-Match")] _if_match: Header<Option<String>>,
+    ) -> ApiResult<PoemJson<Value>> {
+        Ok(PoemJson(Value::Null))
+    }
+
     /// Write a list, owned by the caller.
     #[oai(path = "/lists", method = "post", operation_id = "create_list")]
     async fn create_list(
@@ -263,6 +293,69 @@ impl AppOperations {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         written.0.0.lock().unwrap().push((body.0.clone(), key));
         Ok(PoemJson(body.0))
+    }
+}
+
+/// What `edit_list` replaces a list with.
+#[derive(Object)]
+#[oai(rename_all = "camelCase")]
+struct EditList {
+    title: String,
+    due_on: Option<Formatted<Day>>,
+    owner_id: Option<Formatted<Identifier>>,
+}
+
+/// A string the schema declares in `F`'s format, as the app's dates and ids would be.
+struct Formatted<F>(String, std::marker::PhantomData<F>);
+
+trait Format: Send + Sync {
+    const FORMAT: &'static str;
+}
+
+struct Day;
+impl Format for Day {
+    const FORMAT: &'static str = "date";
+}
+
+struct Identifier;
+impl Format for Identifier {
+    const FORMAT: &'static str = "uuid";
+}
+
+impl<F: Format> Type for Formatted<F> {
+    const IS_REQUIRED: bool = true;
+    type RawValueType = String;
+    type RawElementValueType = String;
+
+    fn name() -> std::borrow::Cow<'static, str> {
+        format!("string({})", F::FORMAT).into()
+    }
+
+    fn schema_ref() -> MetaSchemaRef {
+        MetaSchemaRef::Inline(Box::new(MetaSchema::new_with_format("string", F::FORMAT)))
+    }
+
+    fn as_raw_value(&self) -> Option<&String> {
+        Some(&self.0)
+    }
+
+    fn raw_element_iter<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a> {
+        Box::new(self.as_raw_value().into_iter())
+    }
+}
+
+impl<F: Format> ParseFromJSON for Formatted<F> {
+    fn parse_from_json(value: Option<Value>) -> ParseResult<Self> {
+        match value {
+            Some(Value::String(text)) => Ok(Self(text, std::marker::PhantomData)),
+            other => Err(ParseError::expected_type(other.unwrap_or_default())),
+        }
+    }
+}
+
+impl<F: Format> ToJSON for Formatted<F> {
+    fn to_json(&self) -> Option<Value> {
+        Some(Value::String(self.0.clone()))
     }
 }
 
