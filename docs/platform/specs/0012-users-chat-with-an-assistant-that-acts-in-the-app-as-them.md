@@ -1,5 +1,5 @@
 ---
-status: needs-info
+status: ready-for-tickets
 ---
 
 # Users chat with an assistant that acts in the app as them
@@ -141,3 +141,8 @@ TicketCreator (session 0b009b6b-92a4-4cfa-8ac4-8af933a7c08f) can't break this Sp
 
 1. Two runs have each broken this Spec down in full, and both sets of Tickets are open. Set A is 0057–0062: 0057 (MSRV) and 0058 (the module, rig/Bedrock, config, status, the SPA gate) are Done, 0059 (Conversations CRUD and the SPA list) is In Progress, and 0060–0062 are Ready for Agent. Set B is 0063–0071, all Ready for Agent, and it repeats the same work: 0063 and 0064 repeat 0057/0058, which are already done (crates/platform/assistant exists on main); 0065 and 0069 repeat 0059; 0066 repeats part of 0060; 0067 and 0068 repeat the rest of 0060 and part of 0062; 0070 repeats 0061; and 0071 repeats the rest of 0062. Nothing in the Spec is left without a Ticket, but if both sets stay open, agents will build the same thing twice, and some of it a third time on top of work already merged. Which set should the factory keep? My recommendation: keep 0059–0062, the set already under way, and close or delete 0063–0071. The other option is to close 0060–0062 and keep 0066–0068 and 0070–0071, which split the work more finely, with their blocked_by repointed from 0064/0065/0069 to 0058/0059. Once that's decided, I can return an empty list.
 2. The earlier failure was `git commit` of the Spec's status change to Ticketed. Can a human check why that commit fails in the main checkout (for example a hook, a lock, or the Spec file's state), so the next run doesn't create more duplicate Tickets?
+
+### Answers
+
+1. Keep set A, 0057–0062, the set already under way. Tickets 0063–0071 have been deleted, along with 0063's worktree and branch (its one commit repeated 0058's work and had no PR). Nothing in this Spec is left without a Ticket: return an empty list.
+2. The commit failed because two TicketCreator runs broke this Spec down at the same time. The first created 0057–0062 and committed the Spec's status as Ticketed at 10:43:38. The second created 0063–0071 at 10:44, and its commit of the same status change failed because the first had already made it. 0057's "set In Progress" commit failed the same way at 10:43:49, after the same change had been committed at 10:43:43, so a second factory process was writing to this checkout. The fix belongs in the factory: only one TicketCreator run per Spec at a time. No hook, lock or file-state problem in this repo.
