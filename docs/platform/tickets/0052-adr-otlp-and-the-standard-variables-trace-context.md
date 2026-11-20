@@ -1,7 +1,7 @@
 ---
 id: 0052
 name: "ADR: OTLP and the standard variables, trace context in the envelope, and the metric set"
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0003-traces-and-metrics-follow-every-request-and-event-through-opentelemetry.md
 blocked_by: [docs/platform/tickets/0045-errorbody-carries-the-trace-s-id-as-traceid.md, docs/platform/tickets/0046-a-trace-follows-a-request-across-the-outbox-into-t.md, docs/platform/tickets/0047-each-mcp-tool-call-is-a-span-with-its-outcome-pare.md, docs/platform/tickets/0048-each-sql-query-is-a-span-with-its-statement-but-ne.md, docs/platform/tickets/0049-request-side-metrics-are-exported-over-otlp-http-m.md, docs/platform/tickets/0050-the-worker-reports-queue-relay-and-backfill-metric.md, docs/platform/tickets/0051-an-optional-observability-compose-profile-runs-a-l.md]
 blocks: []
