@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE assistant.conversation\n                SET title = $2, version = version + 1\n                WHERE id = $1 AND version = $3\n                RETURNING version\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "assistant.conversation",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f245260b25af4863ab553f85ece6f9d5873bffdd06d80aa415f066cca40d3f21"
+}

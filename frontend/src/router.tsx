@@ -82,6 +82,12 @@ const accessRoute = createRoute({
 const assistantRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/assistant",
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => ({
+    conversation:
+      typeof search.conversation === "string" && search.conversation
+        ? search.conversation
+        : undefined,
+  }),
   component: AssistantPage,
 });
 

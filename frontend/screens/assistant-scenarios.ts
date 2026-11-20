@@ -1,3 +1,8 @@
+import type {
+  ConversationResponse,
+  ConversationSummaryResponse,
+  ListResultConversationSummaryResponse,
+} from "@/api";
 import { http, HttpResponse } from "msw";
 import type { Scenario } from "./scenarios.ts";
 
@@ -6,11 +11,91 @@ import type { Scenario } from "./scenarios.ts";
 
 const assistantOn = http.get("*/api/assistant/status", () => HttpResponse.json({ on: true }));
 
+const roles: ConversationResponse = {
+  id: "conversation-roles",
+  title: "Which roles are there?",
+  createdAt: "2026-01-01T09:00:00Z",
+  messages: [
+    {
+      kind: "user",
+      id: "message-1",
+      postedAt: "2026-01-01T09:00:00Z",
+      text: "Which roles are there?",
+    },
+    {
+      kind: "toolCalls",
+      id: "message-2",
+      postedAt: "2026-01-01T09:00:01Z",
+      toolCalls: [
+        {
+          id: "call-1",
+          tool: "list_roles",
+          arguments: {},
+          status: "ran",
+          result: { items: [{ name: "admin" }, { name: "user" }], total: 2 },
+        },
+      ],
+    },
+    {
+      kind: "assistant",
+      id: "message-3",
+      postedAt: "2026-01-01T09:00:02Z",
+      text: "There are two roles: admin and user.",
+    },
+  ],
+  version: "1",
+};
+
+const untitled: ConversationResponse = {
+  id: "conversation-untitled",
+  title: "",
+  createdAt: "2026-01-02T09:00:00Z",
+  messages: [],
+  version: "1",
+};
+
+function conversationsOf(conversations: ConversationResponse[]) {
+  const items = conversations.map(
+    ({ messages: _, ...summary }): ConversationSummaryResponse => summary,
+  );
+  return [
+    assistantOn,
+    http.get("*/api/assistant/conversations", () =>
+      HttpResponse.json({
+        items,
+        total: items.length,
+        limit: 100,
+        offset: 0,
+      } satisfies ListResultConversationSummaryResponse),
+    ),
+    ...conversations.map((conversation) =>
+      http.get(`*/api/assistant/conversations/${conversation.id}`, () =>
+        HttpResponse.json(conversation),
+      ),
+    ),
+  ];
+}
+
 export const assistantScenarios: Scenario[] = [
   {
     name: "assistant",
     route: "/assistant",
-    handlers: [assistantOn],
-    shows: (page) => page.getByRole("region", { name: "Chat" }),
+    handlers: conversationsOf([untitled, roles]),
+    shows: (page) => page.getByRole("navigation", { name: "Conversations" }),
+  },
+  {
+    name: "assistant-empty",
+    route: "/assistant",
+    handlers: conversationsOf([]),
+    shows: (page) => page.getByText("No conversations yet."),
+  },
+  {
+    name: "assistant-conversation",
+    route: "/assistant?conversation=conversation-roles",
+    handlers: conversationsOf([untitled, roles]),
+    steps: async (page) => {
+      await page.getByRole("button", { name: /list_roles/ }).click();
+    },
+    shows: (page) => page.getByText("Result"),
   },
 ];

@@ -335,12 +335,18 @@ name = "assistant"
 version = "0.1.0"
 dependencies = [
  "app-authz",
+ "app-db",
  "app-domain",
  "app-error",
+ "app-events",
  "app-module",
+ "app-persistence",
  "app-test-db",
  "app-web",
+ "assistant",
+ "assistant-api",
  "async-trait",
+ "chrono",
  "poem",
  "poem-openapi",
  "rig-bedrock",
@@ -351,11 +357,18 @@ dependencies = [
  "strum",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
 name = "assistant-api"
 version = "0.1.0"
+dependencies = [
+ "app-events",
+ "chrono",
+ "serde",
+ "uuid",
+]
 
 [[package]]
 name = "astral-tokio-tar"

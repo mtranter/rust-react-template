@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO assistant.message (conversation_id, id, position, posted_at, kind, text)\n        SELECT $1, message.id, message.position::integer, message.posted_at, message.kind, message.text\n        FROM unnest($2::uuid[], $3::timestamptz[], $4::text[], $5::text[])\n            WITH ORDINALITY AS message (id, posted_at, kind, text, position)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray",
+        "TimestamptzArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fcb86b44953d8ace4300b70b14804efe0bcb668160f551134b02a7df63dae69a"
+}

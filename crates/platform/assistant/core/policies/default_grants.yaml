@@ -1,6 +1,11 @@
 apiVersion: auth.flagrante.io/v1
+# A conversation is its owner's alone: admins too act only on their own.
 defaultGrants:
   - { role: user, resource: "module:assistant", action: use }
   - { role: user, resource: assistant, action: chat }
+  - { role: user, resource: conversation, action: start }
+  - { role: user, resource: conversation, actions: [list, view, delete], scope: owner }
   - { role: admin, resource: "module:assistant", action: use }
   - { role: admin, resource: assistant, action: chat }
+  - { role: admin, resource: conversation, action: start }
+  - { role: admin, resource: conversation, actions: [list, view, delete], scope: owner }

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO assistant.tool_call\n            (conversation_id, message_id, id, position, tool, arguments, status, outcome, result)\n        SELECT $1, call.message_id, call.id, call.position::integer, call.tool, call.arguments,\n            call.status, call.outcome, call.result\n        FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::jsonb[], $6::text[], $7::text[], $8::jsonb[])\n            WITH ORDINALITY AS call (message_id, id, tool, arguments, status, outcome, result, position)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray",
+        "UuidArray",
+        "TextArray",
+        "JsonbArray",
+        "TextArray",
+        "TextArray",
+        "JsonbArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9ce351fba9b7978790987cd1b838d4dcac09e832b45c7777a8eaf8c4d379d3c6"
+}
