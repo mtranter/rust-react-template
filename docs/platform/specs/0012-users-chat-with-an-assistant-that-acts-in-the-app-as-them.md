@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: ticketed
 ---
 
 # Users chat with an assistant that acts in the app as them
