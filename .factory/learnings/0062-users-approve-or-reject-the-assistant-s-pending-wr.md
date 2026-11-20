@@ -7,3 +7,4 @@
 - The approval card needs the operation's summary, which the SPA can't know. The server fills `summary` on `approvalRequired` (from the turn's surface) and on each stored tool call in `get_conversation` (from the `Toolbox` in request data, `ConversationResponse::summarised`). The summary is the description's first paragraph, since `Toolbox` joins summary and description with a blank line.
 - Biome's `useSemanticElements` refuses `role="group"` on a div: wrap the card in a `<section aria-label>`, whose role is `region`.
 - A new assistant operation goes in `REST_ONLY` and in `platform_ops` in `scripts/check-init.sh`.
+- `make check-init` refuses any file outside `crates/reference/` that names a reference module as a word, a Learnings file included: "users" in its title failed it. Run it with `COMPOSE_PROJECT_NAME` set to the project that owns :5432.
