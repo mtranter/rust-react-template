@@ -9,6 +9,7 @@ A clone-and-go **template**: a Rust modular-monolith backend (Poem + poem-openap
 - **Issue tracker.** Tickets are markdown files: the platform's in `docs/platform/tickets/`, the business domain's in `docs/tickets/`. See `docs/agents/issue-tracker.md`.
 - **Triage labels.** The five default triage roles, recorded as each ticket's `status`. See `docs/agents/triage-labels.md`.
 - **Domain docs.** Two vocabularies: the platform's in `docs/platform/`, the business domain's at the root. See `docs/agents/domain.md`.
+- **Task skills.** How-tos for specific tasks live in `.claude/skills/` (auth, events and projections, background work, telemetry, new modules, deployment, the identity provider). `crates/AGENTS.md` says which to load before which task: load it, even for a small change. A skill extends its area's `AGENTS.md`, never overrides it. If a skill and the code disagree, the code wins: fix the skill in the same change.
 
 ## Architecture and conventions
 
