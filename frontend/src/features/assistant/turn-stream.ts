@@ -41,7 +41,11 @@ export async function* readEvents(
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
-      buffered += decoder.decode(value, { stream: true }).replace(/\r\n?/g, "\n");
+      // A trailing `\r` waits for the next chunk, which may start with its `\n`.
+      buffered = (buffered + decoder.decode(value, { stream: true })).replace(
+        /\r\n|\r(?!$)/g,
+        "\n",
+      );
       let end = buffered.indexOf("\n\n");
       while (end >= 0) {
         const event = parse(buffered.slice(0, end));

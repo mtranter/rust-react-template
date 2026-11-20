@@ -1,0 +1,10 @@
+# Learnings: 0061 the Assistant page chats
+
+- **hey-api 0.64 / client-fetch 0.10 can't parse `text/event-stream`**: it types `send_message`'s answer as `Array<TurnEventResponse>` and would `response.json()` it. Pass `parseAs: "stream"` to the generated SDK function and it returns the raw `ReadableStream` as `data` (cast it), while keeping the base URL, the auth wrapper in `src/hey-api.ts` and the thrown `ErrorBody` for a refusal before the stream. `frontend/src/features/assistant/turn-stream.ts` reads it; reuse it for `decide`'s stream (0062).
+- **poem's `EventStream` sends only `data: <json>\n\n`** per event: no `event:` names, the kind is the JSON's `kind`.
+- **A model failure sends `error`, then stores an `error` message, then `finished`.** Only a turn that couldn't store ends with `error` and no `finished`. So the SPA shows the streamed error inline while running, and after `finished` relies on the refetched stored error message (rendering both would duplicate it). Error messages (`kind: "error"`) weren't rendered before this ticket.
+- **MSW `server.use(a, b)`: the first handler wins.** To override one of `assistantApi(..).handlers` in a test, put the override *before* the spread.
+- **Streaming in vitest works** with MSW answering `new HttpResponse(readableStream, { headers: { "Content-Type": "text/event-stream" } })`: chunks arrive as the test enqueues them (`scriptedTurn()` in `src/test/assistant-fixtures.ts`), so a test can assert the half-streamed state. The same works in `screens/` (a stream left open freezes a turn mid-way).
+- `react-markdown` (v10) is the markdown renderer; with `skipHtml` raw HTML is dropped, and its default `urlTransform` blanks `javascript:` links.
+- Telling "a write ran" from the stream alone isn't possible (events don't carry the method), so `use-turn.ts` decides from the refetched conversation: a stored `approved` call with no error among the `finished` event's `messageIds`.
+- `make check-init` here needed `COMPOSE_PROJECT_NAME=<project owning :5432>` (see the 0059/0060 learnings).
