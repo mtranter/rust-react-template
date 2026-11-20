@@ -4,7 +4,7 @@ name: "The SPA's Assistant page lists, starts and deletes conversations, shown o
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md]
-blocks: []
+blocks: [docs/platform/tickets/0070-the-assistant-page-chats-streaming-text-and-read-t.md]
 ---
 
 # The SPA's Assistant page lists, starts and deletes conversations, shown only when the assistant is on
