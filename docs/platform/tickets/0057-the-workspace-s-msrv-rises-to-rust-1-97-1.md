@@ -1,7 +1,7 @@
 ---
 id: 0057
 name: "The workspace's MSRV rises to Rust 1.97.1"
-status: in-review
+status: done
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
 blocks: [docs/platform/tickets/0058-an-assistant-platform-module-reports-whether-the-a.md]
