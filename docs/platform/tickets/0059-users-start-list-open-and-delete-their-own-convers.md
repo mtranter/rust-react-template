@@ -1,7 +1,7 @@
 ---
 id: 0059
 name: "Users start, list, open and delete their own Conversations"
-status: needs-info
+status: in-progress
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0058-an-assistant-platform-module-reports-whether-the-a.md]
 blocks: [docs/platform/tickets/0060-sending-a-message-runs-a-streamed-turn-that-reads.md]
@@ -24,3 +24,7 @@ The Conversation aggregate root (ADR 0030) in `assistant`, with its Messages and
 ## Needs Human Input (factory)
 
 The factory stopped on this Ticket: implementor did not complete the Ticket: `make check-changed` passes, `make e2e` included, and everything is committed (029433e). The ticket's criterion that `make check-init` passes is not met yet: I never ran it. I updated `scripts/init.sh` and `scripts/check-init.sh` for the new seed, operations and route, and checked my changes for the words its scan refuses, but that is not a run. One `make check-init` run closes the criterion. (session e8d01187-4d59-4c69-b99c-0c9dd71b087a)
+
+
+### From Human
+Try again. Use same worktree if still exists
