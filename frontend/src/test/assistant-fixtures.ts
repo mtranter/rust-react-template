@@ -3,6 +3,8 @@ import type {
   ConversationSummaryResponse,
   ErrorBody,
   ListResultConversationSummaryResponse,
+  SendMessageRequest,
+  TurnEventResponse,
 } from "@/api";
 import { http, HttpResponse } from "msw";
 
@@ -73,13 +75,38 @@ function notFound() {
   );
 }
 
+/** A turn's stream that the test plays out: `emit` sends events as they come, `end` closes it. */
+export type ScriptedTurn = ReturnType<typeof scriptedTurn>;
+
+export function scriptedTurn() {
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      stream = controller;
+    },
+  });
+  const encoder = new TextEncoder();
+  return {
+    body,
+    emit: (...events: TurnEventResponse[]) => {
+      for (const event of events) {
+        stream.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      }
+    },
+    end: () => stream.close(),
+  };
+}
+
 /**
  * The assistant as the server answers it for `conversations` (changed in place): the caller's list
  * newest first, each one with its `ETag`, deletes guarded by `If-Match`, and a started one given the
- * next id. `ifMatches` records each delete's `If-Match`.
+ * next id. `ifMatches` records each delete's `If-Match`. A message sent at the conversation's
+ * version is stored, its version moved on, and answered with the next of `turns`; `sent` records
+ * each one's text and `If-Match`.
  */
-export function assistantApi(conversations: ConversationResponse[]) {
+export function assistantApi(conversations: ConversationResponse[], turns: ScriptedTurn[] = []) {
   const ifMatches: (string | null)[] = [];
+  const sent: { text: string; ifMatch: string | null }[] = [];
   let started = 0;
   const handlers = [
     assistantOn,
@@ -131,6 +158,34 @@ export function assistantApi(conversations: ConversationResponse[]) {
       conversations.splice(at, 1);
       return new HttpResponse(null, { status: 204 });
     }),
+    http.post("*/api/assistant/conversations/:id/messages", async ({ params, request }) => {
+      const { text } = (await request.json()) as SendMessageRequest;
+      const ifMatch = request.headers.get("If-Match");
+      sent.push({ text, ifMatch });
+      const conversation = conversations.find((c) => c.id === params.id);
+      if (!conversation) return notFound();
+      if (ifMatch !== `"${conversation.version}"`) {
+        return HttpResponse.json(
+          {
+            code: "precondition_failed",
+            message: "the conversation was changed meanwhile",
+            requestId: "test",
+          } satisfies ErrorBody,
+          { status: 412 },
+        );
+      }
+      const turn = turns.shift();
+      if (!turn) throw new Error("no turn scripted for this message");
+      conversation.messages.push({
+        kind: "user",
+        id: `message-${conversation.messages.length + 1}`,
+        postedAt: "2026-01-03T09:00:00Z",
+        text,
+      });
+      conversation.title ||= text;
+      conversation.version = String(Number(conversation.version) + 1);
+      return new HttpResponse(turn.body, { headers: { "Content-Type": "text/event-stream" } });
+    }),
   ];
-  return { handlers, ifMatches };
+  return { handlers, ifMatches, sent };
 }
