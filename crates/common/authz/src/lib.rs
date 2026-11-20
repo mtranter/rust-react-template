@@ -23,7 +23,7 @@ pub use policies::{
     Catalog, CatalogAction, CatalogResource, GATE_ACTION, Grant, GrantRefusal, GrantRefused,
     Policies, PoliciesBuilder, PolicyFile, Scope, check_grant,
 };
-pub use principal::{Principal, Value};
+pub use principal::{Actor, Principal, Value};
 pub use resource::{Action, Resource};
 pub use rule_set::{CompileError, Compiled, Plan, Rows, RuleSet};
 

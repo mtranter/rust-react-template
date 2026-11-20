@@ -1,7 +1,7 @@
 //! JWT Bearer authentication (ADR 0025): HS256 (dev/tests; can also issue) or
 //! verify-only JWKS discovered from an OIDC issuer (prod).
 
-use app_authz::{Authorizer, Principal, USER};
+use app_authz::{Actor, Authorizer, Principal, USER};
 use app_error::{AppError, AppResult};
 use async_trait::async_trait;
 use jsonwebtoken::jwk::JwkSet;
@@ -27,6 +27,42 @@ pub struct Claims {
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    /// The agent acting for `sub` (RFC 8693 §4.1), when the identity provider exchanged the
+    /// user's token for one naming it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<Act>,
+    /// The client the token was issued to (RFC 9068); `azp` where a provider names it so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub azp: Option<String>,
+}
+
+/// An `act` claim: the acting party, and in its own `act` the one it acts for in turn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Act {
+    pub sub: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<Box<Act>>,
+}
+
+impl Act {
+    /// `subs`, outermost first, each acting for the next.
+    pub fn chain(subs: impl IntoIterator<Item = impl Into<String>>) -> Option<Self> {
+        let subs: Vec<String> = subs.into_iter().map(Into::into).collect();
+        subs.into_iter().rev().fold(None, |inner, sub| {
+            Some(Act {
+                sub,
+                act: inner.map(Box::new),
+            })
+        })
+    }
+
+    fn actor(&self) -> Actor {
+        let chain = std::iter::successors(self.act.as_deref(), |act| act.act.as_deref())
+            .map(|act| act.sub.clone());
+        Actor::new(self.sub.clone()).behind(chain)
+    }
 }
 
 impl Claims {
@@ -42,6 +78,9 @@ impl Claims {
             exp: now + ttl_secs as usize,
             name: None,
             email: None,
+            act: None,
+            client_id: None,
+            azp: None,
         })
     }
 
@@ -58,6 +97,42 @@ impl Claims {
             ..self
         }
     }
+
+    /// Acted on by `agents`, outermost first, as a token exchange names them.
+    pub fn acted_by(self, agents: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            act: Act::chain(agents),
+            ..self
+        }
+    }
+
+    pub fn from_client(self, client_id: impl Into<String>) -> Self {
+        Self {
+            client_id: Some(client_id.into()),
+            ..self
+        }
+    }
+
+    pub fn authorized_party(self, azp: impl Into<String>) -> Self {
+        Self {
+            azp: Some(azp.into()),
+            ..self
+        }
+    }
+
+    /// The agent acting: the outermost `act`, else the token's client when it isn't one of the
+    /// app's own (`is_first_party`). A client-credentials token's client is its subject, so an
+    /// agent acting for no one is its own actor.
+    pub fn actor(&self, is_first_party: impl Fn(&str) -> bool) -> Option<Actor> {
+        if let Some(act) = &self.act {
+            return Some(act.actor());
+        }
+        self.client_id
+            .as_deref()
+            .or(self.azp.as_deref())
+            .filter(|client| !is_first_party(client))
+            .map(Actor::new)
+    }
 }
 
 /// Turns a verified token's claims into who is acting (ADR 0040). Held in request data as an
@@ -69,11 +144,13 @@ pub trait PrincipalResolver: Send + Sync {
 
 /// The default resolver: the user's id is the token's `sub`, their roles `user` and those
 /// assigned to the subject in the rule set in force (kept by `access`), so a request reads no
-/// store for them. A `roles` claim in the token is ignored.
+/// store for them, and the agent acting [`Claims::actor`]. A `roles` claim in the token is
+/// ignored.
 #[async_trait]
 impl PrincipalResolver for Authorizer {
     async fn resolve(&self, claims: &Claims) -> AppResult<Principal> {
-        Ok(self.principal(&claims.sub))
+        let actor = claims.actor(|client| self.is_first_party_client(client));
+        Ok(self.principal(&claims.sub).acting(actor))
     }
 }
 
@@ -305,7 +382,8 @@ async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
     ) {
         (Some(resolver), _) => resolver.resolve(&claims).await,
         (None, Some(authorizer)) => authorizer.resolve(&claims).await,
-        (None, None) => Ok(Principal::user(claims.sub, [USER])),
+        // With no Authorizer the app's own clients are unknown, so only an `act` names an agent.
+        (None, None) => Ok(Principal::user(&claims.sub, [USER]).acting(claims.actor(|_| true))),
     };
     resolved.ok()
 }
@@ -313,7 +391,7 @@ async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_authz::RuleSet;
+    use app_authz::{Actor, RuleSet};
     use poem::test::TestClient;
     use poem::{EndpointExt, Route, handler};
     use serde_json::json;
@@ -370,5 +448,130 @@ mod tests {
         ));
 
         assert_eq!(roles_of(&token, authorizer).await, "user,support");
+    }
+
+    const SPA: &str = "spa";
+
+    async fn actor_of(claims: Claims) -> Option<Actor> {
+        let authorizer =
+            Authorizer::new(RuleSet::default()).with_first_party_clients([SPA.to_owned()]);
+        let token = JwtVerifier::new("secret").sign(&claims).unwrap();
+        let claims = JwtVerifier::new("secret").verify(&token).await.unwrap();
+        authorizer.resolve(&claims).await.unwrap().actor().cloned()
+    }
+
+    fn of(subject: &str) -> Claims {
+        Claims::lasting(subject, 60).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_users_own_token_through_the_apps_client_names_no_agent() {
+        assert_eq!(actor_of(of("ada").from_client(SPA)).await, None);
+        assert_eq!(actor_of(of("ada").authorized_party(SPA)).await, None);
+        assert_eq!(actor_of(of("ada")).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_token_exchanged_for_an_agent_names_the_outermost_act_with_those_behind_it() {
+        let claims = of("ada")
+            .from_client(SPA)
+            .acted_by(["planner", "researcher", "fetcher"]);
+
+        assert_eq!(
+            actor_of(claims).await,
+            Some(Actor::new("planner").behind(["researcher", "fetcher"]))
+        );
+        assert_eq!(
+            actor_of(of("ada").acted_by(["planner"])).await,
+            Some(Actor::new("planner"))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_token_another_client_obtained_names_that_client() {
+        assert_eq!(
+            actor_of(of("ada").from_client("claude")).await,
+            Some(Actor::new("claude"))
+        );
+        assert_eq!(
+            actor_of(of("ada").authorized_party("claude")).await,
+            Some(Actor::new("claude"))
+        );
+        assert_eq!(
+            actor_of(of("ada").from_client("claude").authorized_party(SPA)).await,
+            Some(Actor::new("claude")),
+            "client_id is read before azp"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_client_credentials_token_is_an_agent_acting_as_itself() {
+        let authorizer = Authorizer::new(
+            RuleSet::default().assigning([("reconciler".to_owned(), "support".to_owned())]),
+        )
+        .with_first_party_clients([SPA.to_owned()]);
+
+        let principal = authorizer
+            .resolve(&of("reconciler").from_client("reconciler"))
+            .await
+            .unwrap();
+
+        assert_eq!(principal.id(), Some("reconciler"));
+        assert_eq!(principal.actor(), Some(&Actor::new("reconciler")));
+        let Principal::User { roles: held, .. } = principal else {
+            unreachable!("a token resolves to a user")
+        };
+        assert_eq!(held, ["user", "support"]);
+    }
+
+    #[handler]
+    async fn actor(req: &Request) -> String {
+        let token = bearer_token(req).unwrap_or_default().to_owned();
+        let principal = jwt_checker(req, Bearer { token }).await;
+        format!("{:?}", principal.as_ref().and_then(Principal::actor))
+    }
+
+    #[tokio::test]
+    async fn with_no_authorizer_only_an_act_claim_names_an_agent() {
+        let verifier = JwtVerifier::new("secret");
+        let app = Route::new().at("/", actor).data(verifier.clone());
+        let client = TestClient::new(app);
+        let actor_named_by = |claims: Claims| {
+            let token = verifier.sign(&claims).unwrap();
+            let client = &client;
+            async move {
+                client
+                    .get("/")
+                    .header("authorization", format!("Bearer {token}"))
+                    .send()
+                    .await
+                    .0
+                    .into_body()
+                    .into_string()
+                    .await
+                    .unwrap()
+            }
+        };
+
+        assert_eq!(actor_named_by(of("ada").from_client(SPA)).await, "None");
+        assert_eq!(
+            actor_named_by(of("ada").from_client(SPA).acted_by(["planner"])).await,
+            format!("{:?}", Some(&Actor::new("planner")))
+        );
+    }
+
+    #[test]
+    fn nested_act_claims_deserialise_from_a_providers_token() {
+        let claims: Claims = serde_json::from_value(json!({
+            "sub": "ada",
+            "exp": 1,
+            "azp": "spa",
+            "act": { "sub": "planner", "iss": "https://idp", "act": { "sub": "fetcher" } },
+        }))
+        .unwrap();
+
+        assert_eq!(claims.azp.as_deref(), Some("spa"));
+        assert_eq!(claims.client_id, None);
+        assert_eq!(claims.act, Act::chain(["planner", "fetcher"]));
     }
 }

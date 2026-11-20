@@ -22,7 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = Context::new(pool, Arc::new(SystemClock))
         .with_bus(bus)
         .with_authorizer(Arc::new(
-            authorizer()?.with_bootstrap_admins(config.bootstrap_admins()),
+            authorizer()?
+                .with_bootstrap_admins(config.bootstrap_admins())
+                .with_first_party_clients(config.first_party_clients()),
         ));
     // Serves only once the stored grants and assignments are in force; a poll
     // that fails later keeps the rule set it had.

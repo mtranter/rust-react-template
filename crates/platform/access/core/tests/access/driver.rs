@@ -229,6 +229,16 @@ impl Access {
         *self.caller.lock().unwrap() = Some(token);
     }
 
+    /// Later requests present a client-credentials token of `client`, an agent acting for no
+    /// one: its subject is its own client.
+    pub fn sign_in_as_agent(&self, client: &str) {
+        let claims = Claims::lasting(client, 60)
+            .expect("claims")
+            .from_client(client);
+        let token = self.verifier.sign(&claims).expect("issue token");
+        *self.caller.lock().unwrap() = Some(token);
+    }
+
     pub fn later(&self, by: TimeDelta) {
         self.clock.advance(by);
     }

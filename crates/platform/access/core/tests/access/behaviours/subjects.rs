@@ -182,3 +182,18 @@ async fn subjects_are_refused_to_a_caller_who_is_not_an_admin(pool: PgPool) {
 
     assert_eq!(access.subjects().await.err(), Some(Refusal::Forbidden));
 }
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn an_agent_acting_for_no_one_is_a_subject_whose_assigned_roles_it_holds(pool: PgPool) {
+    let access = Access::seeded(pool).await;
+    access.sign_in_as_agent("reconciler");
+    assert_eq!(access.catalog().await.err(), Some(Refusal::Forbidden));
+    access.sign_in_as(ADMIN_ID);
+
+    assert_eq!(access.subject("reconciler").await["roles"], json!([]));
+    access.assign("reconciler", ADMIN).await.unwrap();
+    access.polls().await;
+
+    access.sign_in_as_agent("reconciler");
+    assert!(access.catalog().await.is_ok());
+}

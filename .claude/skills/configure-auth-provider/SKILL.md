@@ -12,7 +12,7 @@ Sources of truth, read them before answering if anything below looks stale (the 
 - `.env.example`: every variable, with its comment.
 - `crates/server/src/config.rs`: parsing, and `validate_serving`'s refusals to start.
 - `crates/server/src/sign_in.rs`: `GET /auth/config`, what the SPA is told.
-- `crates/common/web/src/auth.rs`: `Claims` and `JwtVerifier` (JWKS discovery, `aud` check).
+- `crates/common/web/src/auth.rs`: `Claims` (and `Claims::actor`, the agent acting) and `JwtVerifier` (JWKS discovery, `aud` check).
 - `crates/common/web/src/mcp/discovery.rs`: the Protected Resource Metadata MCP clients read.
 - `frontend/src/lib/sign-in/`: the SPA's side.
 
@@ -46,6 +46,7 @@ Ask the user which provider, then confirm it:
 | `APP_OIDC_EXTRA_PARAMS` | optional | Space-separated `key=value` added to the authorization request; the server refuses to start on one that isn't `key=value`. |
 | `APP_PUBLIC_URL` | optional | Where clients reach the server, named in MCP sign-in metadata. Unset, taken from `Host`/`X-Forwarded-*`. |
 | `APP_BOOTSTRAP_ADMINS` | yes, at first | Comma-separated `sub`s that always hold `admin` (step 5). |
+| `APP_FIRST_PARTY_CLIENTS` | optional | The app's own client ids, comma- or space-separated; defaults to `APP_OIDC_CLIENT_ID`. A token any other client obtained names that client as the agent acting (step 5a). |
 
 `APP_ENV=prod` also refuses to start with no issuer and the built-in dev `APP_JWT_SECRET`.
 
@@ -65,6 +66,15 @@ Per provider (check the provider's current docs; these drift):
 ## 5. The first admin
 
 No one holds `admin` on a fresh deployment. Have the operator sign in once, read their `sub` (from the provider's user record, or the access token at jwt.io), set `APP_BOOTSTRAP_ADMINS=<sub>` and restart. That subject always holds `admin` and can't be unassigned it; they then assign roles to others at `/access`. Leaving it set is safe; while it is empty, the last assigned `admin` can't be unassigned.
+
+## 5a. Agents
+
+A Principal carries the agent acting for its subject, its **Actor** (ADR 0025): the token's RFC 8693 `act` claim when the provider does token exchange (Cognito, Keycloak's preview, Auth0's paid plans), with any nested `act`s as the chain behind it; otherwise the token's `client_id` (else `azp`) when it isn't in `APP_FIRST_PARTY_CLIENTS`. So:
+
+- List every client of the app's own (the SPA, a mobile app) in `APP_FIRST_PARTY_CLIENTS`, or requests through them are taken for an agent's. Unset, only `APP_OIDC_CLIENT_ID` is.
+- Register each agent (an MCP client, an assistant) as a client of its own, and check its access tokens carry `client_id` or `azp`: not every provider puts them in every flow, and without one or `act`, the agent's requests look like its user's.
+- An agent acting for no one (a nightly reconciler) uses the **client-credentials** grant. Its token's `sub` is its client (Auth0 makes it `<client-id>@clients`), which `access` records as a Subject once it calls; assign it roles at `/access` like a user. It needs the same `aud` as a person's token.
+- The app never forwards a token: an agent gets its own from the provider.
 
 ## 6. Verify
 
