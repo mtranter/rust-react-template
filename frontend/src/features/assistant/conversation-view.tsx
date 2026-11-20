@@ -1,13 +1,21 @@
 import { getAssistantConversationsByIdOptions } from "@/api/@tanstack/react-query.gen";
-import type { MessageResponse, ToolCallResponse } from "@/api/types.gen";
+import type { DecisionRequest, MessageResponse, ToolCallResponse } from "@/api/types.gen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isErrorBody } from "@/lib/api-errors";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRightIcon, SendIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, SendIcon, XIcon } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { conversationTitle } from "./conversation-title";
 import { Markdown } from "./markdown";
@@ -24,7 +32,7 @@ const STATUS: Record<LiveToolCall["status"], string> = {
 /** One conversation's messages, oldest first, then the turn running in it and a box to write in. */
 export function ConversationView({ id }: { id: string }) {
   const conversation = useQuery(getAssistantConversationsByIdOptions({ path: { id } }));
-  const { turn, error, running, send } = useTurn(id);
+  const { turn, error, running, send, decide } = useTurn(id);
 
   if (conversation.isPending) return null;
   if (conversation.isError) {
@@ -47,7 +55,11 @@ export function ConversationView({ id }: { id: string }) {
         <ol className="space-y-3">
           {messages.map((message) => (
             <li key={message.id}>
-              <MessageItem message={message} />
+              <MessageItem
+                message={message}
+                decided={turn?.decided}
+                decide={running ? undefined : decide}
+              />
             </li>
           ))}
           {turn && <LiveTurnItems turn={turn} />}
@@ -103,9 +115,11 @@ function Composer({
 function LiveTurnItems({ turn }: { turn: LiveTurn }) {
   return (
     <>
-      <li>
-        <UserText text={turn.said} />
-      </li>
+      {turn.said !== undefined && (
+        <li>
+          <UserText text={turn.said} />
+        </li>
+      )}
       {turn.items.map((item, at) => (
         // The stream only appends, or changes an item in place, so its position is stable.
         // biome-ignore lint/suspicious/noArrayIndexKey: see above
@@ -128,14 +142,26 @@ function LiveTurnItems({ turn }: { turn: LiveTurn }) {
 }
 
 function LiveItemView({ item }: { item: LiveItem }) {
-  return item.kind === "text" ? (
-    <AssistantText text={item.text} />
-  ) : (
-    <ToolCallRow call={item.call} />
-  );
+  if (item.kind === "text") return <AssistantText text={item.text} />;
+  // Decided once the turn has ended and the stored call replaces this one.
+  return <ToolCall call={item.call} />;
 }
 
-function MessageItem({ message }: { message: MessageResponse }) {
+type Decide = (call: ToolCallResponse, decision: DecisionRequest) => Promise<unknown>;
+
+/**
+ * `message` as stored, but for the call `decided` in the turn running, shown as the stream tells
+ * it. `decide` is absent while a turn runs.
+ */
+function MessageItem({
+  message,
+  decided,
+  decide,
+}: {
+  message: MessageResponse;
+  decided?: LiveToolCall;
+  decide?: Decide;
+}) {
   switch (message.kind) {
     case "user":
       return <UserText text={message.text} />;
@@ -146,7 +172,11 @@ function MessageItem({ message }: { message: MessageResponse }) {
         <ul className="space-y-1">
           {message.toolCalls.map((call) => (
             <li key={call.id}>
-              <ToolCallRow call={call} />
+              {decided?.id === call.id ? (
+                <ToolCall call={decided} />
+              ) : (
+                <ToolCall call={call} decide={decide && ((decision) => decide(call, decision))} />
+              )}
             </li>
           ))}
         </ul>
@@ -180,6 +210,60 @@ function AssistantText({ text }: { text: string }) {
     <div aria-label="Assistant" className="max-w-[80%]">
       <Markdown text={text} />
     </div>
+  );
+}
+
+/** A pending write as a card to approve or reject; any other call as a row. */
+function ToolCall({
+  call,
+  decide,
+}: {
+  call: ToolCallResponse | LiveToolCall;
+  decide?: (decision: DecisionRequest) => void;
+}) {
+  return call.status === "awaiting_approval" ? (
+    <PendingWrite call={call} decide={decide} />
+  ) : (
+    <ToolCallRow call={call} />
+  );
+}
+
+/**
+ * A write the assistant asked to make as the caller, waiting for them: what it does, and with
+ * what. Its buttons are disabled while a turn runs, `decide` absent.
+ */
+function PendingWrite({
+  call,
+  decide,
+}: {
+  call: ToolCallResponse | LiveToolCall;
+  decide?: (decision: DecisionRequest) => void;
+}) {
+  const title = call.summary || call.tool;
+  return (
+    <section aria-label={`Approve ${call.tool}?`}>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>
+            The assistant wants to run <code className="font-mono">{call.tool}</code> as you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Json label="Arguments" value={call.arguments} />
+        </CardContent>
+        <CardFooter className="gap-2">
+          <Button size="sm" disabled={!decide} onClick={() => decide?.("approve")}>
+            <CheckIcon />
+            Approve
+          </Button>
+          <Button size="sm" variant="outline" disabled={!decide} onClick={() => decide?.("reject")}>
+            <XIcon />
+            Reject
+          </Button>
+        </CardFooter>
+      </Card>
+    </section>
   );
 }
 
