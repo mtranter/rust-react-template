@@ -4,7 +4,7 @@ name: "The workspace's MSRV rises to Rust 1.97.1"
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
-blocks: []
+blocks: [docs/platform/tickets/0058-an-assistant-platform-module-reports-whether-the-a.md]
 ---
 
 # The workspace's MSRV rises to Rust 1.97.1
