@@ -1,7 +1,7 @@
 ---
 id: 0057
 name: "The workspace's MSRV rises to Rust 1.97.1"
-status: needs-info
+status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
 blocks: [docs/platform/tickets/0058-an-assistant-platform-module-reports-whether-the-a.md]
@@ -21,3 +21,8 @@ rig-bedrock 0.46 declares `rust-version = 1.97.1`, so before the `assistant` mod
 ## Needs Human Input (factory)
 
 The factory stopped on this Ticket: implementor did not complete the Ticket: session ended with error_during_execution: [ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use (session e1b4c3ab-39a2-4806-a1a8-cb194cdcf972)
+
+
+
+
+&nbsp;
