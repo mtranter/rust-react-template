@@ -4,7 +4,7 @@ name: "rig and Bedrock behind the assistant's model seam, with the MSRV raised t
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0063-the-assistant-platform-module-exists-and-reports-w.md]
-blocks: []
+blocks: [docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md]
 ---
 
 # rig and Bedrock behind the assistant's model seam, with the MSRV raised to 1.97.1
