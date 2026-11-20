@@ -1,5 +1,5 @@
 ---
-status: ticketed
+status: done
 ---
 
 # Users chat with an assistant that acts in the app as them
