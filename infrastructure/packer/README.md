@@ -4,7 +4,7 @@ A Packer template for an arm64 (Graviton) Ubuntu 24.04 AMI with everything `make
 
 ## What's on it
 
-- **Rust**: rustup with `stable` (what `rust-toolchain.toml` tracks) and CI's pinned version, plus `cargo-binstall` and `cargo-run-bin`, the bootstrap `make setup` needs (ADR 0027).
+- **Rust**: rustup with `stable` as its default and the pinned `rust_version`, which CI and `rust-toolchain.toml` also pin, plus `cargo-binstall` and `cargo-run-bin`, the bootstrap `make setup` needs (ADR 0027).
 - **Node**: mise with the Node and pnpm from `mise.toml`, activated in `~/.bashrc`.
 - **Docker**: Docker Engine with the compose and buildx plugins, with `ubuntu` in the `docker` group. Every image in `docker-compose.yml`, including the `observability` profile's, is already pulled.
 - **Playwright**: Chromium and its system libraries, at the version in `frontend/package.json`, for `make e2e`.

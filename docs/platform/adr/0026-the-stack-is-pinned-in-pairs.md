@@ -5,7 +5,7 @@ The template pins its stack so every clone builds the same: `poem` 3.1 with `poe
 Three pins carry a reason:
 
 - **`poem` 3.1.x ↔ `poem-openapi` 5.1.x.** They are released in lockstep by date, not by a shared version number, so a mismatched pair fails to build. Bump them together.
-- **MSRV 1.94.** `poem` declares 1.85, but `sqlx` 0.9 requires 1.94, so that is the workspace's `rust-version`; `rust-toolchain.toml` pins the latest stable.
+- **MSRV 1.97.1.** `poem` declares 1.85 and `sqlx` 0.9 1.94, but `rig-bedrock` 0.46 requires 1.97.1, so that is the workspace's `rust-version`; `rust-toolchain.toml`, CI, `mise.toml` and the Packer `rust_version` pin the same version.
 - **hey-api packages exact.** `@hey-api/openapi-ts` and `@hey-api/client-fetch` are pre-1.0, so any release may change the generated code.
 
 ## Consequences

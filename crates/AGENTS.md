@@ -119,7 +119,7 @@ Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persisten
   - Every operation is guarded unless listed in `PUBLIC` (`crates/server/src/public.rs`) with its reason. Its handler takes the module's `Caller`, never `JwtAuth`; its use case takes `&Principal` first and calls `self.authorizer.authorize(..)` before it loads or begins anything; a loaded row is checked with `self.authorizer.check(..)` before any domain action (refused: 404 if they may not view it, else 403); a list takes `self.authorizer.rows(..)` into its SQL with `push_scope`.
   - Its action is in the resource's closed `Action` enum, granted in `policies/default_grants.yaml` (applied once by `migrate`, then data admins edit) and listed in `OPERATIONS`.
   - **Never hand-roll a role check in a module.**
-- **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); the `opentelemetry` crates `0.33.x` ↔ `tracing-opentelemetry` `0.34.x`; MSRV 1.94, set by `sqlx` 0.9.
+- **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); the `opentelemetry` crates `0.33.x` ↔ `tracing-opentelemetry` `0.34.x`; MSRV 1.97.1, set by `rig-bedrock` 0.46.
 
 ### Running and deploying
 
