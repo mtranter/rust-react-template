@@ -4,7 +4,7 @@ name: "Users start, list, get and delete their own Conversations"
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0063-the-assistant-platform-module-exists-and-reports-w.md]
-blocks: [docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md]
+blocks: [docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md, docs/platform/tickets/0069-the-spa-s-assistant-page-lists-starts-and-deletes.md]
 ---
 
 # Users start, list, get and delete their own Conversations
