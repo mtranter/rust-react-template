@@ -120,7 +120,7 @@ Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persisten
   - Every operation is guarded unless listed in `PUBLIC` (`crates/server/src/public.rs`) with its reason. Its handler takes the module's `Caller`, never `JwtAuth`; its use case takes `&Principal` first and calls `self.authorizer.authorize(..)` before it loads or begins anything; a loaded row is checked with `self.authorizer.check(..)` before any domain action (refused: 404 if they may not view it, else 403); a list takes `self.authorizer.rows(..)` into its SQL with `push_scope`.
   - Its action is in the resource's closed `Action` enum, granted in `policies/default_grants.yaml` (applied once by `migrate`, then data admins edit) and listed in `OPERATIONS`.
   - **Never hand-roll a role check in a module.**
-- **Pinned** (ADR 0026): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); the `opentelemetry` crates `0.33.x` ↔ `tracing-opentelemetry` `0.34.x`; MSRV 1.97.1, set by `rig-bedrock` 0.46.
+- **Pinned** (ADR 0026, 0044): `poem` `3.1.x` ↔ `poem-openapi` `5.1.x` (released in lockstep); the `opentelemetry` crates `0.33.x` ↔ `tracing-opentelemetry` `0.34.x`; MSRV 1.97.1, set by `rig-bedrock` 0.46.
 
 ### The assistant (Spec 0012)
 
@@ -136,9 +136,9 @@ Split pure (`app-authz`, `app-domain`, `app-error`, `app-events`, `app-persisten
 - **Migrations run explicitly** (`make migrate`, a pre-start task in a deployment), never on server startup (ADR 0021). A migration file applied anywhere is immutable, its comments included (sqlx checksums it). `SQLX_OFFLINE=true` is the default; regenerate `.sqlx` with `make prepare`.
 - **One image, three processes**: `server`, `worker` and the one-off `migrate` (and `seed`, which refuses `APP_ENV=prod`). Workers judge time by their own clocks (ADR 0020), so they refuse to start more than a minute from the database's. Modes, flags and deployment: the `run-and-deploy` skill.
 
-### Traces and metrics (Spec 0003)
+### Traces and metrics (ADR 0044)
 
-Every HTTP request, MCP tool call, worker job and SQL query inside a span is already traced, and the main request, pool and queue figures already measured; how to add a span or metric, and what exists, is the `add-telemetry` skill. These hold everywhere:
+Every HTTP request, MCP tool call, worker job and SQL query inside a span is already traced, and the main request, pool and queue figures already measured; how to add a span or metric, and what exists, is the `add-telemetry` skill. Export is over OTLP, configured only by the standard `OTEL_*` variables and off without an endpoint; a trace crosses the outbox in the Event Envelope's `traceparent`/`tracestate`, which the worker continues, so a handler does nothing for it. These hold everywhere:
 
 - Use `tracing`, never the `opentelemetry` API, and `skip_all`, naming each field: never a token, a secret, a bound SQL value or personal data beyond the principal's subject.
 - Always bind SQL values: one written into the SQL text (`QueryBuilder::push`, `format!`) would be exported in `db.query.text`.

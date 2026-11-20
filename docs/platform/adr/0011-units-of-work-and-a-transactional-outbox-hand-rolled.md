@@ -1,5 +1,7 @@
 # Writes run in a Unit of Work, and Events go through a hand-rolled transactional outbox
 
+Amended by [ADR 0044](0044-traces-and-metrics-are-exported-over-otlp-and-a-trace-crosses-the-outbox-in-the-envelope.md): each Event in the outbox carries the W3C trace context it was published in, and the Worker's span for its delivery continues that trace.
+
 A use case that writes does so in one Unit of Work: an opaque `app_persistence::Tx`, begun from the Service's `Arc<dyn Transactions>` and committed at the end. Everything written through it commits together or not at all; dropping it uncommitted (as `?` does) rolls it back. Above `db/` it is opaque: repositories reach the connection with `app_db::conn(tx)`, so the Application Layer still never names the driver. The Service publishes its Events through its own port beside the Repository, `Arc<dyn EventPublisher>`, which takes the `Tx` as a repository write does; `app-db`'s `PgEventPublisher` writes each to the shared `messaging.outbox` at once, in that transaction. The `worker` bin relays each Event to its Subscribers' queues and delivers it (ADR 0013).
 
 Atomicity of "save, then do something" is the database's to give, and only a shared transaction can give it. So anything that must follow a write goes into its Unit of Work, as an Event, and happens if and only if the write commits; nothing calls an external system or another Module after `commit`. A Module never writes another Module's data: it publishes, and the owner reacts in a Subscriber.
