@@ -45,7 +45,7 @@ variable "subnet_id" {
 variable "rust_version" {
   type        = string
   default     = "1.97.1"
-  description = "Keep in step with dtolnay/rust-toolchain in .github/workflows/ci.yml."
+  description = "Keep in step with rust-toolchain.toml and dtolnay/rust-toolchain in .github/workflows/ci.yml."
 }
 
 variable "node_version" {
