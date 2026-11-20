@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: needs-info
 ---
 
 # Users chat with an assistant that acts in the app as them
@@ -134,3 +134,10 @@ TicketCreator failed: git commit -q -m 0012-users-chat-with-an-assistant-that-ac
 
 
 Tickets it had already created (the next run sees them and won't repeat them): docs/platform/tickets/0063-the-assistant-platform-module-exists-and-reports-w.md, docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md, docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md, docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md, docs/platform/tickets/0067-writes-the-assistant-asks-for-wait-for-the-user-s.md, docs/platform/tickets/0068-journey-the-assistant-acts-for-alice-and-can-t-see.md, docs/platform/tickets/0069-the-spa-s-assistant-page-lists-starts-and-deletes.md, docs/platform/tickets/0070-the-assistant-page-chats-streaming-text-and-read-t.md, docs/platform/tickets/0071-the-assistant-page-approves-and-rejects-pending-wr.md
+
+## Needs Human Input (factory)
+
+TicketCreator (session 0b009b6b-92a4-4cfa-8ac4-8af933a7c08f) can't break this Spec down confidently yet. Answer these questions in the Spec, then set it back to Ready for Tickets:
+
+1. Two runs have each broken this Spec down in full, and both sets of Tickets are open. Set A is 0057–0062: 0057 (MSRV) and 0058 (the module, rig/Bedrock, config, status, the SPA gate) are Done, 0059 (Conversations CRUD and the SPA list) is In Progress, and 0060–0062 are Ready for Agent. Set B is 0063–0071, all Ready for Agent, and it repeats the same work: 0063 and 0064 repeat 0057/0058, which are already done (crates/platform/assistant exists on main); 0065 and 0069 repeat 0059; 0066 repeats part of 0060; 0067 and 0068 repeat the rest of 0060 and part of 0062; 0070 repeats 0061; and 0071 repeats the rest of 0062. Nothing in the Spec is left without a Ticket, but if both sets stay open, agents will build the same thing twice, and some of it a third time on top of work already merged. Which set should the factory keep? My recommendation: keep 0059–0062, the set already under way, and close or delete 0063–0071. The other option is to close 0060–0062 and keep 0066–0068 and 0070–0071, which split the work more finely, with their blocked_by repointed from 0064/0065/0069 to 0058/0059. Once that's decided, I can return an empty list.
+2. The earlier failure was `git commit` of the Spec's status change to Ticketed. Can a human check why that commit fails in the main checkout (for example a hook, a lock, or the Spec file's state), so the next run doesn't create more duplicate Tickets?
