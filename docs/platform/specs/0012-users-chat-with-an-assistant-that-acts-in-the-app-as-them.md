@@ -1,5 +1,5 @@
 ---
-status: ticketed
+status: needs-info
 ---
 
 # Users chat with an assistant that acts in the app as them
@@ -127,3 +127,10 @@ The pieces are already here. Every operation is a tool generated from the spec, 
 - **rig's churn.** rig is pre-1.0, with breaking minors. Keeping its types behind the module's seam limits what a bump touches.
 - **Streaming through the generated client** may not be typed by `@hey-api` for `text/event-stream`, hence the hand-written reader fallback.
 - **MSRV and aws-lc-rs** may break the Docker build or the dev box AMI on some targets, which the ticket adding the dependency must check.
+
+## Needs Human Input (factory)
+
+TicketCreator failed: git commit -q -m 0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them: set Spec status Ticketed -- /home/ubuntu/projects/rust-react-template/docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md failed: Command failed: git commit -q -m 0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them: set Spec status Ticketed -- /home/ubuntu/projects/rust-react-template/docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
+
+
+Tickets it had already created (the next run sees them and won't repeat them): docs/platform/tickets/0063-the-assistant-platform-module-exists-and-reports-w.md, docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md, docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md, docs/platform/tickets/0066-sending-a-message-runs-a-streamed-turn-that-reads.md, docs/platform/tickets/0067-writes-the-assistant-asks-for-wait-for-the-user-s.md, docs/platform/tickets/0068-journey-the-assistant-acts-for-alice-and-can-t-see.md, docs/platform/tickets/0069-the-spa-s-assistant-page-lists-starts-and-deletes.md, docs/platform/tickets/0070-the-assistant-page-chats-streaming-text-and-read-t.md, docs/platform/tickets/0071-the-assistant-page-approves-and-rejects-pending-wr.md
