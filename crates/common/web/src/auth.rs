@@ -122,7 +122,7 @@ impl Claims {
 
     /// The agent acting: the outermost `act`, else the token's client when it isn't one of the
     /// app's own (`is_first_party`). A client-credentials token's client is its subject, so an
-    /// agent acting for no one acts as itself.
+    /// agent acting for no one is its own actor.
     pub fn actor(&self, is_first_party: impl Fn(&str) -> bool) -> Option<Actor> {
         if let Some(act) = &self.act {
             return Some(act.actor());
@@ -382,7 +382,8 @@ async fn jwt_checker(req: &Request, bearer: Bearer) -> Option<Principal> {
     ) {
         (Some(resolver), _) => resolver.resolve(&claims).await,
         (None, Some(authorizer)) => authorizer.resolve(&claims).await,
-        (None, None) => Ok(Principal::user(&claims.sub, [USER]).acting(claims.actor(|_| false))),
+        // With no Authorizer the app's own clients are unknown, so only an `act` names an agent.
+        (None, None) => Ok(Principal::user(&claims.sub, [USER]).acting(claims.actor(|_| true))),
     };
     resolved.ok()
 }
@@ -521,6 +522,42 @@ mod tests {
             unreachable!("a token resolves to a user")
         };
         assert_eq!(held, ["user", "support"]);
+    }
+
+    #[handler]
+    async fn actor(req: &Request) -> String {
+        let token = bearer_token(req).unwrap_or_default().to_owned();
+        let principal = jwt_checker(req, Bearer { token }).await;
+        format!("{:?}", principal.as_ref().and_then(Principal::actor))
+    }
+
+    #[tokio::test]
+    async fn with_no_authorizer_only_an_act_claim_names_an_agent() {
+        let verifier = JwtVerifier::new("secret");
+        let app = Route::new().at("/", actor).data(verifier.clone());
+        let client = TestClient::new(app);
+        let actor_named_by = |claims: Claims| {
+            let token = verifier.sign(&claims).unwrap();
+            let client = &client;
+            async move {
+                client
+                    .get("/")
+                    .header("authorization", format!("Bearer {token}"))
+                    .send()
+                    .await
+                    .0
+                    .into_body()
+                    .into_string()
+                    .await
+                    .unwrap()
+            }
+        };
+
+        assert_eq!(actor_named_by(of("ada").from_client(SPA)).await, "None");
+        assert_eq!(
+            actor_named_by(of("ada").from_client(SPA).acted_by(["planner"])).await,
+            format!("{:?}", Some(&Actor::new("planner")))
+        );
     }
 
     #[test]

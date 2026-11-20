@@ -71,9 +71,9 @@ No one holds `admin` on a fresh deployment. Have the operator sign in once, read
 
 A Principal carries the agent acting for its subject, its **Actor** (ADR 0025): the token's RFC 8693 `act` claim when the provider does token exchange (Cognito, Keycloak's preview, Auth0's paid plans), with any nested `act`s as the chain behind it; otherwise the token's `client_id` (else `azp`) when it isn't in `APP_FIRST_PARTY_CLIENTS`. So:
 
-- List every client of the app's own (the SPA, a mobile app) in `APP_FIRST_PARTY_CLIENTS`, or their users' requests are taken for an agent's. Unset, only `APP_OIDC_CLIENT_ID` is.
+- List every client of the app's own (the SPA, a mobile app) in `APP_FIRST_PARTY_CLIENTS`, or requests through them are taken for an agent's. Unset, only `APP_OIDC_CLIENT_ID` is.
 - Register each agent (an MCP client, an assistant) as a client of its own, and check its access tokens carry `client_id` or `azp`: not every provider puts them in every flow, and without one or `act`, the agent's requests look like its user's.
-- An agent acting for no one (a nightly reconciler) uses the **client-credentials** grant. Its token's `sub` is its client (Auth0 makes it `<client-id>@clients`), which `access` records as a Subject once it calls; assign it roles at `/access` like a user. It needs the same `aud` as users' tokens.
+- An agent acting for no one (a nightly reconciler) uses the **client-credentials** grant. Its token's `sub` is its client (Auth0 makes it `<client-id>@clients`), which `access` records as a Subject once it calls; assign it roles at `/access` like a user. It needs the same `aud` as a person's token.
 - The app never forwards a token: an agent gets its own from the provider.
 
 ## 6. Verify

@@ -15,7 +15,7 @@ An agent calling for a user presents a token for that user, so beside whom it ac
 2. Otherwise the token's client, [RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html)'s `client_id` or else `azp`, when it isn't listed in `APP_FIRST_PARTY_CLIENTS` (by default `APP_OIDC_CLIENT_ID`): a token another client obtained is that client acting.
 3. Otherwise none: the user acts themselves.
 
-So any provider works, and one doing token exchange shows the whole chain. An agent acting for no one uses client credentials: its token's subject is its own client, so it is a Principal whose Actor is itself, recorded by `access` as a Subject and assigned Roles like a user (ADR 0041).
+So any provider works, and one doing token exchange shows the whole chain. An agent acting for no one uses client credentials: its token's subject is its own client, so it is a Principal whose Actor is its own client (on Auth0 its subject is `<client-id>@clients`, its Actor `<client-id>`), recorded by `access` as a Subject and assigned Roles like a user (ADR 0041).
 
 **The app never forwards a token it was given.** It neither calls another service with a caller's token nor exchanges one: issuing and exchanging tokens is the provider's.
 

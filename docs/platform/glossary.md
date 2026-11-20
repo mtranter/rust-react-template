@@ -162,7 +162,7 @@ Who is acting: a user, with an id (the token's `sub`), roles, `user` plus their 
 _Avoid_: User (for the caller), identity, Subject (that is whom it acts for, as `access` records them)
 
 **Actor**:
-The agent acting for a Principal, if any: its id and, behind it, the chain of agents it in turn acts for, outermost first. Read from the token by the resolver: the outermost `sub` of an [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) `act` claim, with the nested `act`s as its chain; otherwise the token's client (`client_id`, else `azp`) when it isn't one of the app's own, listed in `APP_FIRST_PARTY_CLIENTS`. `None` when the user acts themselves. An agent acting for no one signs in with client credentials, so its token's subject is its own client and its Actor is itself: a Subject that Roles are assigned to like a user (ADR 0025).
+The agent acting for a Principal, if any: its id and, behind it, the chain of agents it in turn acts for, outermost first. Read from the token by the resolver: the outermost `sub` of an [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) `act` claim, with the nested `act`s as its chain; otherwise the token's client (`client_id`, else `azp`) when it isn't one of the app's own, listed in `APP_FIRST_PARTY_CLIENTS`. `None` when the user acts themselves. An agent acting for no one signs in with client credentials, so its token's subject and its Actor are both its own client: a Subject that Roles are assigned to like a user (ADR 0025).
 _Avoid_: Agent (for the field), delegate, impersonator
 
 **Policy**:

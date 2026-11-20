@@ -108,7 +108,6 @@ impl Principal {
         self
     }
 
-    /// The agent acting, if any.
     pub fn actor(&self) -> Option<&Actor> {
         match self {
             Principal::User { actor, .. } => actor.as_ref(),
