@@ -19,6 +19,7 @@ import { CheckIcon, ChevronRightIcon, SendIcon, XIcon } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { conversationTitle } from "./conversation-title";
 import { Markdown } from "./markdown";
+import { ProposalFields, actionOf } from "./proposal";
 import { type LiveItem, type LiveToolCall, type LiveTurn, useTurn } from "./use-turn";
 
 const STATUS: Record<LiveToolCall["status"], string> = {
@@ -229,8 +230,9 @@ function ToolCall({
 }
 
 /**
- * A write the assistant asked to make as the caller, waiting for them: what it does, and with
- * what. Its buttons are disabled while a turn runs, `decide` absent.
+ * A write the assistant asked to make as the caller, waiting for them: what it would do, in their
+ * terms, as the server describes it from the call itself (never the assistant's words). Its buttons
+ * are disabled while a turn runs, `decide` absent; with no description, only Reject is offered.
  */
 function PendingWrite({
   call,
@@ -239,21 +241,22 @@ function PendingWrite({
   call: ToolCallResponse | LiveToolCall;
   decide?: (decision: DecisionRequest) => void;
 }) {
-  const title = call.summary || call.tool;
+  const proposal = call.proposal;
+  const title = proposal ? actionOf(call) : "The assistant wants to make a change";
   return (
-    <section aria-label={`Approve ${call.tool}?`}>
+    <section aria-label={title}>
       <Card size="sm">
         <CardHeader>
           <CardTitle>{title}</CardTitle>
-          <CardDescription>
-            The assistant wants to run <code className="font-mono">{call.tool}</code> as you.
-          </CardDescription>
+          <CardDescription>The assistant wants to do this for you</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Json label="Arguments" value={call.arguments} />
-        </CardContent>
+        {proposal && proposal.fields.length > 0 && (
+          <CardContent>
+            <ProposalFields proposal={proposal} />
+          </CardContent>
+        )}
         <CardFooter className="gap-2">
-          <Button size="sm" disabled={!decide} onClick={() => decide?.("approve")}>
+          <Button size="sm" disabled={!decide || !proposal} onClick={() => decide?.("approve")}>
             <CheckIcon />
             Approve
           </Button>
@@ -267,14 +270,19 @@ function PendingWrite({
   );
 }
 
+/** A read, or a decided write: what it did, and its details (JSON) only when opened. */
 function ToolCallRow({ call }: { call: ToolCallResponse | LiveToolCall }) {
+  const read = call.status === "ran" || call.status === "running";
   return (
     <Collapsible className="rounded-md border text-sm">
       <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left">
-        <ChevronRightIcon className="size-4 transition-transform group-data-[panel-open]:rotate-90" />
-        <code className="font-mono">{call.tool}</code>
+        <ChevronRightIcon className="size-4 shrink-0 transition-transform group-data-[panel-open]:rotate-90" />
+        <span className="font-medium">{actionOf(call)}</span>
         <Badge variant={call.error ? "destructive" : "secondary"}>{STATUS[call.status]}</Badge>
       </CollapsibleTrigger>
+      {read && call.summary && (
+        <p className="px-3 pb-2 pl-9 text-muted-foreground text-xs">{call.summary}</p>
+      )}
       <CollapsibleContent className="space-y-2 border-t px-3 py-2">
         <Json label="Arguments" value={call.arguments} />
         {call.result !== undefined && <Json label="Result" value={call.result} />}
