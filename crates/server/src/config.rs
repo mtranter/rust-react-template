@@ -21,9 +21,10 @@ pub enum Environment {
 
 /// Taken raw, not through `Env`, which parses each value: an all-digit subject
 /// or client id (as Google issues) would be a number, and `true` a bool.
-const RAW: [&str; 5] = [
+const RAW: [&str; 6] = [
     "agent_model",
     "bootstrap_admins",
+    "first_party_clients",
     "oidc_client_id",
     "oidc_scopes",
     "oidc_extra_params",
@@ -69,6 +70,9 @@ pub struct AppConfig {
     pub bootstrap_admins: String,
     /// The embedded SPA's public client id at the `jwt_issuer`.
     pub oidc_client_id: Option<String>,
+    /// The app's own client ids, comma- or space-separated: a token another client obtained
+    /// names that client as the agent acting (ADR 0025). Unset (or empty), `oidc_client_id`.
+    pub first_party_clients: Option<String>,
     /// Scopes the SPA requests beyond `openid profile email`, space-separated
     /// as in OAuth's `scope` (`offline_access api://app/.default`).
     pub oidc_scopes: String,
@@ -105,6 +109,7 @@ impl Default for AppConfig {
             redis_ca: None,
             bootstrap_admins: String::new(),
             oidc_client_id: None,
+            first_party_clients: None,
             oidc_scopes: String::new(),
             oidc_extra_params: String::new(),
             agent_model: None,
@@ -258,6 +263,23 @@ impl AppConfig {
             .filter(|subject| !subject.is_empty())
             .map(str::to_owned)
             .collect()
+    }
+
+    /// `APP_FIRST_PARTY_CLIENTS`, else `APP_OIDC_CLIENT_ID`.
+    pub fn first_party_clients(&self) -> Vec<String> {
+        let listed: Vec<String> = self
+            .first_party_clients
+            .as_deref()
+            .unwrap_or_default()
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|client| !client.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if listed.is_empty() {
+            self.client_id().into_iter().collect()
+        } else {
+            listed
+        }
     }
 
     pub fn bind_addr(&self) -> String {
@@ -465,6 +487,22 @@ mod tests {
             ..AppConfig::default()
         };
         assert!(config.bus(true).is_err());
+    }
+
+    #[test]
+    fn the_first_party_clients_are_listed_by_comma_or_space_and_default_to_the_spas() {
+        let config = AppConfig {
+            oidc_client_id: Some("spa".to_string()),
+            first_party_clients: Some(" spa, mobile  admin-cli,".to_string()),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.first_party_clients(), ["spa", "mobile", "admin-cli"]);
+        let unset = AppConfig {
+            first_party_clients: Some(" ".to_string()),
+            ..config
+        };
+        assert_eq!(unset.first_party_clients(), ["spa"]);
+        assert!(AppConfig::default().first_party_clients().is_empty());
     }
 
     #[test]

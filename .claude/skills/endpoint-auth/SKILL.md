@@ -20,10 +20,11 @@ Extends `crates/AGENTS.md`; if this file and the code disagree, the code wins: f
 One JWT Bearer scheme (`app_web::JwtAuth`, `crates/common/web/src/auth.rs`), whose checker resolves the token's claims to a `Principal` through an `Arc<dyn PrincipalResolver>` in request data, or by default the `Authorizer` there: `sub` is the id, the roles are `user` plus those `access` assigns the subject, read from the rule set in force, so no request reads the database for them. No or bad token: **401**.
 
 - The server's resolver is `access::sign_ins` (put in request data by `access::module` through `Module::providing`), which also records the subject as seen (with the token's `name` and `email` claims), writing nothing for a subject recorded within the hour.
+- **The Actor** (`Principal::User { actor: Option<Actor>, .. }`, `principal.actor()`) is the agent acting for the subject, set by `Claims::actor` in the default resolver: the outermost `act.sub` with the nested `act`s as its `chain`, else the token's `client_id` (or `azp`) when it isn't in `APP_FIRST_PARTY_CLIENTS` (`Authorizer::with_first_party_clients`; default `APP_OIDC_CLIENT_ID`), else `None`. A client-credentials agent's subject is its own client, so its actor is itself: `access` records it as a Subject and roles are assigned to it like a user's. `Principal::user(..)` has no actor; `.acting(Some(Actor::new("agent").behind([..])))` gives it one in a test.
 - A token's `roles` claim is ignored (`Claims` has none). `APP_BOOTSTRAP_ADMINS` (comma-separated subjects, `Authorizer::with_bootstrap_admins`) always hold `admin`.
 - Don't build a user store or token issuance unless asked. Configuring the provider is the `configure-auth-provider` skill.
 - In dev the Vite proxy signs every `/api` request as the seeded Alice (`frontend/vite.config.ts`), whom the seed of `crates/reference/users` assigns `admin`.
-- Tests issue tokens with `JwtVerifier::issue(subject, ttl)`, or, carrying a profile, `JwtVerifier::sign(&Claims::lasting(subject, ttl)?.named(..).with_email(..))`.
+- Tests issue tokens with `JwtVerifier::issue(subject, ttl)`, or, carrying a profile or an agent, `JwtVerifier::sign(&Claims::lasting(subject, ttl)?.named(..).with_email(..))`, `.acted_by(["outer", "inner"])` (nested `act`), `.from_client(..)` (`client_id`) or `.authorized_party(..)` (`azp`); `access`' driver's `sign_in_as_agent(client)` signs in as a client-credentials agent.
 
 ## Authorization: what every operation needs
 

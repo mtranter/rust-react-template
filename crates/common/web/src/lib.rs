@@ -16,7 +16,7 @@ pub mod testing;
 mod trace;
 
 pub use app_authz::Principal;
-pub use auth::{Claims, JwtAuth, JwtVerifier, PrincipalResolver};
+pub use auth::{Act, Claims, JwtAuth, JwtVerifier, PrincipalResolver};
 pub use caller::{Caller, Gate, Performs};
 pub use concurrency::{WithETag, if_match_version};
 pub use error::{

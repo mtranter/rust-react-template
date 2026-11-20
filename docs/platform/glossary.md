@@ -158,8 +158,12 @@ How the embedded SPA gets a user's token: it sends them to the identity provider
 _Avoid_: Login, session (the server keeps none)
 
 **Principal**:
-Who is acting: a user, with an id (the token's `sub`) and roles, `user` plus their Assignments, or `System`, the worker's and seeds' caller, acting on facts already decided, which policies don't apply to. Built on every guarded request from the token's subject and the rule set in force, never the token's own `roles` claim (ADR 0040, 0041).
+Who is acting: a user, with an id (the token's `sub`), roles, `user` plus their Assignments, and the Actor, the agent acting for them if any, or `System`, the worker's and seeds' caller, acting on facts already decided, which policies don't apply to. Built on every guarded request from the token's subject and the rule set in force, never the token's own `roles` claim (ADR 0040, 0041).
 _Avoid_: User (for the caller), identity, Subject (that is whom it acts for, as `access` records them)
+
+**Actor**:
+The agent acting for a Principal, if any: its id and, behind it, the chain of agents it in turn acts for, outermost first. Read from the token by the resolver: the outermost `sub` of an [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) `act` claim, with the nested `act`s as its chain; otherwise the token's client (`client_id`, else `azp`) when it isn't one of the app's own, listed in `APP_FIRST_PARTY_CLIENTS`. `None` when the user acts themselves. An agent acting for no one signs in with client credentials, so its token's subject is its own client and its Actor is itself: a Subject that Roles are assigned to like a user (ADR 0025).
+_Avoid_: Agent (for the field), delegate, impersonator
 
 **Policy**:
 A Module's YAML in its core's `policies/`, embedded in the binary and checked against its Rust types when it loads: a resource's rules (what is denied or allowed, to which roles, on which condition), its Scopes, and its default Grants (ADR 0040).

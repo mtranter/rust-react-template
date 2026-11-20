@@ -7,11 +7,12 @@ use app_error::{AppError, AppResult};
 use crate::{ADMIN, CompileError, Plan, Policies, Principal, Resource, Rows, RuleSet, USER};
 
 /// The rule set in force, replaced whole when grants, roles or assignments change, and the
-/// bootstrap admins, fixed for the process's life.
+/// bootstrap admins and the app's own clients, fixed for the process's life.
 #[derive(Debug)]
 pub struct Authorizer {
     current: ArcSwap<RuleSet>,
     bootstrap_admins: Vec<String>,
+    first_party_clients: Vec<String>,
 }
 
 impl Authorizer {
@@ -19,6 +20,7 @@ impl Authorizer {
         Self {
             current: ArcSwap::from_pointee(rule_set),
             bootstrap_admins: Vec::new(),
+            first_party_clients: Vec::new(),
         }
     }
 
@@ -29,6 +31,19 @@ impl Authorizer {
             bootstrap_admins: subjects.into_iter().collect(),
             ..self
         }
+    }
+
+    /// `clients` are the app's own (`APP_FIRST_PARTY_CLIENTS`): a token one of them obtained
+    /// names no agent unless it carries an `act` claim (ADR 0025).
+    pub fn with_first_party_clients(self, clients: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            first_party_clients: clients.into_iter().collect(),
+            ..self
+        }
+    }
+
+    pub fn is_first_party_client(&self, client: &str) -> bool {
+        self.first_party_clients.iter().any(|c| c == client)
     }
 
     pub fn bootstrap_admins(&self) -> &[String] {
