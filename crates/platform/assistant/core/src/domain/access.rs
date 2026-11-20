@@ -30,6 +30,8 @@ pub enum ConversationAction {
     List,
     View,
     Delete,
+    /// Say something to the assistant in it, running a turn.
+    Post,
 }
 
 impl Resource for Conversation {

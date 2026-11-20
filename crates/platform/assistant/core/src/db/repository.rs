@@ -64,6 +64,12 @@ struct SummaryRow {
 #[async_trait::async_trait]
 impl ConversationRepository for PgConversationRepository {
     async fn get(&self, id: ConversationId) -> AppResult<Option<Versioned<Conversation>>> {
+        // One snapshot for the row and its children: a turn saves while its owner reads.
+        let mut snapshot = self.pool.begin().await.map_err(AppError::internal)?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .execute(&mut *snapshot)
+            .await
+            .map_err(AppError::internal)?;
         let Some(row) = sqlx::query_as!(
             ConversationRow,
             r#"
@@ -72,14 +78,14 @@ impl ConversationRepository for PgConversationRepository {
             "#,
             id.as_uuid(),
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *snapshot)
         .await
         .map_err(AppError::internal)?
         else {
             return Ok(None);
         };
 
-        let messages = messages::of(&self.pool, &[row.id])
+        let messages = messages::of(&mut snapshot, &[row.id])
             .await?
             .remove(&row.id)
             .unwrap_or_default();

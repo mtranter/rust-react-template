@@ -5,9 +5,11 @@ mod driver;
 
 mod behaviours {
     mod deleting;
+    mod ending;
     mod listing;
     mod reading;
     mod scoping;
+    mod sending;
     mod starting;
     mod status;
 }

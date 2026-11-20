@@ -2278,6 +2278,179 @@
         "operationId": "delete_conversation"
       }
     },
+    "/assistant/conversations/{id}/messages": {
+      "post": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Say something to the assistant in one of the caller's conversations, and follow the turn\nit runs as a stream of events: its words as they are generated, each of the app's\noperations it calls as the caller and the answer, and the stored messages and new version\nwhen it ends. Operations that only read run at once; one that would change anything is\nstored `awaiting_approval` and not run, and the turn ends there. Requires `If-Match` with\nthe version the client last read (`412` when stale). Refused before the stream with\n`503` while the assistant is off, `409` while an action awaits the caller's decision, and\n`404` for another's conversation. A turn whose stream is dropped still runs to its end.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "array",
+                  "format": "event-stream",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "send_message"
+      }
+    },
     "/users": {
       "post": {
         "tags": [
@@ -4458,6 +4631,25 @@
           }
         }
       },
+      "ApprovalRequiredEvent": {
+        "type": "object",
+        "title": "ApprovalRequiredEvent",
+        "description": "A write the assistant asked for, stored `awaiting_approval` and not run: the caller decides\nit, and the turn ends here.",
+        "required": [
+          "id",
+          "tool",
+          "arguments"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "arguments": {}
+        }
+      },
       "AssignmentRequest": {
         "type": "object",
         "title": "AssignmentRequest",
@@ -4811,6 +5003,27 @@
           "internal_error"
         ]
       },
+      "ErrorMessageResponse": {
+        "type": "object",
+        "title": "ErrorMessageResponse",
+        "description": "Why a turn ended in failure: the model failed, or the caller's sign-in expired. Shown to the\ncaller, never sent to the model.",
+        "required": [
+          "id",
+          "postedAt",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "postedAt": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "FieldError": {
         "type": "object",
         "title": "FieldError",
@@ -5152,6 +5365,9 @@
           },
           {
             "$ref": "#/components/schemas/MessageResponse_ToolCallsMessageResponse"
+          },
+          {
+            "$ref": "#/components/schemas/MessageResponse_ErrorMessageResponse"
           }
         ],
         "discriminator": {
@@ -5159,7 +5375,8 @@
           "mapping": {
             "user": "#/components/schemas/MessageResponse_UserMessageResponse",
             "assistant": "#/components/schemas/MessageResponse_AssistantMessageResponse",
-            "toolCalls": "#/components/schemas/MessageResponse_ToolCallsMessageResponse"
+            "toolCalls": "#/components/schemas/MessageResponse_ToolCallsMessageResponse",
+            "error": "#/components/schemas/MessageResponse_ErrorMessageResponse"
           }
         }
       },
@@ -5183,6 +5400,29 @@
           },
           {
             "$ref": "#/components/schemas/AssistantMessageResponse"
+          }
+        ]
+      },
+      "MessageResponse_ErrorMessageResponse": {
+        "description": "One of a conversation's messages, told apart by its `kind`.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ],
+                "example": "error"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ErrorMessageResponse"
           }
         ]
       },
@@ -5390,6 +5630,19 @@
           "-createdAt"
         ]
       },
+      "SendMessageRequest": {
+        "type": "object",
+        "title": "SendMessageRequest",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "What the caller says to the assistant."
+          }
+        }
+      },
       "SubjectResponse": {
         "type": "object",
         "title": "SubjectResponse",
@@ -5462,6 +5715,19 @@
           "-lastSeen"
         ]
       },
+      "TextEvent": {
+        "type": "object",
+        "title": "TextEvent",
+        "description": "A piece of the assistant's words, as they are generated: append it to those before.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "ToolCallResponse": {
         "type": "object",
         "title": "ToolCallResponse",
@@ -5489,6 +5755,26 @@
           "error": {
             "description": "The operation's error body when it was refused or failed, or why it didn't run."
           }
+        }
+      },
+      "ToolCallStartedEvent": {
+        "type": "object",
+        "title": "ToolCallStartedEvent",
+        "description": "The assistant asked to run one of the app's operations as the caller.",
+        "required": [
+          "id",
+          "tool",
+          "arguments"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string",
+            "description": "The operation's id, which is its tool's name."
+          },
+          "arguments": {}
         }
       },
       "ToolCallStatusResponse": {
@@ -5523,6 +5809,228 @@
             "items": {
               "$ref": "#/components/schemas/ToolCallResponse"
             }
+          }
+        }
+      },
+      "ToolResultEvent": {
+        "type": "object",
+        "title": "ToolResultEvent",
+        "description": "A read's answer: `result` when it succeeded, `error` (its error body) when refused.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The tool call's, as `toolCallStarted` named it."
+          },
+          "result": {},
+          "error": {}
+        }
+      },
+      "TurnErrorEvent": {
+        "type": "object",
+        "title": "TurnErrorEvent",
+        "description": "What went wrong mid-turn, as an error body: the model failed (`unavailable`), the caller's\nsign-in expired (`unauthorized`), or the turn couldn't be stored.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        }
+      },
+      "TurnEventResponse": {
+        "type": "object",
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_TextEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_ToolCallStartedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_ToolResultEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_ApprovalRequiredEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_TurnFinishedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnEventResponse_TurnErrorEvent"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "text": "#/components/schemas/TurnEventResponse_TextEvent",
+            "toolCallStarted": "#/components/schemas/TurnEventResponse_ToolCallStartedEvent",
+            "toolResult": "#/components/schemas/TurnEventResponse_ToolResultEvent",
+            "approvalRequired": "#/components/schemas/TurnEventResponse_ApprovalRequiredEvent",
+            "finished": "#/components/schemas/TurnEventResponse_TurnFinishedEvent",
+            "error": "#/components/schemas/TurnEventResponse_TurnErrorEvent"
+          }
+        }
+      },
+      "TurnEventResponse_ApprovalRequiredEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "approvalRequired"
+                ],
+                "example": "approvalRequired"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalRequiredEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_TextEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ],
+                "example": "text"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/TextEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_ToolCallStartedEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "toolCallStarted"
+                ],
+                "example": "toolCallStarted"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallStartedEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_ToolResultEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "toolResult"
+                ],
+                "example": "toolResult"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ToolResultEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_TurnErrorEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ],
+                "example": "error"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/TurnErrorEvent"
+          }
+        ]
+      },
+      "TurnEventResponse_TurnFinishedEvent": {
+        "description": "One event of a turn's stream, told apart by its `kind`. A turn ends with `finished`, or with\n`error` when what it had to store couldn't be.",
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "finished"
+                ],
+                "example": "finished"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/TurnFinishedEvent"
+          }
+        ]
+      },
+      "TurnFinishedEvent": {
+        "type": "object",
+        "title": "TurnFinishedEvent",
+        "description": "The turn ended: the messages it stored, the caller's first, and the conversation's version\nnow, for the next `If-Match`.",
+        "required": [
+          "messageIds",
+          "version"
+        ],
+        "properties": {
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "string"
           }
         }
       },

@@ -1,4 +1,4 @@
-use super::{ChatModel, ConversationRepository, EventPublisher, Transactions};
+use super::{ChatModel, ConversationRepository, EventPublisher, Settings, Transactions};
 use crate::domain::{Assistant, AssistantAction};
 use app_authz::{Authorizer, Principal};
 use app_domain::Clock;
@@ -10,7 +10,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AssistantService {
     /// `None` while no model is configured: the assistant is off.
-    model: Option<Arc<dyn ChatModel>>,
+    pub(super) model: Option<Arc<dyn ChatModel>>,
+    pub(super) settings: Settings,
     pub(super) conversations: Arc<dyn ConversationRepository>,
     pub(super) publisher: Arc<dyn EventPublisher>,
     pub(super) transactions: Arc<dyn Transactions>,
@@ -26,6 +27,7 @@ pub struct Status {
 impl AssistantService {
     pub fn new(
         model: Option<Arc<dyn ChatModel>>,
+        settings: Settings,
         conversations: Arc<dyn ConversationRepository>,
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
@@ -34,6 +36,7 @@ impl AssistantService {
     ) -> Self {
         Self {
             model,
+            settings,
             conversations,
             publisher,
             transactions,

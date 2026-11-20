@@ -1,6 +1,7 @@
 mod auth;
 mod caller;
 mod concurrency;
+mod draining;
 mod error;
 mod health;
 mod idempotency;
@@ -19,6 +20,7 @@ pub use app_authz::Principal;
 pub use auth::{Act, Claims, JwtAuth, JwtVerifier, PrincipalResolver};
 pub use caller::{Caller, Gate, Performs};
 pub use concurrency::{WithETag, if_match_version};
+pub use draining::Draining;
 pub use error::{
     ApiError, ApiResult, ErrorBody, ErrorCode, FieldErrorBody, render_error, with_error_shape,
 };

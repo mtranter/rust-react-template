@@ -1,4 +1,4 @@
-use super::{Content, ConversationEvent, ConversationId, Message};
+use super::{Content, ConversationError, ConversationEvent, ConversationId, Message};
 use chrono::{DateTime, Utc};
 
 /// A title is the start of the first thing its owner said.
@@ -40,6 +40,19 @@ impl Conversation {
         let id = message.id();
         self.messages.push(message);
         ConversationEvent::MessagePosted(id)
+    }
+
+    /// The owner says `message`, opening a turn: refused while the assistant waits for their
+    /// decision on an action, which a turn can't go on without.
+    pub fn ask(&mut self, message: Message) -> Result<ConversationEvent, ConversationError> {
+        if self
+            .messages
+            .iter()
+            .any(|m| m.awaiting_approval().next().is_some())
+        {
+            return Err(ConversationError::AwaitingApproval);
+        }
+        Ok(self.post(message))
     }
 
     /// What deleting it says happened.
@@ -99,7 +112,7 @@ fn title(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConversationError, MessageId, ToolCall, ToolCallId, ToolCallStatus};
+    use crate::domain::{MessageId, ToolCall, ToolCallId, ToolCallStatus};
     use serde_json::json;
 
     fn started() -> Conversation {
@@ -165,5 +178,24 @@ mod tests {
             None,
         );
         assert!(Message::tool_calls(MessageId::new(), vec![call], Utc::now()).is_ok());
+    }
+
+    #[test]
+    fn the_owner_cant_ask_while_an_action_awaits_their_decision() {
+        let mut conversation = started();
+        let call = ToolCall::new(
+            ToolCallId::new(),
+            "create_note".into(),
+            json!({}),
+            ToolCallStatus::AwaitingApproval,
+            None,
+        );
+        let _ = conversation
+            .post(Message::tool_calls(MessageId::new(), vec![call], Utc::now()).unwrap());
+        assert_eq!(
+            conversation.ask(said("Never mind")),
+            Err(ConversationError::AwaitingApproval)
+        );
+        assert_eq!(conversation.messages().len(), 1);
     }
 }

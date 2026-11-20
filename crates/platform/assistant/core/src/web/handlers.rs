@@ -1,17 +1,24 @@
 use super::Caller;
 use super::models::{
     AssistantStatusResponse, ConversationResponse, ConversationSort, ConversationSummaryResponse,
+    SendMessageRequest, TurnEventResponse,
 };
+use super::tools::CallerTools;
 use crate::application::{AssistantService, Versioned};
 use crate::domain::{Conversation, ConversationId};
 use app_error::AppError;
-use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::mcp::Toolbox;
+use app_web::{ApiResult, Draining, ListResult, WithETag, if_match_version, paged, sorts};
+use futures_util::stream::{self, BoxStream, StreamExt};
 use poem::web::Data;
 use poem_openapi::{
     ApiResponse, OpenApi, Tags,
     param::{Header, Path, Query},
-    payload::Json,
+    payload::{EventStream, Json},
 };
+use std::sync::Arc;
+
+type Turn = EventStream<BoxStream<'static, TurnEventResponse>>;
 
 type ConversationResult = WithETag<ConversationResponse>;
 
@@ -136,5 +143,48 @@ impl AssistantEndpoints {
             .delete(&caller, conversation_id(&id.0)?, expected)
             .await?;
         Ok(Deleted::Deleted)
+    }
+
+    /// Say something to the assistant in one of the caller's conversations, and follow the turn
+    /// it runs as a stream of events: its words as they are generated, each of the app's
+    /// operations it calls as the caller and the answer, and the stored messages and new version
+    /// when it ends. Operations that only read run at once; one that would change anything is
+    /// stored `awaiting_approval` and not run, and the turn ends there. Requires `If-Match` with
+    /// the version the client last read (`412` when stale). Refused before the stream with
+    /// `503` while the assistant is off, `409` while an action awaits the caller's decision, and
+    /// `404` for another's conversation. A turn whose stream is dropped still runs to its end.
+    #[oai(
+        path = "/conversations/:id/messages",
+        method = "post",
+        operation_id = "send_message"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn send(
+        &self,
+        assistant: Data<&AssistantService>,
+        toolbox: Data<&Toolbox>,
+        draining: Data<&Draining>,
+        caller: Caller,
+        id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+        body: Json<SendMessageRequest>,
+    ) -> ApiResult<Turn> {
+        let expected = if_match_version(if_match.0)?;
+        let tools = Arc::new(CallerTools::new(toolbox.0.clone(), caller.token()));
+        let events = assistant
+            .0
+            .send(
+                &caller,
+                conversation_id(&id.0)?,
+                expected,
+                &body.0.text,
+                tools,
+            )
+            .await?;
+        let events = stream::unfold(events, |mut events| async move {
+            events.recv().await.map(|event| (event, events))
+        })
+        .map(TurnEventResponse::from);
+        Ok(EventStream::new(draining.0.bounding(events).boxed()))
     }
 }

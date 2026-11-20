@@ -19,6 +19,9 @@ pub enum Content {
     Assistant(String),
     /// What the model asked to run, in the order it asked.
     ToolCalls(Vec<ToolCall>),
+    /// Why a turn ended in failure (the model failed, the owner's sign-in expired): shown to
+    /// the owner, never sent to the model.
+    Error(String),
 }
 
 /// An operation of the app the model asked to run as the owner, and how that went.
@@ -63,6 +66,10 @@ impl Message {
         Ok(Self::new(id, Content::Assistant(text_of(text)?), now))
     }
 
+    pub fn error(id: MessageId, text: &str, now: DateTime<Utc>) -> Result<Self, ConversationError> {
+        Ok(Self::new(id, Content::Error(text_of(text)?), now))
+    }
+
     pub fn tool_calls(
         id: MessageId,
         calls: Vec<ToolCall>,
@@ -97,6 +104,17 @@ impl Message {
 
     pub fn content(&self) -> &Content {
         &self.content
+    }
+
+    /// Its tool calls still waiting for the owner's decision.
+    pub fn awaiting_approval(&self) -> impl Iterator<Item = &ToolCall> {
+        let calls = match &self.content {
+            Content::ToolCalls(calls) => calls.as_slice(),
+            _ => &[],
+        };
+        calls
+            .iter()
+            .filter(|call| call.status == ToolCallStatus::AwaitingApproval)
     }
 }
 

@@ -1,20 +1,26 @@
 use app_authz::{Authorizer, Grant, Rows, RuleSet};
 use app_db::{Clause, Columns, Worker};
 use app_domain::{FixedClock, seed_time};
+use app_error::AppError;
 use app_events::{Event, EventPayload, NoContext, PayloadOf};
 use app_module::Context;
 use app_persistence::{Handlers, Version};
 use app_test_db::Template;
+use app_web::mcp::{RestOnly, Surface, Toolbox};
 use app_web::testing::{Call, Page, Refused, TestApi};
-use app_web::{Accept, JwtVerifier, json_newtype};
+use app_web::{Accept, ApiResult, JwtAuth, JwtVerifier, json_newtype, render_error};
 use assistant::{
     AssistantEndpoints, ChatModel, Content, Conversation, ModelError, ModelReply, ModelRequest,
-    Outcome as ToolOutcome, Settings, ToolCall, ToolCallStatus, seed,
+    ModelToolCall, Outcome as ToolOutcome, Settings, ToolCall, ToolCallStatus, seed,
 };
 use assistant_api::events::v1 as events;
 use async_trait::async_trait;
-use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
+use poem::web::Data;
+use poem::{EndpointExt, Route};
+use poem_openapi::param::Path;
+use poem_openapi::payload::Json as PoemJson;
+use poem_openapi::{OpenApi, OpenApiService};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::{PgPool, QueryBuilder};
@@ -35,6 +41,10 @@ pub enum Refusal {
     NotFound,
     PreconditionRequired,
     Stale,
+    /// The conversation's state doesn't allow it now.
+    Conflict,
+    /// The assistant is off.
+    Unavailable,
 }
 
 impl From<Refused> for Refusal {
@@ -47,6 +57,8 @@ impl From<Refused> for Refusal {
             "not_found" => Refusal::NotFound,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
+            "conflict" => Refusal::Conflict,
+            "unavailable" => Refusal::Unavailable,
             other => panic!("unexpected error code {other}"),
         }
     }
@@ -77,6 +89,9 @@ impl From<Conversation> for ConversationJson {
                     }),
                     Content::Assistant(text) => json!({
                         "kind": "assistant", "id": id, "postedAt": posted_at, "text": text,
+                    }),
+                    Content::Error(text) => json!({
+                        "kind": "error", "id": id, "postedAt": posted_at, "text": text,
                     }),
                     Content::ToolCalls(calls) => json!({
                         "kind": "toolCalls",
@@ -125,22 +140,152 @@ pub fn announced(conversation: &Conversation) -> EventPayload<events::Conversati
     })
 }
 
-/// Stands in for Bedrock, which no test calls: answers each request with the next of the
-/// replies it was given, and fails once they run out.
+/// What the scripted model does at one step of a turn.
+pub enum Step {
+    Reply(ModelReply),
+    Fail(String),
+}
+
+/// The model saying `text`.
+pub fn says(text: &str) -> Step {
+    Step::Reply(ModelReply {
+        text: text.to_string(),
+        output_tokens: 10,
+        ..ModelReply::default()
+    })
+}
+
+/// The model asking for `tool` with `arguments`.
+pub fn calls(tool: &str, arguments: Value) -> Step {
+    calls_all(&[(tool, arguments)])
+}
+
+/// The model asking for each of `asked` in one step.
+pub fn calls_all(asked: &[(&str, Value)]) -> Step {
+    Step::Reply(ModelReply {
+        tool_calls: asked
+            .iter()
+            .enumerate()
+            .map(|(n, (tool, arguments))| ModelToolCall {
+                id: format!("call-{n}"),
+                name: tool.to_string(),
+                arguments: arguments.clone(),
+            })
+            .collect(),
+        output_tokens: 10,
+        ..ModelReply::default()
+    })
+}
+
+/// Stands in for Bedrock, which no test calls: takes each step of a turn from its script,
+/// streaming each reply's words in two pieces, and fails once the script runs out. Keeps every
+/// request it was sent.
 #[derive(Default)]
 pub struct ScriptedModel {
-    replies: Mutex<VecDeque<ModelReply>>,
+    script: Mutex<VecDeque<Step>>,
+    requests: Mutex<Vec<ModelRequest>>,
 }
 
 #[async_trait]
 impl ChatModel for ScriptedModel {
-    async fn reply(&self, _request: ModelRequest) -> Result<ModelReply, ModelError> {
-        self.replies
-            .lock()
-            .unwrap()
-            .pop_front()
-            .ok_or_else(|| ModelError("the script has run out".to_string()))
+    async fn reply(
+        &self,
+        request: ModelRequest,
+        text: &(dyn for<'a> Fn(&'a str) + Send + Sync),
+    ) -> Result<ModelReply, ModelError> {
+        self.requests.lock().unwrap().push(request);
+        let step = self.script.lock().unwrap().pop_front();
+        match step {
+            Some(Step::Reply(reply)) => {
+                let middle = reply
+                    .text
+                    .char_indices()
+                    .nth(reply.text.chars().count() / 2);
+                let (first, second) = reply.text.split_at(middle.map_or(0, |(at, _)| at));
+                for piece in [first, second]
+                    .into_iter()
+                    .filter(|piece| !piece.is_empty())
+                {
+                    text(piece);
+                }
+                Ok(reply)
+            }
+            Some(Step::Fail(why)) => Err(ModelError(why)),
+            None => Err(ModelError("the script has run out".to_string())),
+        }
     }
+}
+
+/// The list the stand-in for the app's tools has, by this id.
+pub const LIST_ID: &str = "11111111-1111-1111-1111-111111111111";
+
+/// The app's operations, standing in for those the server composes beside the assistant: a
+/// read, `get_list`, answering who read it, and a write, `create_list`, which keeps what it is
+/// sent.
+#[derive(Default)]
+struct AppOperations;
+
+#[derive(Clone, Default)]
+struct Written(Arc<Mutex<Vec<Value>>>);
+
+#[OpenApi]
+impl AppOperations {
+    /// Fetch a list by its id. Another's, or one that doesn't exist, is refused with `404`.
+    #[oai(path = "/lists/:id", method = "get", operation_id = "get_list")]
+    async fn get_list(&self, auth: JwtAuth, id: Path<String>) -> ApiResult<PoemJson<Value>> {
+        if id.0 != LIST_ID {
+            return Err(AppError::not_found("list").into());
+        }
+        Ok(PoemJson(json!({
+            "id": LIST_ID,
+            "title": "Shopping",
+            "readBy": auth.0.id(),
+        })))
+    }
+
+    /// Write a list, owned by the caller.
+    #[oai(path = "/lists", method = "post", operation_id = "create_list")]
+    async fn create_list(
+        &self,
+        _auth: JwtAuth,
+        written: Data<&Written>,
+        body: PoemJson<Value>,
+    ) -> ApiResult<PoemJson<Value>> {
+        written.0.0.lock().unwrap().push(body.0.clone());
+        Ok(PoemJson(body.0))
+    }
+}
+
+struct AppSurface;
+
+impl Surface for AppSurface {
+    type Api = AppOperations;
+    const BASE: &'static str = "/api";
+    const NAME: &'static str = "Test app";
+    const VERSION: &'static str = "1.0";
+    const INSTRUCTIONS: &'static str = "Each tool is an operation of this app's REST API.";
+    const REST_ONLY: &'static [RestOnly] = &[];
+}
+
+/// The app's operations as the assistant's tools, served by their own API, which verifies
+/// tokens with `verifier`.
+fn app_tools(
+    verifier: JwtVerifier,
+    authorizer: Arc<Authorizer>,
+) -> (Toolbox, Arc<BoxEndpoint<'static>>, Written) {
+    let written = Written::default();
+    let api: Arc<BoxEndpoint<'static>> = Arc::new(
+        Route::new()
+            .nest("/api", OpenApiService::new(AppOperations, "test", "1.0"))
+            .catch_all_error(render_error)
+            .data(verifier)
+            .data(authorizer)
+            .data(written.clone())
+            .boxed(),
+    );
+    let toolbox = Toolbox::new::<AppSurface>();
+    toolbox.serve(&api);
+    (toolbox, api, written)
 }
 
 /// The subject every test starts signed in as, holding only `user`: the seeds' Alice.
@@ -150,6 +295,10 @@ pub const ADMIN: &str = "admin";
 
 pub struct Assistant {
     api: TestApi,
+    /// What the toolbox calls through, which it holds only weakly.
+    _tools_api: Arc<BoxEndpoint<'static>>,
+    written: Written,
+    model: Arc<ScriptedModel>,
     ctx: Context,
     clock: Arc<FixedClock>,
     worker: Worker,
@@ -164,21 +313,37 @@ impl Assistant {
     /// model, its Bedrock is built but never called.
     pub async fn configured(pool: PgPool, settings: fn() -> Settings) -> Self {
         let module = assistant::module(settings);
-        Self::wired(pool, |ctx, app| module.provide(ctx, app)).await
+        Self::wired(pool, Tokens::Valid, |ctx, app, _| module.provide(ctx, app)).await
     }
 
-    /// With a scripted model in Bedrock's place.
+    /// With a scripted model in Bedrock's place, and the default limits.
     pub async fn on(pool: PgPool) -> Self {
-        let model: Arc<dyn ChatModel> = Arc::new(ScriptedModel::default());
-        Self::wired(pool, |ctx, app| {
-            app.accept(assistant::provider(ctx, Some(model))).boxed()
+        Self::limited(pool, Settings::default()).await
+    }
+
+    /// With a scripted model, and the limits `settings` set.
+    pub async fn limited(pool: PgPool, settings: Settings) -> Self {
+        Self::wired(pool, Tokens::Valid, |ctx, app, model| {
+            app.accept(assistant::provider(ctx, Some(model), settings))
+                .boxed()
+        })
+        .await
+    }
+
+    /// With a scripted model, and the app's operations refusing every token as not signed in,
+    /// as they do once it expires.
+    pub async fn signed_out_of_the_app(pool: PgPool) -> Self {
+        Self::wired(pool, Tokens::RefusedByTheApp, |ctx, app, model| {
+            app.accept(assistant::provider(ctx, Some(model), Settings::default()))
+                .boxed()
         })
         .await
     }
 
     async fn wired(
         pool: PgPool,
-        provide: impl FnOnce(&Context, BoxEndpoint<'static>) -> BoxEndpoint<'static>,
+        tokens: Tokens,
+        provide: impl FnOnce(&Context, BoxEndpoint<'static>, Arc<dyn ChatModel>) -> BoxEndpoint<'static>,
     ) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let authorizer = Authorizer::from_policies(&[policies()]).expect("policies compile");
@@ -186,13 +351,24 @@ impl Assistant {
         let worker = ctx.worker(Handlers::new());
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
+        let apps_verifier = match tokens {
+            Tokens::Valid => verifier.clone(),
+            Tokens::RefusedByTheApp => JwtVerifier::new("another-secret"),
+        };
+        let (toolbox, tools_api, written) = app_tools(apps_verifier, ctx.authorizer());
+        let model = Arc::new(ScriptedModel::default());
         let api = TestApi::new(AssistantEndpoints, ctx.idempotency(), |app| {
-            provide(&ctx, app)
+            provide(&ctx, app, model.clone())
                 .data(verifier.clone())
                 .data(ctx.authorizer())
+                .data(toolbox)
+                .data(ctx.draining())
         });
         let assistant = Self {
             api,
+            _tools_api: tools_api,
+            written,
+            model,
             ctx,
             clock,
             worker,
@@ -202,6 +378,26 @@ impl Assistant {
         };
         assistant.sign_in_as(ALICE, &[]);
         assistant
+    }
+
+    /// The model's next steps, in order.
+    pub fn scripted(&self, steps: impl IntoIterator<Item = Step>) {
+        self.model.script.lock().unwrap().extend(steps);
+    }
+
+    /// Every request the model was sent, oldest first.
+    pub fn model_requests(&self) -> Vec<ModelRequest> {
+        self.model.requests.lock().unwrap().clone()
+    }
+
+    /// What the app's write operation was sent, oldest first.
+    pub fn written(&self) -> Vec<Value> {
+        self.written.0.lock().unwrap().clone()
+    }
+
+    /// As the server does when it begins to shut down.
+    pub fn begin_draining(&self) {
+        self.ctx.draining().begin();
     }
 
     /// Later requests are `subject`'s, holding `user` and `roles`, with a real token.
@@ -325,6 +521,50 @@ impl Assistant {
         .await
     }
 
+    /// Says `text` in conversation `id` at `version`: the turn's events, once it has ended.
+    pub async fn send(&self, id: impl Display, version: i64, text: &str) -> Outcome<Vec<Value>> {
+        self.signed(self.message(id, text))
+            .if_match(version)
+            .stream()
+            .await
+    }
+
+    pub async fn send_without_precondition(
+        &self,
+        id: impl Display,
+        text: &str,
+    ) -> Outcome<Vec<Value>> {
+        self.signed(self.message(id, text)).stream().await
+    }
+
+    /// Says `text`, then hangs up as soon as the turn's stream has begun, as a closed tab does.
+    pub async fn send_and_hang_up(&self, id: impl Display, version: i64, text: &str) {
+        self.signed(self.message(id, text))
+            .if_match(version)
+            .hang_up()
+            .await;
+    }
+
+    fn message(&self, id: impl Display, text: &str) -> Call<'_> {
+        self.api
+            .post(format!("/api/assistant/conversations/{id}/messages"))
+            .json(&json!({ "text": text }))
+    }
+
+    /// The conversation once it holds `messages` messages, as a turn still running stores
+    /// them; panics if it never does.
+    pub async fn eventually(&self, id: impl Display, messages: usize) -> ConversationJson {
+        let id = id.to_string();
+        for _ in 0..200 {
+            let conversation = self.get(&id).await.expect("the conversation reads");
+            if conversation["messages"].as_array().map_or(0, Vec::len) >= messages {
+                return conversation;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("the conversation never held {messages} messages");
+    }
+
     pub async fn delete_without_precondition(&self, id: impl Display) -> Outcome<()> {
         self.signed(
             self.api
@@ -333,6 +573,28 @@ impl Assistant {
         .send_empty()
         .await
     }
+}
+
+/// Whether the app's operations accept the tokens the assistant's do.
+enum Tokens {
+    Valid,
+    RefusedByTheApp,
+}
+
+/// Each event of `events` of `kind`.
+pub fn of_kind<'e>(events: &'e [Value], kind: &str) -> Vec<&'e Value> {
+    events
+        .iter()
+        .filter(|event| event["kind"] == kind)
+        .collect()
+}
+
+/// The words the turn streamed, joined.
+pub fn streamed_text(events: &[Value]) -> String {
+    of_kind(events, "text")
+        .iter()
+        .map(|event| event["text"].as_str().unwrap_or_default())
+        .collect()
 }
 
 fn policies() -> app_authz::Policies {

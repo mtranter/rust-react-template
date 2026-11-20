@@ -13,6 +13,7 @@ async-trait.workspace = true
 app-error.workspace = true
 app-persistence.workspace = true
 chrono.workspace = true
+futures-util.workspace = true
 thiserror.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true
@@ -24,7 +25,7 @@ uuid.workspace = true
 jsonwebtoken.workspace = true
 reqwest.workspace = true
 tracing.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 tracing-opentelemetry.workspace = true

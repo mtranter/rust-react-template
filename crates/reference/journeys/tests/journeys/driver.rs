@@ -443,6 +443,48 @@ pub struct Session<'a> {
 }
 
 impl Session<'_> {
+    /// A conversation with the assistant, the user's own, empty.
+    pub async fn start_conversation(&self) -> Outcome<serde_json::Value> {
+        self.signed(self.app.api.post("/api/assistant/conversations"))
+            .send()
+            .await
+    }
+
+    /// Says `text` to the assistant in `conversation`, as last read: the turn's events, once
+    /// it has ended.
+    pub async fn ask_assistant(
+        &self,
+        conversation: &serde_json::Value,
+        text: &str,
+    ) -> Outcome<Vec<serde_json::Value>> {
+        let id = conversation["id"]
+            .as_str()
+            .expect("a conversation has an id");
+        let version: i64 = conversation["version"]
+            .as_str()
+            .and_then(|version| version.parse().ok())
+            .expect("a conversation has a version");
+        self.signed(
+            self.app
+                .api
+                .post(format!("/api/assistant/conversations/{id}/messages")),
+        )
+        .if_match(version)
+        .json(&json!({ "text": text }))
+        .stream()
+        .await
+    }
+
+    pub async fn conversation(&self, id: impl Display) -> Outcome<serde_json::Value> {
+        self.signed(
+            self.app
+                .api
+                .get(format!("/api/assistant/conversations/{id}")),
+        )
+        .send()
+        .await
+    }
+
     pub async fn me(&self) -> Outcome<UserJson> {
         self.signed(self.app.api.get("/api/users/me")).send().await
     }

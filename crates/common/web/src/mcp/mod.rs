@@ -10,9 +10,11 @@ mod schema;
 mod sessions;
 #[cfg(test)]
 mod tests;
+mod toolbox;
 mod tools;
 
 pub use discovery::{Discovery, METADATA_PATH, Metadata};
+pub use toolbox::{AgentTool, NotSent, ToolAnswer, Toolbox};
 pub use tools::{OpenApiTools, RestOnly, Surface, problems};
 
 use crate::{RequestIdMiddleware, TraceRequests};

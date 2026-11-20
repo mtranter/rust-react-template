@@ -98,6 +98,24 @@ pub enum ApiError {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+impl ApiError {
+    /// What it answers, without its status: for a refusal sent where a status can't be, such as
+    /// an event of a stream already under way.
+    pub fn into_body(self) -> ErrorBody {
+        match self {
+            ApiError::BadRequest(Json(body))
+            | ApiError::Unauthorized(Json(body))
+            | ApiError::Forbidden(Json(body))
+            | ApiError::NotFound(Json(body))
+            | ApiError::Conflict(Json(body))
+            | ApiError::PreconditionFailed(Json(body))
+            | ApiError::PreconditionRequired(Json(body))
+            | ApiError::Internal(Json(body))
+            | ApiError::Unavailable(Json(body)) => body,
+        }
+    }
+}
+
 impl From<AppError> for ApiError {
     fn from(err: AppError) -> Self {
         let message = err.to_string();

@@ -7,7 +7,7 @@ use app_error::{AppError, AppResult};
 /// A conversation is its owner's alone: every use case asks for `chat` on the assistant, then
 /// for its action on the conversation, scoped to its owner (`policies/`).
 impl AssistantService {
-    fn authorize_conversation(
+    pub(super) fn authorize_conversation(
         &self,
         principal: &Principal,
         action: ConversationAction,
@@ -90,7 +90,7 @@ impl AssistantService {
     }
 
     /// The conversation, if `plan` allows it: another's is not found.
-    async fn load_for(
+    pub(super) async fn load_for(
         &self,
         principal: &Principal,
         plan: &Plan,
