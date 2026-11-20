@@ -1,7 +1,7 @@
 ---
 id: 0072
 name: "A Principal carries the acting agent, read from the token's act claim or its non-first-party client"
-status: ready-for-agent
+status: in-progress
 spec: docs/platform/specs/0006-agents-act-on-behalf-of-users-and-every-change-is-audited.md
 blocked_by: []
 blocks: []
