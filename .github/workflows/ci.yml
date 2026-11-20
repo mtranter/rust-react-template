@@ -1,9 +1,15 @@
 name: CI
 
+# The factory's bookkeeping (FACTORY.md: Spec and Ticket statuses, Learnings)
+# is committed straight to main many times per Ticket, and no step reads it. A
+# push or PR touching anything else still runs everything. With no CI checks
+# on a PR, the factory runs `make check-changed` itself before merging.
 on:
   push:
     branches: [main]
+    paths-ignore: [docs/platform/specs/**, docs/platform/tickets/**, docs/specs/**, docs/tickets/**, .factory/**]
   pull_request:
+    paths-ignore: [docs/platform/specs/**, docs/platform/tickets/**, docs/specs/**, docs/tickets/**, .factory/**]
 
 env:
   CARGO_TERM_COLOR: always
