@@ -4,7 +4,7 @@ name: "The `assistant` platform module exists and reports whether the assistant 
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
-blocks: [docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md]
+blocks: [docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md, docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md]
 ---
 
 # The `assistant` platform module exists and reports whether the assistant is on
