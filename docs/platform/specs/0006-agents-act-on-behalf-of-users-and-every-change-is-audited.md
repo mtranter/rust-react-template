@@ -1,5 +1,5 @@
 ---
-status: needs-info
+status: ready-for-tickets
 ---
 
 # Agents act on behalf of users, and every change is audited
@@ -147,3 +147,8 @@ Prices and support were checked on 2026-11-19; sources are in the research doc, 
      - **Also a hash chain, or a copy to S3 Object Lock.** Proves tampering; more code, a serialised insert or an export job, and storage outside Postgres.
    - *Recommendation:* append-only by trigger: cheap, and stops accidental and casual edits. A hash chain can follow if a customer asks for proof.
    - *Depends on it:* "Audit records".
+
+
+### From Human.
+
+I agree to all the recommendations.

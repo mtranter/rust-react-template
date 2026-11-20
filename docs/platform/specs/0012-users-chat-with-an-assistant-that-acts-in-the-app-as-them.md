@@ -1,5 +1,5 @@
 ---
-status: needs-info
+status: ready-for-tickets
 ---
 
 # Users chat with an assistant that acts in the app as them
