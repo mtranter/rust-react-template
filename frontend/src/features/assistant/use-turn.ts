@@ -115,7 +115,7 @@ export function useTurn(id: string) {
 
 /** Whether `call`, decided in this turn, was approved and ran without an error. */
 function ran(call: LiveToolCall | undefined) {
-  return call?.status === "approved" && call.result !== undefined && call.error === undefined;
+  return call?.status === "approved" && call.error === undefined;
 }
 
 function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {

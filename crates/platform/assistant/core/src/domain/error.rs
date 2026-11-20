@@ -8,6 +8,6 @@ pub enum ConversationError {
     AwaitingApproval,
     #[error("the conversation has no such tool call")]
     NoSuchToolCall,
-    #[error("the tool call isn't awaiting a decision: it was decided already")]
+    #[error("the tool call isn't awaiting a decision")]
     NotAwaitingApproval,
 }

@@ -259,6 +259,8 @@ impl AppOperations {
         body: PoemJson<Value>,
     ) -> ApiResult<PoemJson<Value>> {
         let key = request.header(app_web::IDEMPOTENCY_KEY).map(str::to_string);
+        // Long enough that decisions made at once all load the conversation before either saves.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         written.0.0.lock().unwrap().push((body.0.clone(), key));
         Ok(PoemJson(body.0))
     }

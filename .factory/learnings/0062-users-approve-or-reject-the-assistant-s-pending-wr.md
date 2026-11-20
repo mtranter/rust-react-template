@@ -8,3 +8,5 @@
 - Biome's `useSemanticElements` refuses `role="group"` on a div: wrap the card in a `<section aria-label>`, whose role is `region`.
 - A new assistant operation goes in `REST_ONLY` and in `platform_ops` in `scripts/check-init.sh`.
 - `make check-init` refuses any file outside `crates/reference/` that names a reference module as a word, a Learnings file included: "users" in its title failed it. Run it with `COMPOSE_PROJECT_NAME` set to the project that owns :5432.
+- **A documented rule a change departs from is recorded in the rule's own place**, not only in the area that uses it: review round 1 failed because `decide_tool_call`'s missing `If-Match` and its retry were only in `frontend/AGENTS.md`. They now sit in ADR 0045's Consequences, in `crates/AGENTS.md`'s versions rule and assistant bullet, and in the operation's summary.
+- **To provoke the lost race in a test, slow the write.** Two `tokio::join!`ed approvals didn't race until the driver's `create_list` slept 50 ms, which makes both decisions load the same version before either saves. Check that a race test really races by turning off what it covers (here `DECISION_ATTEMPTS = 1` made it fail).

@@ -23,7 +23,8 @@ Spec 0012. The `assistant` platform module runs a model that acts in the app for
 
 - The assistant can do exactly what its user can, and its calls are indistinguishable from the user's own, as over `/mcp`, until Spec 0006.
 - Every operation is a tool, so the tool list grows with the app and costs input tokens on every model call. Spec 0008's hints, or an allow-list, may be needed; when its `readOnlyHint`/`destructiveHint` land they should replace the method as the approval rule.
-- A write a turn wants is stored and the turn ends, so the conversation can't take another message until it is decided (`409`).
+- A write a turn wants is stored and the turn ends until the owner decides it (`decide_tool_call`); a new message rejects any still pending.
+- Deciding takes no `If-Match`, unlike every other write (ADR 0016): the call's own status guards it, a decision on one no longer pending being `409`, so a client needn't hold the conversation's latest version to decide. And it is the one write that retries a lost race (a `412` from its save, as when two calls of one step are decided at once): it reloads and decides again, up to three times, which is safe because an approved call runs under an `idempotency_key` derived from its id (ADR 0032), so the retry replays the write rather than repeating it.
 - Text inside tool results is data: the system prompt says so, and approval before writes is what actually guards against injected instructions.
 - Tool calls go through the whole API stack (idempotency, error rendering, a request id and span of their own), so they show in traces and the `mcp.server.tool.calls` metric like `/mcp`'s.
 - A turn outlives its request, so a server shut down mid-turn loses the rest of it; what was stored stays.

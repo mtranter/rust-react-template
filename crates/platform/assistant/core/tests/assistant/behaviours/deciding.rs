@@ -237,3 +237,82 @@ async fn without_a_model_deciding_is_unavailable(pool: PgPool) {
         Err(Refusal::Unavailable)
     );
 }
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn an_approval_the_app_refuses_as_signed_out_ends_the_turn_saying_so(pool: PgPool) {
+    let assistant = Assistant::signed_out_of_the_app(pool).await;
+    let call = awaiting_a_write(&assistant, json!({ "title": "Groceries" })).await;
+
+    let events = assistant
+        .approve(ALICE_CONVERSATION_ID_UNTITLED, &call)
+        .await
+        .expect("the resumed turn streams");
+
+    assert_eq!(events[0]["kind"], "decided");
+    let [result] = of_kind(&events, "toolResult").try_into().unwrap();
+    assert_eq!(result["error"]["code"], "unauthorized");
+    let [error] = of_kind(&events, "error").try_into().unwrap();
+    assert_eq!(error["error"]["code"], "unauthorized");
+    assert_eq!(
+        assistant.model_requests().len(),
+        1,
+        "the model isn't asked again"
+    );
+    let conversation = assistant.get(ALICE_CONVERSATION_ID_UNTITLED).await.unwrap();
+    let messages = conversation["messages"].as_array().unwrap();
+    assert!(
+        messages.last().unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("sign-in expired")
+    );
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn approving_two_writes_of_a_step_at_once_runs_each_once(pool: PgPool) {
+    let assistant = Assistant::on(pool).await;
+    assistant.scripted([
+        calls_all(&[
+            ("create_list", json!({ "body": { "title": "Groceries" } })),
+            ("create_list", json!({ "body": { "title": "Chores" } })),
+        ]),
+        says("Both written."),
+    ]);
+    let events = assistant
+        .send(ALICE_CONVERSATION_ID_UNTITLED, 1, "Write two lists")
+        .await
+        .unwrap();
+    let pending: Vec<String> = of_kind(&events, "approvalRequired")
+        .iter()
+        .map(|event| event["id"].as_str().unwrap().to_string())
+        .collect();
+
+    let (first, second) = tokio::join!(
+        assistant.approve(ALICE_CONVERSATION_ID_UNTITLED, &pending[0]),
+        assistant.approve(ALICE_CONVERSATION_ID_UNTITLED, &pending[1]),
+    );
+
+    assert!(
+        first.is_ok() && second.is_ok(),
+        "the save that lost is retried"
+    );
+    let mut written = assistant.written_with_keys();
+    written.sort_by_key(|(_, key)| key.clone());
+    let mut expected = vec![
+        (
+            json!({ "title": "Groceries" }),
+            Some(format!("assistant-tool-call-{}", pending[0])),
+        ),
+        (
+            json!({ "title": "Chores" }),
+            Some(format!("assistant-tool-call-{}", pending[1])),
+        ),
+    ];
+    expected.sort_by_key(|(_, key)| key.clone());
+    assert_eq!(written, expected, "each write once, a retry replayed");
+    let conversation = assistant.get(ALICE_CONVERSATION_ID_UNTITLED).await.unwrap();
+    for call in &pending {
+        assert_eq!(status_of(&conversation, call)["status"], "approved");
+    }
+    assert_eq!(assistant.model_requests().len(), 2, "the turn goes on once");
+}

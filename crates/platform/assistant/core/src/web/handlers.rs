@@ -221,7 +221,8 @@ impl AssistantEndpoints {
     /// `awaiting_approval`, and follow the turn it resumes as a stream of events, as
     /// `send_message` does, beginning with the decision. Approving runs the operation as the
     /// caller, once however often it is approved or retried; rejecting tells the assistant the
-    /// caller declined it. The turn goes on once every action of its step is decided. Refused
+    /// caller declined it. The turn goes on once every action of its step is decided. Takes no
+    /// `If-Match`: the call's status is its guard, so it is never `412` or `428`. Refused
     /// before the stream with `409` when the call isn't awaiting a decision, `503` while the
     /// assistant is off, and `404` for another's conversation or a call it doesn't hold.
     #[oai(
