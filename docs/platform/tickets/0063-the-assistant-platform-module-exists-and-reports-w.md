@@ -1,7 +1,7 @@
 ---
 id: 0063
 name: "The `assistant` platform module exists and reports whether the assistant is on"
-status: in-progress
+status: needs-info
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
 blocks: [docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md, docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md]
@@ -20,3 +20,7 @@ Add the platform module `assistant` (`crates/platform/assistant/{core,api}`, wit
 - [ ] `scripts/init.sh` keeps the module; `make check-init` passes.
 - [ ] `docs/platform/glossary.md` gains **Assistant**; `crates/AGENTS.md` describes the module.
 - [ ] `make generate` run and `frontend/openapi.json` committed; `make check-changed` passes.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: implementor did not complete the Ticket: no structured output (session da444974-4461-4812-bda0-2d01eadda630)
