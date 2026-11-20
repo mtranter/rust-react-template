@@ -1,7 +1,7 @@
 ---
 id: 0060
 name: Sending a message runs a streamed turn that reads as the user and pauses on writes
-status: ready-for-agent
+status: in-progress
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0059-users-start-list-open-and-delete-their-own-convers.md]
 blocks: [docs/platform/tickets/0061-the-assistant-page-chats-streamed-replies-tool-cal.md]
