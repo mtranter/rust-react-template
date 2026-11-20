@@ -25,7 +25,10 @@ const notAnAdmin = http.get("*/api/access/catalog", () =>
   ),
 );
 
-await setupWorker(...scenario.handlers, notAnAdmin).start({
+// Likewise the assistant is off by default, as with no model configured.
+const assistantOff = http.get("*/api/assistant/status", () => HttpResponse.json({ on: false }));
+
+await setupWorker(...scenario.handlers, notAnAdmin, assistantOff).start({
   serviceWorker: { url: "/screens/mockServiceWorker.js" },
   quiet: true,
   onUnhandledRequest: (request, print) => {

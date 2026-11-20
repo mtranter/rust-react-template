@@ -172,17 +172,20 @@ test("signing out also signs out at the provider when it has an end-session endp
  */
 function catalogFor(valid: string[]) {
   const seen: (string | null)[] = [];
+  const answer = (request: Request, body: object) =>
+    valid.some((token) => request.headers.get("authorization") === `Bearer ${token}`)
+      ? HttpResponse.json(body)
+      : HttpResponse.json(
+          { code: "unauthenticated", message: "unauthenticated", requestId: "test" },
+          { status: 401 },
+        );
   server.use(
     http.get("*/api/access/catalog", ({ request }) => {
-      const authorization = request.headers.get("authorization");
-      seen.push(authorization);
-      return valid.some((token) => authorization === `Bearer ${token}`)
-        ? HttpResponse.json(catalog)
-        : HttpResponse.json(
-            { code: "unauthenticated", message: "unauthenticated", requestId: "test" },
-            { status: 401 },
-          );
+      seen.push(request.headers.get("authorization"));
+      return answer(request, catalog);
     }),
+    // The header asks too, and the API refuses its token alike.
+    http.get("*/api/assistant/status", ({ request }) => answer(request, { on: false })),
     ...accessApi([]).handlers,
   );
   return seen;

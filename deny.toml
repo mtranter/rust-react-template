@@ -12,8 +12,8 @@ allow-wildcard-paths = true
 # crate. `make check-modules` fails on one missing. `widgets` is the module
 # template (crates/module-template/core).
 deny = [
-    { crate = "sqlx", wrappers = ["app-db", "app-test-db", "server", "reference-journeys", "access", "widgets", "users", "notes", "note-search"] },
-    { crate = "poem", wrappers = ["poem-openapi", "poem-mcpserver", "app-web", "app-module", "app-fake-oidc", "server", "access", "widgets", "users", "notes", "note-search"] },
+    { crate = "sqlx", wrappers = ["app-db", "app-test-db", "server", "reference-journeys", "access", "assistant", "widgets", "users", "notes", "note-search"] },
+    { crate = "poem", wrappers = ["poem-openapi", "poem-mcpserver", "app-web", "app-module", "app-fake-oidc", "server", "access", "assistant", "widgets", "users", "notes", "note-search"] },
     # Only the bus reaches Redis (ADR 0039); tests get their Valkey from `app_bus::testing`.
     { crate = "redis", wrappers = ["app-bus"] },
 ]
@@ -33,6 +33,8 @@ allow = [
     "CC0-1.0",
     "CDLA-Permissive-2.0", # webpki-roots (via sqlx-core): permissive data license
     "BSL-1.0", # xxhash-rust (via redis): the Boost license, permissive like MIT
+    # aws-lc-rs/aws-lc-sys (the AWS SDK's TLS, via `assistant`'s rig-bedrock; ADR 0005) need
+    # nothing beyond these: ISC, Apache-2.0, MIT and BSD-3-Clause.
 ]
 confidence-threshold = 0.9
 

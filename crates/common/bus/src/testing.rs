@@ -194,6 +194,7 @@ impl Valkey {
             .await
             .map_err(|err| std::io::Error::other(err.to_string()))?;
         let url = format!("{}://127.0.0.1:{port}", self.scheme());
+        crate::redis::install_crypto_provider();
         let client = match &self.tls_ca {
             None => Client::open(url),
             Some(ca) => Client::build_with_tls(

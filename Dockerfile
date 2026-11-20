@@ -29,7 +29,7 @@ RUN mkdir out && cp target/release/server target/release/worker target/release/m
     fi
 
 # ---- Stage 3: runtime ----
-# distroless/cc: glibc, tiny, no shell. Avoids musl/aws-lc-rs toolchain friction.
+# distroless/cc: glibc, tiny, no shell. Avoids musl's toolchain friction (ADR 0005).
 FROM gcr.io/distroless/cc-debian12 AS runtime
 # `migrate` and `seed` run as one-off pre-start tasks from this image, e.g. a
 # Kubernetes init container with `command: ["/usr/local/bin/migrate"]`; `worker`

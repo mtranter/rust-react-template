@@ -43,6 +43,7 @@ path = "tests/worker_bin.rs"
 
 [dependencies]
 access.workspace = true
+assistant.workspace = true
 app-authz.workspace = true
 app-bus.workspace = true
 app-db.workspace = true
@@ -83,6 +84,8 @@ seed = ["users/seed", "notes/seed"]
 
 [dev-dependencies]
 app-test-db.workspace = true
+# `Jail`, for config tests that set environment variables.
+figment = { workspace = true, features = ["test"] }
 # Enables `seed` for the composed-app tests and journeys.
 server = { path = ".", features = ["seed"] }
 app-web = { workspace = true, features = ["test"] }

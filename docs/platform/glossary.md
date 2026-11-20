@@ -193,6 +193,12 @@ _Avoid_: Middleware, guard (for this)
 What the rule set answers for a Principal's action: `Allowed`, `Denied`, or `Where(filter)`, the conditions left once the Principal's roles are known, checked against a loaded row or pushed into a list's query. A list's repository takes it as `Rows` (`All` or `Where(filter)`), never `Denied`: the service has refused that already.
 _Avoid_: Decision (for a `Where`), verdict
 
+## Assistant
+
+**Assistant**:
+The platform's `assistant` Module and the chat it serves (Spec 0012): a model that acts in the app as the signed-in user, through the same Tools `/mcp` offers, so it can do exactly what that user can. On only while a model is configured (`APP_AGENT_MODEL`, a Bedrock model id) and the user holds `chat` on the `assistant` resource, granted to `user` by default; the SPA shows its page and link only then, as the status operation (`get_assistant_status`) says. Its operations are REST-only. The model sits behind one seam, `ChatModel`: Bedrock in production, a scripted Fake in tests.
+_Avoid_: Agent (an MCP client outside the app), bot, copilot
+
 ## Testing
 
 **Integration Test**:

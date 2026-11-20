@@ -41,6 +41,8 @@ app-authz = { path = "crates/common/authz" }
 server = { path = "crates/server" }
 access-api = { path = "crates/platform/access/api" }
 access = { path = "crates/platform/access/core" }
+assistant-api = { path = "crates/platform/assistant/api" }
+assistant = { path = "crates/platform/assistant/core" }
 users-api = { path = "crates/reference/users/api" }
 users = { path = "crates/reference/users/core" }
 notes-api = { path = "crates/reference/notes/api" }
@@ -68,6 +70,10 @@ sqlx = { version = "0.9", default-features = false, features = [
 ] }
 
 async-trait = "0.1"
+# Only for `app-bus` to install the process's crypto provider, which redis's TLS
+# reads: the providers in the tree are ring (sqlx, reqwest) and aws-lc-rs (the
+# AWS SDK's, `assistant`'s), and rustls infers none while both are on.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 futures-util = "0.3"
 # `app-bus`'s adapter (ADR 0039): Redis/Valkey pub/sub, over TLS with
 # `rediss://`. rustls with webpki roots; no native certs or OpenSSL.
@@ -119,7 +125,14 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
-# `rust_crypto`: no global crypto provider to install, no aws-lc-rs/cmake (ADR 0005).
+# The assistant's model (Spec 0012), only in `assistant`'s Bedrock adapter.
+# rig-bedrock turns on the AWS SDK's `default-https-client`, rustls on
+# aws-lc-rs: accepted for it alone (ADR 0005); `aws-lc-sys` builds with cmake
+# and a C toolchain.
+rig-core = { version = "0.46", default-features = false }
+rig-bedrock = "0.46"
+
+# `rust_crypto`: no global crypto provider to install (ADR 0005).
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 # The versions jsonwebtoken's `rust_crypto` uses, for `app-fake-oidc`'s signing key.
 rand = "0.8"
@@ -128,7 +141,7 @@ sha2 = "0.10"
 base64 = "0.22"
 url = "2"
 # No default-tls: reuses the `ring` provider sqlx already brings, so no system
-# OpenSSL and no aws-lc-rs/cmake (ADR 0005).
+# OpenSSL (ADR 0005).
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls-webpki-roots",

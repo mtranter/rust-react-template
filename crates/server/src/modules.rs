@@ -1,9 +1,10 @@
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
-//! it grants from every module's policies, so it is built from this list.
+//! it grants from every module's policies, so it is built from this list; its
+//! `assistant` follows.
 
-use crate::Composition;
+use crate::{Composition, config};
 use app_module::Module;
 
 /// What the server, `worker`, `migrate`, `seed` and `dump-spec` run.
@@ -14,6 +15,7 @@ impl Composition for Registered {
     /// tuples (poem-openapi's own cap is 16).
     type Endpoints = (
         access::AccessEndpoints,
+        assistant::AssistantEndpoints,
         users::UsersEndpoints,
         notes::NotesEndpoints,
         note_search::NoteSearchEndpoints,
@@ -22,6 +24,7 @@ impl Composition for Registered {
     fn modules() -> Vec<Module> {
         vec![
             access::module(Self::modules),
+            assistant::module(config::agent),
             users::module(access::assignments),
             notes::module(users::directory),
             note_search::module(),

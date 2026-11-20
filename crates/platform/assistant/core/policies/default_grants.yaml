@@ -1,0 +1,6 @@
+apiVersion: auth.flagrante.io/v1
+defaultGrants:
+  - { role: user, resource: "module:assistant", action: use }
+  - { role: user, resource: assistant, action: chat }
+  - { role: admin, resource: "module:assistant", action: use }
+  - { role: admin, resource: assistant, action: chat }
