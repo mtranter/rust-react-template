@@ -4,7 +4,7 @@ name: "Users start, list, open and delete their own Conversations"
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0058-an-assistant-platform-module-reports-whether-the-a.md]
-blocks: []
+blocks: [docs/platform/tickets/0060-sending-a-message-runs-a-streamed-turn-that-reads.md]
 ---
 
 # Users start, list, open and delete their own Conversations
