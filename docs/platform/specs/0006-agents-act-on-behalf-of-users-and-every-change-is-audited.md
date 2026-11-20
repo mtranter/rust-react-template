@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: needs-info
 ---
 
 # Agents act on behalf of users, and every change is audited
@@ -152,3 +152,7 @@ Prices and support were checked on 2026-11-19; sources are in the research doc, 
 ### From Human.
 
 I agree to all the recommendations.
+
+## Needs Human Input (factory)
+
+TicketCreator failed: planned Ticket t3 depends on "0072", which is neither an earlier planned Ticket nor a known Ticket Id
