@@ -3,9 +3,9 @@ name: add-telemetry
 description: Add or change a trace span or a metric in the Rust backend (tracing, OpenTelemetry, OTLP, Grafana), test one, or explain what the server and worker already span and measure. Use before adding `#[tracing::instrument]`, `info_span!`, a meter or instrument, or when asked what is traced or measured.
 ---
 
-# Traces and metrics (Spec 0003)
+# Traces and metrics (ADR 0044)
 
-Extends `crates/AGENTS.md`; if this file and the code disagree, the code wins: fix this file in the same change.
+Extends `crates/AGENTS.md`; why it is built this way, and the fixed metric set's names, are ADR 0044; if this file and the code disagree, the code wins: fix this file in the same change.
 
 ## What is already there
 

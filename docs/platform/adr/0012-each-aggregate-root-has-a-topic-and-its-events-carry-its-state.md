@@ -1,5 +1,7 @@
 # Each Aggregate Root has a Topic, and its Events carry the root's whole state
 
+Amended by [ADR 0044](0044-traces-and-metrics-are-exported-over-otlp-and-a-trace-crosses-the-outbox-in-the-envelope.md): the Event Envelope also carries CloudEvents' distributed-tracing extension attributes, `traceparent` and `tracestate`, when an Event is published inside a trace.
+
 Every state change publishes an Event, in the Unit of Work that saves it, one per root changed. An Event is a fact in the past tense (`UserRegistered`), never a command in disguise (`SendWelcomeEmail`), and its publisher doesn't know who listens.
 
 **The Domain decides what happened.** Each Aggregate has a plain `#[must_use]` enum of what can happen to it (`users::domain::UserEvent`), knowing nothing of `app_events`, and every transition returns one. `application/events.rs` maps each variant, exhaustively, onto its Topic's event enum in the Module API. That match is the one place Domain names meet the published contract, so the Domain can rename or split its events without touching `events::v1`: the path from Domain to wire has two exhaustive matches, one on each side.

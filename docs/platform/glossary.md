@@ -98,7 +98,7 @@ The interface, in common code, through which a Service publishes an Event into i
 What an Event carries: the **entity**, the Aggregate Root's whole state as it now is but its audit fields, so a Subscriber need not call back (event-carried state transfer); and a **context** saying what happened where the state can't (e.g. the id of the Child Entity removed).
 
 **Event Envelope**:
-The CloudEvents wrapper every Event is stored and delivered in: its id, source Module, Topic, type, key (the root's id), the root's version and time, around its Event Payload.
+The CloudEvents wrapper every Event is stored and delivered in: its id, source Module, Topic, type, key (the root's id), the root's version and time, around its Event Payload, and the Trace Context it was published in, when there is one.
 
 **Subscriber**:
 A Module's reaction to an Event, or to every Event of a Topic, another Module's or its own (e.g. archiving a deleted user's notes, welcoming a registered user). It changes only its own Module's data, and may run more than once. Each is a **Subscription**: its own queue, registered when migrating, which **starts** from `latest` (only Events relayed after it was registered) or `earliest` (also given every Event its Topic's Outbox held when it was registered, copied in by the Worker a chunk at a time).
@@ -138,6 +138,18 @@ _Avoid_: Request id (which only correlates logs and responses)
 **Tool**:
 An operation of the Spec as an AI agent calls it over MCP, at `/mcp`: named by the operation's id, described by its summary, and answered by sending the operation's own request in-process (ADR 0034). Every operation is one unless deliberately kept REST-only.
 _Avoid_: Endpoint, command (for a tool)
+
+## Telemetry
+
+**Trace**:
+The tree of spans one request, tool call or Deferred Job's run makes, through every SQL query and, across the Outbox, every Subscriber's reaction to the Events it published (ADR 0044). Named by its **trace id**, which an `ErrorBody` carries as `traceId` and a log line as `trace_id`.
+_Avoid_: Request id (which names one request, not what followed from it)
+
+**Trace Context**:
+The W3C `traceparent` (and a vendor's `tracestate`) naming a Trace and the span to continue it from: read from a request's headers, and carried in an Event Envelope so the Worker continues the publisher's Trace.
+
+**Metric**:
+One of the fixed set of measurements the binaries export over OTLP (ADR 0044), named by OpenTelemetry's semantic conventions where one exists, with attributes from small closed sets only.
 
 ## Authorization
 
