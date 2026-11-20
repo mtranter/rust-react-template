@@ -4,7 +4,7 @@ name: Sending a message runs a streamed turn that reads the app as the user
 status: ready-for-agent
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0064-rig-and-bedrock-behind-the-assistant-s-model-seam.md, docs/platform/tickets/0065-users-start-list-get-and-delete-their-own-conversa.md]
-blocks: []
+blocks: [docs/platform/tickets/0067-writes-the-assistant-asks-for-wait-for-the-user-s.md]
 ---
 
 # Sending a message runs a streamed turn that reads the app as the user
