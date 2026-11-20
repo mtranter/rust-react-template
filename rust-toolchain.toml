@@ -1,7 +1,7 @@
-# Track the latest stable. Edition 2024 needs >= 1.85, but the effective
-# workspace MSRV is 1.94 (sqlx 0.9's declared rust-version); see the
-# `rust-version` field in the root Cargo.toml, which is what actually enforces
-# the floor. CI installs an explicit stable version for reproducibility.
+# Pinned to the workspace MSRV, 1.97.1 (rig-bedrock 0.46's declared
+# rust-version), so local builds and clippy match CI. The `rust-version` field
+# in the root Cargo.toml is what actually enforces the floor; keep this, CI,
+# mise.toml and the Packer `rust_version` in step with it.
 [toolchain]
-channel = "stable"
+channel = "1.97.1"
 components = ["rustfmt", "clippy"]

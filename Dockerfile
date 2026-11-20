@@ -10,7 +10,7 @@ COPY frontend/ ./
 RUN pnpm run generate && pnpm run build
 
 # ---- Stage 2: build the Rust server (embeds frontend/dist) ----
-FROM rust:1.97-slim-bookworm AS backend
+FROM rust:1.97.1-slim-bookworm AS backend
 WORKDIR /app
 ENV SQLX_OFFLINE=true
 # Cache dependency compilation.

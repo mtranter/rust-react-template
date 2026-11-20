@@ -19,8 +19,8 @@ members = [
 
 [workspace.package]
 edition = "2024"
-# sqlx 0.9 declares rust-version 1.94 (edition 2024 alone would need 1.85).
-rust-version = "1.94"
+# rig-bedrock 0.46 declares rust-version 1.97.1 (sqlx 0.9 needs 1.94, edition 2024 1.85).
+rust-version = "1.97.1"
 license = "MIT OR Apache-2.0"
 publish = false
 

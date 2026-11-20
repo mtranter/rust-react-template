@@ -1,3 +1,4 @@
 [tools]
 node = "24"
 pnpm = "12.4.2"  # keep in step with frontend/package.json "packageManager"
+rust = "1.97.1"  # keep in step with rust-toolchain.toml
