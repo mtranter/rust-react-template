@@ -1,7 +1,7 @@
 ---
 id: 0062
 name: "Users approve or reject the assistant's pending writes"
-status: ready-for-agent
+status: in-progress
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: [docs/platform/tickets/0061-the-assistant-page-chats-streamed-replies-tool-cal.md]
 blocks: []
