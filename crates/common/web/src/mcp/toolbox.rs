@@ -24,7 +24,7 @@ pub struct AgentTool {
     pub input_schema: Value,
     /// Whether its operation is a `GET`, which changes nothing.
     pub reads: bool,
-    /// Its operation's path template under the API's base, such as `/notes/{id}`.
+    /// Its operation's path template under the API's base, such as `/orders/{id}`.
     pub path: &'static str,
     pub arguments: Vec<ToolArgument>,
     /// The values its arguments carry, in the order its schemas declare them.

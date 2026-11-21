@@ -29,7 +29,7 @@ pub struct AppTool {
     pub input_schema: Value,
     /// Whether its operation only reads (a `GET`), so it runs without the owner's approval.
     pub reads: bool,
-    /// Its operation's path template, such as `/notes/{id}`.
+    /// Its operation's path template, such as `/orders/{id}`.
     pub path: String,
     pub arguments: Vec<ToolArgument>,
     /// The values its arguments carry, in the order its schemas declare them.
