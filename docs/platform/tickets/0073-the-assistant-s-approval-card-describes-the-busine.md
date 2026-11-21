@@ -1,7 +1,7 @@
 ---
 id: 0073
 name: "The assistant's approval card describes the business action in plain words, not JSON"
-status: in-progress
+status: in-review
 spec: docs/platform/specs/0012-users-chat-with-an-assistant-that-acts-in-the-app-as-them.md
 blocked_by: []
 blocks: []
