@@ -4,10 +4,10 @@
 //! `make init`.
 
 mod application;
-mod bedrock;
 mod db;
 mod di;
 mod domain;
+mod providers;
 #[cfg(feature = "seed")]
 pub mod seed;
 mod web;

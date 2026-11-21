@@ -1,5 +1,5 @@
-//! The one seam between the assistant and a model provider (Spec 0012): Bedrock in
-//! `crate::bedrock`, a scripted fake in tests, another provider a new implementation. Its types
+//! The one seam between the assistant and a model provider (Spec 0012): Anthropic or Bedrock in
+//! `crate::providers`, a scripted fake in tests, another provider a new implementation. Its types
 //! are the module's own, so a bump of rig, which is pre-1.0, stops at the adapter.
 
 use async_trait::async_trait;

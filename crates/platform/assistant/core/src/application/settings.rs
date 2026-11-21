@@ -1,7 +1,8 @@
 /// How the assistant runs, from `APP_AGENT_*` (the server's `AppConfig`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
-    /// The Bedrock model or inference-profile id; without one the assistant is off.
+    /// The model id: Anthropic's (`claude-opus-5-5`) with an Anthropic credential in the
+    /// environment, else a Bedrock model or inference-profile id. Without one the assistant is off.
     pub model: Option<String>,
     /// Per turn.
     pub max_tool_calls: u32,

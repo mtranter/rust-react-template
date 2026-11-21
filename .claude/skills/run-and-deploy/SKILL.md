@@ -42,12 +42,13 @@ The server's `assistant` is off unless `APP_AGENT_MODEL` is set: the server star
 
 | Variable | Default | What |
 |---|---|---|
-| `APP_AGENT_MODEL` | none (off) | The Bedrock model or inference-profile id, e.g. an Anthropic Claude Sonnet profile. |
+| `APP_AGENT_MODEL` | none (off) | The model id for the provider in use: Anthropic's (`claude-opus-5-5`) with an Anthropic credential set, else a Bedrock model or inference-profile id. |
 | `APP_AGENT_MAX_TOOL_CALLS` | `10` | Tool calls per turn. |
 | `APP_AGENT_MAX_OUTPUT_TOKENS` | `4096` | Tokens the model may answer with per turn; `0` refuses to start. |
 | `APP_AGENT_HISTORY_MESSAGES` | `50` | A conversation's latest messages sent to the model; `0` refuses to start. |
 
-- **AWS region and credentials** come from the AWS SDK's default chain (`AWS_REGION`, `AWS_PROFILE`, an instance or task role, ...), loaded on the first call to the model, so a missing credential shows then, not at start-up.
-- **IAM**: the server's role needs `bedrock:InvokeModelWithResponseStream` and `bedrock:InvokeModel` on that model (and, for an inference profile, on the profile and the models it routes to). The worker and `migrate` need none.
+- **The provider** is Anthropic's API when `ANTHROPIC_API_KEY` (sent as `x-api-key`) or `ANTHROPIC_AUTH_TOKEN` (an OAuth or other bearer token, sent as `Authorization: Bearer` with the `oauth-2025-04-20` beta) is set, the key winning if both are; `ANTHROPIC_BASE_URL` points it at a gateway. Otherwise it is Bedrock. A bad credential shows on the first call, not at start-up.
+- **AWS region and credentials**, on Bedrock, come from the AWS SDK's default chain (`AWS_REGION`, `AWS_PROFILE`, an instance or task role, ...), loaded on the first call to the model, so a missing credential shows then, not at start-up.
+- **IAM**, on Bedrock: the server's role needs `bedrock:InvokeModelWithResponseStream` and `bedrock:InvokeModel` on that model (and, for an inference profile, on the profile and the models it routes to). The worker and `migrate` need none.
 - **Streams and shutdown**: a turn answers `text/event-stream` and runs in the server, not the request: a client that hangs up doesn't stop it. On `SIGTERM` the server ends its open streams so graceful shutdown isn't held, but a turn still running when the process exits stops there, keeping what it had stored. A proxy or load balancer in front must pass streamed responses through unbuffered, with an idle timeout longer than a turn's slowest model call.
-- **Data residency**: whatever the tools return for a user, their data included, is sent to the configured model in its region. An app with data-residency or contractual limits picks its region and model (or a geographic inference profile, `eu.` ...) to suit, or leaves the assistant off.
+- **Data residency**: whatever the tools return for a user, their data included, is sent to the configured model: on Bedrock in its region, on Anthropic's API to Anthropic. An app with data-residency or contractual limits picks its region and model (or a geographic inference profile, `eu.` ...) to suit, or leaves the assistant off.

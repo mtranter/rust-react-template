@@ -22,7 +22,7 @@ futures-util.workspace = true
 poem.workspace = true
 poem-openapi.workspace = true
 rig-bedrock.workspace = true
-rig-core.workspace = true
+rig-core = { workspace = true, features = ["reqwest", "rustls"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

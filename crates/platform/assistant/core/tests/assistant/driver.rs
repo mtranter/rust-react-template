@@ -418,7 +418,7 @@ pub struct Assistant {
 
 impl Assistant {
     /// Registered as the server registers it, with `settings` for its configuration: with a
-    /// model, its Bedrock is built but never called.
+    /// model, its provider's model is built but never called.
     pub async fn configured(pool: PgPool, settings: fn() -> Settings) -> Self {
         let module = assistant::module(settings);
         Self::wired(pool, Tokens::Valid, |ctx, app, _| module.provide(ctx, app)).await

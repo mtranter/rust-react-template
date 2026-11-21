@@ -1,6 +1,11 @@
-//! The assistant's model on Amazon Bedrock, through rig's Converse wire, streamed. Region and
-//! credentials come from the AWS SDK's default chain (`AWS_REGION`, `AWS_PROFILE`, an instance
-//! or task role), loaded on the first call, so building one checks nothing.
+//! The assistant's model through rig, streamed: on Anthropic's API when an Anthropic credential
+//! is in the environment ([`AnthropicAuth`]), else on Amazon Bedrock's Converse, whose region and
+//! credentials come from the AWS SDK's default chain (`AWS_REGION`, `AWS_PROFILE`, an instance or
+//! task role), loaded on the first call. Building either checks nothing.
+
+mod anthropic;
+
+pub use anthropic::AnthropicAuth;
 
 use crate::application::{
     ChatModel, ModelError, ModelMessage, ModelReply, ModelRequest, ModelToolCall,
@@ -18,15 +23,22 @@ use rig_core::operation::Completion;
 use rig_core::streaming::{Item, StreamEvent};
 use serde_json::Value;
 
-pub struct Bedrock {
+pub struct RigModel {
     model: DynModel<Completion>,
 }
 
-impl Bedrock {
+impl RigModel {
     /// `model` is a Bedrock model or inference-profile id.
-    pub fn new(model: &str) -> Self {
+    pub fn bedrock(model: &str) -> Self {
         Self {
             model: BedrockRuntime::from_env().completion(model).erase(),
+        }
+    }
+
+    /// `model` is an Anthropic model id (`claude-opus-5-5`).
+    pub fn anthropic(model: &str, auth: AnthropicAuth) -> Self {
+        Self {
+            model: auth.config().client().completion(model).erase(),
         }
     }
 }
@@ -40,7 +52,7 @@ fn tool_name(name: &str) -> Result<ToolName, ModelError> {
 }
 
 #[async_trait]
-impl ChatModel for Bedrock {
+impl ChatModel for RigModel {
     async fn reply(
         &self,
         request: ModelRequest,
@@ -98,7 +110,7 @@ impl ChatModel for Bedrock {
     }
 }
 
-/// `messages` as Converse wants them: alternating, each side's run of ours one message.
+/// `messages` as Converse and Messages want them: alternating, each side's run of ours one message.
 fn conversation(messages: Vec<ModelMessage>) -> Result<Vec<Message>, ModelError> {
     let mut conversation: Vec<Message> = Vec::new();
     for message in messages {

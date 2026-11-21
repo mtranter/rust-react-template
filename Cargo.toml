@@ -125,7 +125,9 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
-# The assistant's model (Spec 0012), only in `assistant`'s Bedrock adapter.
+# The assistant's model (Spec 0012), only in `assistant`'s `providers/` adapter, which turns on
+# rig-core's `reqwest` + `rustls` for Anthropic's API (reqwest 0.13, rustls on the process
+# default provider, else aws-lc-rs).
 # rig-bedrock turns on the AWS SDK's `default-https-client`, rustls on
 # aws-lc-rs: accepted for it alone (ADR 0005); `aws-lc-sys` builds with cmake
 # and a C toolchain.

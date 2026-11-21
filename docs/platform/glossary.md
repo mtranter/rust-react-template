@@ -212,7 +212,7 @@ _Avoid_: Decision (for a `Where`), verdict
 ## Assistant
 
 **Assistant**:
-The platform's `assistant` Module and the chat it serves (Spec 0012): a model that acts in the app as the signed-in user, through the same Tools `/mcp` offers, so it can do exactly what that user can. On only while a model is configured (`APP_AGENT_MODEL`, a Bedrock model id) and the user holds `chat` on the `assistant` resource, granted to `user` by default; the SPA shows its page and link only then, as the status operation (`get_assistant_status`) says. Its operations are REST-only. The model sits behind one seam, `ChatModel`: Bedrock in production, a scripted Fake in tests.
+The platform's `assistant` Module and the chat it serves (Spec 0012): a model that acts in the app as the signed-in user, through the same Tools `/mcp` offers, so it can do exactly what that user can. On only while a model is configured (`APP_AGENT_MODEL`: an Anthropic model id with an Anthropic credential set, else a Bedrock model id) and the user holds `chat` on the `assistant` resource, granted to `user` by default; the SPA shows its page and link only then, as the status operation (`get_assistant_status`) says. Its operations are REST-only. The model sits behind one seam, `ChatModel`: Anthropic's API or Bedrock in production, a scripted Fake in tests.
 _Avoid_: Agent (an MCP client outside the app), bot, copilot
 
 **Conversation**:

@@ -2,9 +2,9 @@
 #![allow(clippy::disallowed_types)]
 
 use crate::application::{AssistantService, ChatModel, Settings};
-use crate::bedrock::Bedrock;
 use crate::db::{PgConversationRepository, migrations};
 use crate::domain::{Assistant, Conversation};
+use crate::providers::{AnthropicAuth, RigModel};
 use crate::web::OPERATIONS;
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_module::{Context, Module};
@@ -50,13 +50,14 @@ pub fn policies() -> PoliciesBuilder {
 }
 
 /// `settings` are read when the API is built, so `dump-spec` and `migrate` need none. With a
-/// model configured, it is Bedrock's.
+/// model configured, it is Anthropic's with an Anthropic credential in the environment, else
+/// Bedrock's.
 pub fn module(settings: fn() -> Settings) -> Module {
-    module_with(settings, bedrock)
+    module_with(settings, configured)
 }
 
 /// [`module`] with the model `model` makes of the settings, for a composition that must not call
-/// Bedrock, such as the journeys'.
+/// a provider, such as the journeys'.
 pub fn module_with(
     settings: fn() -> Settings,
     model: fn(&Settings) -> Option<Arc<dyn ChatModel>>,
@@ -74,7 +75,10 @@ pub fn module_with(
     module
 }
 
-fn bedrock(settings: &Settings) -> Option<Arc<dyn ChatModel>> {
+fn configured(settings: &Settings) -> Option<Arc<dyn ChatModel>> {
     let model = settings.model.as_deref()?;
-    Some(Arc::new(Bedrock::new(model)))
+    Some(Arc::new(match AnthropicAuth::from_env() {
+        Some(auth) => RigModel::anthropic(model, auth),
+        None => RigModel::bedrock(model),
+    }))
 }

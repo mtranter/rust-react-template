@@ -79,7 +79,8 @@ pub struct AppConfig {
     /// Parameters the SPA adds to its authorization request, space-separated
     /// `key=value` pairs (`audience=https://api.example.com`).
     pub oidc_extra_params: String,
-    /// The assistant's Bedrock model or inference-profile id (Spec 0012).
+    /// The assistant's model id (Spec 0012): Anthropic's with `ANTHROPIC_API_KEY` or
+    /// `ANTHROPIC_AUTH_TOKEN` set, else a Bedrock model or inference-profile id.
     /// Unset (or empty), the assistant is off.
     pub agent_model: Option<String>,
     /// The tool calls one of the assistant's turns may make.
