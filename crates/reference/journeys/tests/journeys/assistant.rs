@@ -81,6 +81,15 @@ async fn alice_has_the_assistant_add_an_item_to_her_note_once_she_approves(pool:
         .try_into()
         .unwrap();
     assert_eq!(pending["tool"], "add_note_item");
+    assert_eq!(
+        pending["proposal"],
+        json!({
+            "action": "Add note item",
+            "target": { "kind": "Note", "name": note["title"] },
+            "fields": [{ "label": "Text", "value": "Bread" }],
+        }),
+        "described from the operation and its arguments, the note read as Alice"
+    );
     let unchanged = alice.note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
     assert_eq!(
         unchanged.version(),

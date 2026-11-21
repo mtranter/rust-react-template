@@ -4,7 +4,8 @@
 
 use super::{
     Answered, AppTools, AssistantService, ChatModel, Expected, ModelMessage, ModelRequest,
-    ModelTool, ModelToolCall, ModelToolResult, Version, Versioned, events,
+    ModelTool, ModelToolCall, ModelToolResult, Proposal, Version, Versioned, events,
+    proposals::propose,
 };
 use crate::domain::{
     Content, Conversation, ConversationAction, ConversationEvent, ConversationId, Decision,
@@ -26,6 +27,8 @@ pub enum TurnEvent {
     ToolCallStarted {
         id: ToolCallId,
         tool: String,
+        /// Its operation's summary; none for a tool the app hasn't.
+        summary: Option<String>,
         arguments: Value,
     },
     /// A read's answer.
@@ -40,6 +43,8 @@ pub enum TurnEvent {
         /// Its operation's summary, saying what approving it would do.
         summary: String,
         arguments: Value,
+        /// What approving it would do, in the owner's terms; none for a tool the app hasn't.
+        proposal: Option<Proposal>,
     },
     /// The owner's decision on a call that awaited it: `Approved` or `Rejected`. An approved
     /// call's answer follows as its `ToolResult`.
@@ -310,11 +315,11 @@ impl Turn {
             .map(|tool| (tool.name.clone(), tool.summary().to_string()))
             .collect();
         let tools: Vec<ModelTool> = surface
-            .into_iter()
+            .iter()
             .map(|tool| ModelTool {
-                name: tool.name,
-                description: tool.description,
-                input_schema: tool.input_schema,
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                input_schema: tool.input_schema.clone(),
             })
             .collect();
         let system = self.system();
@@ -359,7 +364,7 @@ impl Turn {
             calls_made += asked;
             self.post_words(&reply.text).await?;
 
-            let (calls, signed_out) = self.call(reply.tool_calls, &reads).await;
+            let (calls, signed_out) = self.call(reply.tool_calls, &reads, &summaries).await;
             let pending: Vec<ToolCall> = calls
                 .iter()
                 .filter(|call| call.status() == ToolCallStatus::AwaitingApproval)
@@ -373,11 +378,14 @@ impl Turn {
             }
             if !pending.is_empty() {
                 for call in pending {
+                    let proposal =
+                        propose(&*self.tools, &surface, call.tool(), call.arguments()).await;
                     self.emit(TurnEvent::ApprovalRequired {
                         id: call.id(),
                         tool: call.tool().to_string(),
                         summary: summaries.get(call.tool()).cloned().unwrap_or_default(),
                         arguments: call.arguments().clone(),
+                        proposal,
                     });
                 }
                 return Ok(());
@@ -392,6 +400,7 @@ impl Turn {
         &self,
         asked: Vec<ModelToolCall>,
         reads: &HashMap<String, bool>,
+        summaries: &HashMap<String, String>,
     ) -> (Vec<ToolCall>, bool) {
         let mut calls = Vec::with_capacity(asked.len());
         let mut signed_out = false;
@@ -400,6 +409,7 @@ impl Turn {
             self.emit(TurnEvent::ToolCallStarted {
                 id,
                 tool: asked.name.clone(),
+                summary: summaries.get(&asked.name).cloned(),
                 arguments: asked.arguments.clone(),
             });
             // A tool that isn't on the surface is called anyway, to be refused as any other.

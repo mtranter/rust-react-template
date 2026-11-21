@@ -6,6 +6,7 @@
 //! the protocol; this binds each session to the token subject that opened it.
 
 mod discovery;
+mod fields;
 mod schema;
 mod sessions;
 #[cfg(test)]
@@ -14,6 +15,7 @@ mod toolbox;
 mod tools;
 
 pub use discovery::{Discovery, METADATA_PATH, Metadata};
+pub use fields::{ArgumentIn, FieldProperty, ToolArgument, ToolField};
 pub use toolbox::{AgentTool, NotSent, ToolAnswer, Toolbox};
 pub use tools::{OpenApiTools, RestOnly, Surface, problems};
 

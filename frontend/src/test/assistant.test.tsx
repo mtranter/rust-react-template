@@ -108,13 +108,15 @@ test("opens a conversation, showing its messages and each tool call", async () =
   );
   expect(router.state.location.search).toEqual({ conversation: "conversation-roles" });
 
-  const lookup = within(opened).getByRole("button", { name: /list_roles/ });
+  const lookup = within(opened).getByRole("button", { name: /List roles/ });
   expect(lookup).toHaveTextContent("Ran");
+  expect(lookup).not.toHaveTextContent("list_roles");
+  expect(within(opened).getByText("List the roles there are.")).toBeInTheDocument();
   await user.click(lookup);
   expect(await within(opened).findByText("Result")).toBeInTheDocument();
   expect(within(opened).getByText(/"name": "admin"/)).toBeInTheDocument();
 
-  const declined = within(opened).getByRole("button", { name: /delete_role/ });
+  const declined = within(opened).getByRole("button", { name: /Delete role/ });
   expect(declined).toHaveTextContent("Rejected");
   await user.click(declined);
   expect(await within(opened).findByText(/the user declined this action/)).toBeInTheDocument();

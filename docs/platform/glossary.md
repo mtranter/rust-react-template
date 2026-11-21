@@ -224,8 +224,12 @@ What one message of a Conversation's owner sets off (ADR 0045): the owner's mess
 _Avoid_: Request, run, exchange
 
 **Pending tool call**:
-A Tool call the model asked for whose operation isn't a `GET`, so a Turn doesn't run it: it is stored `awaiting_approval`, the stream names it and its arguments, and the Turn ends there until the owner approves or rejects it. Several asked for in one step are all pending. The owner approves (it runs, once, under an `idempotency_key` derived from its id) or rejects (the model reads "the user declined this action") each; the Turn goes on once none of its step is pending. A new message rejects any still pending.
-_Avoid_: Draft action, proposal
+A Tool call the model asked for whose operation isn't a `GET`, so a Turn doesn't run it: it is stored `awaiting_approval`, the stream names it and its arguments, and the Turn ends there until the owner approves or rejects it. Several asked for in one step are all pending. The owner approves (it runs, once, under an `idempotency_key` derived from its id) or rejects (the model reads "the user declined this action") each; the Turn goes on once none of its step is pending. A new message rejects any still pending. Its owner is shown its Proposal.
+_Avoid_: Draft action, proposal (that is what it is shown as)
+
+**Proposal**:
+What a Pending tool call would do, in its owner's terms, as the server builds it from the call's operation and stored arguments, never from the model's words: its action (the operation id in sentence case), its target (the record it acts on, read as the owner and named), and the business data it sends (no headers, path parameters, versions or ids), each changed value beside its previous one. Approval defends against prompt injection only if what the owner approves is exactly the call that runs.
+_Avoid_: Approval text, description
 
 ## Testing
 

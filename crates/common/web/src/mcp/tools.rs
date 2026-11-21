@@ -1,6 +1,7 @@
 //! A tool per operation of an [`OpenApi`], described by the operation's meta
 //! and called by sending the operation's request through the REST endpoint.
 
+use super::fields::{ArgumentIn, ToolArgument, ToolField, fields_of};
 use super::schema::{Definitions, json_schema};
 use super::sessions::Presented;
 use crate::metrics::ToolCalls;
@@ -224,13 +225,32 @@ pub(super) struct Described {
     pub(super) input_schema: Value,
     output_schema: Option<Value>,
     pub(super) method: Method,
-    path: String,
+    pub(super) path: &'static str,
     arguments: Vec<Argument>,
+    pub(super) fields: Vec<ToolField>,
 }
 
 struct Argument {
     name: String,
     sent: Sent,
+}
+
+impl Described {
+    /// Its arguments, each with where it is sent.
+    pub(super) fn arguments(&self) -> Vec<ToolArgument> {
+        self.arguments
+            .iter()
+            .map(|argument| ToolArgument {
+                name: argument.name.clone(),
+                sent: match argument.sent {
+                    Sent::Path(_) => ArgumentIn::Path,
+                    Sent::Query(_) => ArgumentIn::Query,
+                    Sent::Header(_) => ArgumentIn::Header,
+                    Sent::Body => ArgumentIn::Body,
+                },
+            })
+            .collect()
+    }
 }
 
 /// Where an argument goes in the operation's request.
@@ -260,7 +280,13 @@ pub(super) fn described<S: Surface>() -> (Vec<Described>, Vec<String>) {
             if S::REST_ONLY.iter().any(|kept| kept.operation_id == id) {
                 continue;
             }
-            match describe(id, operation, &path.path, &definitions) {
+            match describe(
+                id,
+                operation,
+                intern(path.path.clone()),
+                &definitions,
+                &registry,
+            ) {
                 Ok(tool) => tools.push(tool),
                 Err(problem) => problems.push(format!("{id} ({at}) {problem}")),
             }
@@ -280,8 +306,9 @@ pub(super) fn described<S: Surface>() -> (Vec<Described>, Vec<String>) {
 fn describe(
     name: &'static str,
     operation: &MetaOperation,
-    path: &str,
+    path: &'static str,
     definitions: &Definitions,
+    registry: &Registry,
 ) -> Result<Described, String> {
     let description = match (operation.summary, operation.description) {
         (Some(summary), Some(description)) => intern(format!("{summary}\n\n{description}")),
@@ -290,6 +317,7 @@ fn describe(
     };
 
     let mut arguments = Vec::new();
+    let mut fields = Vec::new();
     let mut properties = Map::new();
     let mut required = Vec::new();
     for param in &operation.params {
@@ -322,6 +350,7 @@ fn describe(
             required.push(Value::from(argument.clone()));
         }
         properties.insert(argument.clone(), schema);
+        fields.extend(fields_of(&argument, &param.schema, registry));
         arguments.push(Argument {
             name: argument,
             sent,
@@ -341,6 +370,7 @@ fn describe(
             required.push("body".into());
         }
         properties.insert("body".into(), json_schema(&content.schema));
+        fields.extend(fields_of("body", &content.schema, registry));
         arguments.push(Argument {
             name: "body".into(),
             sent: Sent::Body,
@@ -364,8 +394,9 @@ fn describe(
         input_schema,
         output_schema: output_schema(operation, definitions)?,
         method: operation.method.clone(),
-        path: path.to_owned(),
+        path,
         arguments,
+        fields,
     })
 }
 
@@ -415,7 +446,7 @@ impl Described {
             return Err(format!("`{}` takes no argument `{unknown}`", self.name));
         }
 
-        let mut path = self.path.clone();
+        let mut path = self.path.to_owned();
         let mut query = Vec::new();
         let mut request = Request::builder()
             .method(self.method.clone())

@@ -6,6 +6,7 @@ mod conversations;
 mod error;
 mod events;
 mod model;
+mod proposals;
 mod repository;
 mod service;
 mod settings;
@@ -21,8 +22,11 @@ pub use model::{
     ChatModel, ModelError, ModelMessage, ModelReply, ModelRequest, ModelTool, ModelToolCall,
     ModelToolResult,
 };
+pub use proposals::{Proposal, ProposedField, Target, proposals};
 pub use repository::{ConversationRepository, ConversationSortKey, ConversationSummary};
 pub use service::{AssistantService, Status};
 pub use settings::Settings;
-pub use tools::{Answered, AppTool, AppTools, summary};
+pub use tools::{
+    Answered, AppTool, AppTools, ArgumentIn, FieldProperty, ToolArgument, ToolField, summary,
+};
 pub use turns::{TurnEvent, Verdict};

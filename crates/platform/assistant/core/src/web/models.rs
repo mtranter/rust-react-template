@@ -2,12 +2,16 @@
 //! dependency-free.
 
 use crate::application::{
-    ConversationSortKey, ConversationSummary, Status, TurnEvent, Verdict, Versioned,
+    ConversationSortKey, ConversationSummary, Proposal, ProposedField, Status, Target, TurnEvent,
+    Verdict, Versioned,
 };
-use crate::domain::{Content, Conversation, Message, Outcome, ToolCall, ToolCallStatus};
+use crate::domain::{
+    Content, Conversation, Message, Outcome, ToolCall, ToolCallId, ToolCallStatus,
+};
 use app_persistence::{Direction, Sort};
 use app_web::{ApiError, ErrorBody, SortParam};
 use poem_openapi::{Enum, Object, Union};
+use std::collections::HashMap;
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -44,6 +48,23 @@ impl ConversationResponse {
             if let MessageResponse::ToolCalls(message) = message {
                 for call in &mut message.tool_calls {
                     call.summary = summary_of(&call.tool);
+                }
+            }
+        }
+        self
+    }
+
+    /// With the proposal of each call awaiting the caller's approval that has one.
+    pub fn proposed(mut self, mut proposals: HashMap<ToolCallId, Proposal>) -> Self {
+        for message in &mut self.messages {
+            if let MessageResponse::ToolCalls(message) = message {
+                for call in &mut message.tool_calls {
+                    call.proposal = call
+                        .id
+                        .parse()
+                        .ok()
+                        .and_then(|id| proposals.remove(&id))
+                        .map(ProposalResponse::from);
                 }
             }
         }
@@ -151,12 +172,87 @@ pub struct ToolCallResponse {
     pub summary: Option<String>,
     pub arguments: serde_json::Value,
     pub status: ToolCallStatusResponse,
+    /// What approving it would do, for a call `awaiting_approval`; absent for any other, and
+    /// for a tool the app no longer has.
+    #[oai(skip_serializing_if_is_none)]
+    pub proposal: Option<ProposalResponse>,
     /// The operation's answer when it succeeded.
     #[oai(skip_serializing_if_is_none)]
     pub result: Option<serde_json::Value>,
     /// The operation's error body when it was refused or failed, or why it didn't run.
     #[oai(skip_serializing_if_is_none)]
     pub error: Option<serde_json::Value>,
+}
+
+/// What a call awaiting the caller's approval would do, in their terms: built by the server from
+/// the operation and the call's arguments, never from the assistant's words, so it says exactly
+/// what approving runs.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProposalResponse {
+    /// The operation, in words: `edit_note` is "Edit note".
+    pub action: String,
+    /// The record it acts on, by its name, when it can be read and named.
+    #[oai(skip_serializing_if_is_none)]
+    pub target: Option<ProposalTargetResponse>,
+    /// The business data it sends, in its schema's order: no headers, ids or versions.
+    pub fields: Vec<ProposalFieldResponse>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProposalTargetResponse {
+    /// What the record is, such as "Note".
+    pub kind: String,
+    pub name: String,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProposalFieldResponse {
+    pub label: String,
+    /// The value as the call sends it.
+    pub value: serde_json::Value,
+    /// `date` or `date-time`, for a value to show in the caller's locale.
+    #[oai(skip_serializing_if_is_none)]
+    pub format: Option<String>,
+    /// The target's value now, when the call changes it.
+    #[oai(skip_serializing_if_is_none)]
+    pub previous: Option<serde_json::Value>,
+}
+
+impl From<Proposal> for ProposalResponse {
+    fn from(proposal: Proposal) -> Self {
+        Self {
+            action: proposal.action,
+            target: proposal.target.map(ProposalTargetResponse::from),
+            fields: proposal
+                .fields
+                .into_iter()
+                .map(ProposalFieldResponse::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<Target> for ProposalTargetResponse {
+    fn from(target: Target) -> Self {
+        Self {
+            kind: target.kind,
+            name: target.name,
+        }
+    }
+}
+
+impl From<ProposedField> for ProposalFieldResponse {
+    fn from(field: ProposedField) -> Self {
+        Self {
+            label: field.label,
+            value: field.value,
+            format: field.format,
+            previous: field.previous,
+        }
+    }
 }
 
 /// `ran`: a read, run at once; `awaiting_approval`: a write waiting for the caller to approve
@@ -230,6 +326,7 @@ impl From<&ToolCall> for ToolCallResponse {
             summary: None,
             arguments: call.arguments().clone(),
             status: call.status().into(),
+            proposal: None,
             result,
             error,
         }
@@ -323,6 +420,9 @@ pub struct ToolCallStartedEvent {
     pub id: String,
     /// The operation's id, which is its tool's name.
     pub tool: String,
+    /// The operation's summary, saying what it does; absent for a tool the app doesn't have.
+    #[oai(skip_serializing_if_is_none)]
+    pub summary: Option<String>,
     pub arguments: serde_json::Value,
 }
 
@@ -346,6 +446,10 @@ pub struct ApprovalRequiredEvent {
     /// The operation's summary, saying what approving it would do.
     pub summary: String,
     pub arguments: serde_json::Value,
+    /// What approving it would do, in the caller's terms; absent for a tool the app doesn't
+    /// have.
+    #[oai(skip_serializing_if_is_none)]
+    pub proposal: Option<ProposalResponse>,
 }
 
 /// The caller's decision on a call that awaited it, `approved` or `rejected`: a call approved
@@ -380,10 +484,12 @@ impl From<TurnEvent> for TurnEventResponse {
             TurnEvent::ToolCallStarted {
                 id,
                 tool,
+                summary,
                 arguments,
             } => Self::ToolCallStarted(ToolCallStartedEvent {
                 id: id.to_string(),
                 tool,
+                summary,
                 arguments,
             }),
             TurnEvent::ToolResult { id, outcome } => {
@@ -399,11 +505,13 @@ impl From<TurnEvent> for TurnEventResponse {
                 tool,
                 summary,
                 arguments,
+                proposal,
             } => Self::ApprovalRequired(ApprovalRequiredEvent {
                 id: id.to_string(),
                 tool,
                 summary,
                 arguments,
+                proposal: proposal.map(ProposalResponse::from),
             }),
             TurnEvent::Decided { id, status } => Self::Decided(ToolCallDecidedEvent {
                 id: id.to_string(),

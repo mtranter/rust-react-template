@@ -8,6 +8,7 @@ mod behaviours {
     mod deleting;
     mod ending;
     mod listing;
+    mod proposing;
     mod reading;
     mod scoping;
     mod sending;

@@ -135,11 +135,62 @@ const awaitingApproval: ConversationResponse = {
           summary: "Delete a role and every grant and assignment of it.",
           arguments: { name: "admin", expected_version: "3" },
           status: "awaiting_approval",
+          proposal: { action: "Delete role", target: { kind: "Role", name: "admin" }, fields: [] },
         },
       ],
     },
   ],
   version: "3",
+};
+
+const awaitingAnEdit: ConversationResponse = {
+  id: "conversation-edit",
+  title: "Rename my shopping list",
+  createdAt: "2026-01-05T09:00:00Z",
+  messages: [
+    {
+      kind: "user",
+      id: "message-1",
+      postedAt: "2026-01-05T09:00:00Z",
+      text: "Rename my shopping list to Groceries and archive it on Christmas Eve",
+    },
+    {
+      kind: "toolCalls",
+      id: "message-2",
+      postedAt: "2026-01-05T09:00:01Z",
+      toolCalls: [
+        {
+          id: "call-1",
+          tool: "get_note",
+          summary: "Fetch a note by its id.",
+          arguments: { id: "note-1" },
+          status: "ran",
+          result: { id: "note-1", title: "Shopping list" },
+        },
+        {
+          id: "call-2",
+          tool: "edit_note",
+          summary: "Replace a note. Requires `If-Match`.",
+          arguments: {
+            id: "note-1",
+            expected_version: "4",
+            body: { title: "Groceries", body: "", archiveAt: "2026-12-24T09:00:00Z" },
+          },
+          status: "awaiting_approval",
+          proposal: {
+            action: "Edit note",
+            target: { kind: "Note", name: "Shopping list" },
+            fields: [
+              { label: "Title", value: "Groceries", previous: "Shopping list" },
+              { label: "Body", value: "" },
+              { label: "Archive at", value: "2026-12-24T09:00:00Z", format: "date-time" },
+            ],
+          },
+        },
+      ],
+    },
+  ],
+  version: "4",
 };
 
 export const assistantScenarios: Scenario[] = [
@@ -160,7 +211,7 @@ export const assistantScenarios: Scenario[] = [
     route: "/assistant?conversation=conversation-roles",
     handlers: conversationsOf([untitled, roles]),
     steps: async (page) => {
-      await page.getByRole("button", { name: /list_roles/ }).click();
+      await page.getByRole("button", { name: /List roles/ }).click();
     },
     shows: (page) => page.getByText("Result"),
   },
@@ -186,6 +237,12 @@ export const assistantScenarios: Scenario[] = [
     route: "/assistant?conversation=conversation-awaiting",
     handlers: conversationsOf([awaitingApproval, untitled, roles]),
     shows: (page) => page.getByRole("button", { name: "Approve" }),
+  },
+  {
+    name: "assistant-approval-edit",
+    route: "/assistant?conversation=conversation-edit",
+    handlers: conversationsOf([awaitingAnEdit, awaitingApproval, untitled, roles]),
+    shows: (page) => page.getByRole("region", { name: "Edit note: Shopping list" }),
   },
   {
     name: "assistant-error",

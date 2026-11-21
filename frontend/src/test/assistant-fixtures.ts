@@ -33,6 +33,7 @@ export const rolesConversation: ConversationResponse = {
         {
           id: "call-1",
           tool: "list_roles",
+          summary: "List the roles there are.",
           arguments: { limit: 20 },
           status: "ran",
           result: { items: [{ name: "admin" }, { name: "user" }] },

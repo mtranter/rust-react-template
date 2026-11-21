@@ -136,7 +136,13 @@ function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
     case "toolCallStarted":
       items.push({
         kind: "toolCall",
-        call: { id: event.id, tool: event.tool, arguments: event.arguments, status: "running" },
+        call: {
+          id: event.id,
+          tool: event.tool,
+          summary: event.summary,
+          arguments: event.arguments,
+          status: "running",
+        },
       });
       return { ...turn, items };
     case "toolResult":
@@ -156,6 +162,8 @@ function apply(turn: LiveTurn, event: TurnEventResponse): LiveTurn {
     case "approvalRequired": {
       const awaiting = (call: LiveToolCall): LiveToolCall => ({
         ...call,
+        summary: event.summary || call.summary,
+        proposal: event.proposal,
         status: "awaiting_approval",
       });
       if (!update(event.id, awaiting)) {

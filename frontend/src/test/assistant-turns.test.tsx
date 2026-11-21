@@ -52,7 +52,7 @@ test("streams a read's answer in as it arrives, then shows the turn as stored", 
     tool: "list_roles",
     arguments: { limit: 20 },
   });
-  expect(await opened().findByRole("button", { name: /list_roles/ })).toHaveTextContent("Running");
+  expect(await opened().findByRole("button", { name: /List roles/ })).toHaveTextContent("Running");
 
   turn.emit({
     kind: "toolResult",
@@ -60,7 +60,7 @@ test("streams a read's answer in as it arrives, then shows the turn as stored", 
     result: { items: [{ name: "admin" }, { name: "user" }] },
   });
   await waitFor(() =>
-    expect(opened().getByRole("button", { name: /list_roles/ })).toHaveTextContent("Ran"),
+    expect(opened().getByRole("button", { name: /List roles/ })).toHaveTextContent("Ran"),
   );
 
   turn.emit({ kind: "text", text: "There are " });
@@ -103,10 +103,10 @@ test("streams a read's answer in as it arrives, then shows the turn as stored", 
   await waitFor(() => expect(opened().getByRole("textbox", { name: "Message" })).toBeEnabled());
   expect(screen.getByRole("article", { name: "Which roles are there?" })).toBeInTheDocument();
   expect(opened().getAllByLabelText("Assistant")).toHaveLength(1);
-  expect(opened().getAllByRole("button", { name: /list_roles/ })).toHaveLength(1);
+  expect(opened().getAllByRole("button", { name: /List roles/ })).toHaveLength(1);
   expect(opened().queryByLabelText("Working")).not.toBeInTheDocument();
 
-  await user.click(opened().getByRole("button", { name: /list_roles/ }));
+  await user.click(opened().getByRole("button", { name: /List roles/ }));
   expect(await opened().findByText(/"limit": 20/)).toBeInTheDocument();
   expect(opened().getByText(/"name": "admin"/)).toBeInTheDocument();
 });
