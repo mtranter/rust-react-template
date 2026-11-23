@@ -164,27 +164,69 @@ perl -i -pe 's{^APP_BOOTSTRAP_ADMINS=.*$}{APP_BOOTSTRAP_ADMINS='"$dev_subject"'}
 perl -0 -i -pe 's{^(dev: )}{# No seed assigns the dev sign-in (frontend/vite.config.ts) `admin`.\n${1}export APP_BOOTSTRAP_ADMINS ?= '"$dev_subject"'\n$1}m' Makefile
 perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
 
-# 5. The UI down to a shell: the root layout, a placeholder home page, and the
-# platform's access and assistant screens.
+# 5. The UI down to the shell (src/shell/: the sidebar and a launcher with no
+# apps yet) and the platform's access and assistant screens.
 git rm -rq frontend/src/features/notes frontend/src/features/note-search \
-  frontend/src/pages/search-page.tsx frontend/src/test/fixtures.ts \
-  frontend/src/test/notes-list.test.tsx frontend/src/test/note-editing.test.tsx \
-  frontend/src/test/note-search.test.tsx
-cat >frontend/src/pages/home-page.tsx <<EOF
-export function HomePage() {
-  return (
-    <main className="mx-auto max-w-4xl space-y-6 p-6">
-      <h1 className="font-heading text-2xl font-semibold">$title</h1>
-      <p className="text-muted-foreground">Nothing here yet.</p>
-    </main>
-  );
+  frontend/src/pages/notes-page.tsx frontend/src/pages/search-page.tsx \
+  frontend/src/test/fixtures.ts frontend/src/test/notes-list.test.tsx \
+  frontend/src/test/note-editing.test.tsx frontend/src/test/note-search.test.tsx
+cat >frontend/src/shell/apps.ts <<EOF
+import { useManagesAccess } from "@/features/access";
+import type { LinkProps } from "@tanstack/react-router";
+import { KeyRoundIcon, ListChecksIcon, type LucideIcon, ShieldIcon, UsersIcon } from "lucide-react";
+
+/** Names the whole suite where no one app is open: the launcher's heading, the switcher. */
+export const productName = "$title";
+
+export type Area = { label: string; to: NonNullable<LinkProps["to"]>; icon: LucideIcon };
+
+/** One app of the suite: every route under \`path\` is one of its \`areas\` or a record in one. */
+export type ShellApp = {
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  path: string;
+  /** In the sidebar's order; the first is where the app opens. */
+  areas: [Area, ...Area[]];
+};
+
+const access: ShellApp = {
+  label: "Access",
+  description: "Who may use the apps, and what each role may do.",
+  icon: ShieldIcon,
+  path: "/access",
+  areas: [
+    { label: "Users", to: "/access/subjects", icon: UsersIcon },
+    { label: "Roles", to: "/access/roles", icon: KeyRoundIcon },
+    { label: "Permissions", to: "/access/permissions", icon: ListChecksIcon },
+  ],
+};
+
+/**
+ * The apps the caller may open, in the switcher's order, and the platform's tools, kept apart in
+ * the sidebar's footer. An app the caller may not use is left out, as \`access\` is from a caller
+ * who may not manage access.
+ */
+export function useShellApps(): { apps: ShellApp[]; platform: ShellApp[] } {
+  const managesAccess = useManagesAccess();
+  return { apps: [], platform: managesAccess ? [access] : [] };
+}
+
+/** The app whose \`path\` holds \`pathname\`, and its area: the one whose \`to\` holds it most closely. */
+export function locate(pathname: string, apps: ShellApp[]): { app?: ShellApp; area?: Area } {
+  const holds = (path: string) => pathname === path || pathname.startsWith(\`\${path}/\`);
+  const app = apps.find((candidate) => holds(candidate.path));
+  const area = app?.areas
+    .filter((candidate) => holds(candidate.to))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return { app, area };
 }
 EOF
 cat >frontend/src/router.tsx <<'EOF'
 import type { GrantSort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
 import { type GrantFilter, grantSortKeys } from "@/features/access";
-import { AccessPage } from "@/pages/access-page";
+import { AccessPermissionsPage, AccessRolesPage, AccessUsersPage } from "@/pages/access-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { RolePage } from "@/pages/role-page";
@@ -196,6 +238,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
 } from "@tanstack/react-router";
 
 const rootRoute = createRootRoute();
@@ -224,22 +267,45 @@ const indexRoute = createRoute({
   component: HomePage,
 });
 
+// `?tab=` is where the access screen's areas were when they were tabs of one page.
 const accessRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/access",
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { tab?: AccessTab; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
-    tab: accessTabs.find((tab) => tab === search.tab),
+  beforeLoad: ({ search }) => {
+    const { tab, ...rest } = search as Record<string, unknown>;
+    throw redirect({
+      to:
+        tab === "roles"
+          ? "/access/roles"
+          : tab === "grants"
+            ? "/access/permissions"
+            : "/access/subjects",
+      search: rest,
+    });
+  },
+});
+const accessUsersRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/subjects",
+  validateSearch: (search: Record<string, unknown>): { search?: string } => ({
     search: typeof search.search === "string" && search.search ? search.search : undefined,
+  }),
+  component: AccessUsersPage,
+});
+const accessRolesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/roles",
+  component: AccessRolesPage,
+});
+const accessPermissionsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/permissions",
+  validateSearch: (search: Record<string, unknown>): GrantFilter & ListSearch<GrantSort> => ({
     ...grantFilter(search),
     ...validateListSearch<GrantSort>(search, grantSortKeys),
   }),
-  component: AccessPage,
+  component: AccessPermissionsPage,
 });
-
-const accessTabs = ["subjects", "roles", "grants"] as const;
-type AccessTab = (typeof accessTabs)[number];
 
 const roleRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -260,7 +326,15 @@ const assistantRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  appRoute.addChildren([indexRoute, accessRoute, roleRoute, assistantRoute]),
+  appRoute.addChildren([
+    indexRoute,
+    accessRoute,
+    accessUsersRoute,
+    accessRolesRoute,
+    accessPermissionsRoute,
+    roleRoute,
+    assistantRoute,
+  ]),
   callbackRoute,
   signedOutRoute,
 ]);
@@ -287,17 +361,13 @@ import { screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { renderAt } from "./test/render-app";
 
-test("shows the home page at /", async () => {
+test("shows the launcher at /, with no apps yet", async () => {
   renderAt("/");
 
   expect(await screen.findByRole("heading", { name: "$title" })).toBeInTheDocument();
+  expect(screen.getByText("No apps yet")).toBeInTheDocument();
 });
 EOF
-perl -0 -i -pe '
-  s{^import \{ \w+ \} from "\@/test/fixtures";\n}{}m;
-  s{^import \{ server \} from "\.\./\.\./vitest\.setup";\n}{}m;
-  s{^  server\.use\(.*?\);\n}{}m;
-' frontend/src/test/theme.test.tsx
 cat >frontend/screens/scenarios.ts <<EOF
 import type { SignInProvider } from "@/lib/sign-in";
 import type { RequestHandler } from "msw";
@@ -346,13 +416,14 @@ EOF
 
 # The UI's reference feature is gone from the tree: its docs link to it upstream.
 UPSTREAM=$upstream perl -i -pe '
-  s{`(src/(?:features/note[^`]*|pages/(?:home|search)-page\.tsx|test/(?:notes-list|note-editing|note-search)\.test\.tsx|test/fixtures\.ts))`}{
+  s{`(src/(?:features/note[^`]*|pages/(?:notes|search)-page\.tsx|test/(?:notes-list|note-editing|note-search)\.test\.tsx|test/fixtures\.ts))`}{
     $ENV{UPSTREAM} ? "[`$1`]($ENV{UPSTREAM}/frontend/$1)" : "`$1` (`git show $ENV{COMMIT}:frontend/$1`)"
   }ge;
 ' frontend/AGENTS.md
 perl -0 -i -pe '
   s{^\*\*Copy the reference code\*\* rather than working from prose: }{**Copy the reference code** rather than working from prose; until this app has a feature of its own to copy, that is the template'"'"'s, linked below at the commit in `TEMPLATE_VERSION`: }m;
-  s{ `/home` is an old alias: it redirects to `/`, keeping its search\.}{}m;
+  s{ `/home` and `/search` are old aliases of `/notes` and `/notes/search`, keeping their search\.}{}m;
+  s{\(`/home`, `/search`, `/access\?tab=`\)}{(`/access?tab=`)}m;
 ' frontend/AGENTS.md
 
 # 6. What made this; the commit leaves no way to run it again.

@@ -41,10 +41,13 @@ function ada(): User {
 export const signInScenarios: Scenario[] = [
   {
     name: "signed-in",
-    route: "/access",
+    route: "/access/subjects",
     handlers: [],
     signIn: () => provider({ user: ada() }),
-    shows: (page) => page.getByRole("button", { name: "Sign out" }),
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Account: Ada Lovelace" }).click();
+    },
+    shows: (page) => page.getByRole("menuitem", { name: "Sign out" }),
   },
   {
     name: "sign-in-failed",

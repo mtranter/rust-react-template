@@ -18,9 +18,9 @@ async function roleField(dialog: HTMLElement) {
   return within(dialog).getByLabelText("Role");
 }
 
-async function rolesTab() {
+async function rolesPage() {
   const user = userEvent.setup();
-  renderAt("/access?tab=roles");
+  renderAt("/access/roles");
   const table = await screen.findByRole("region", { name: "Roles" });
   await within(table).findByText("support");
   return { user, table };
@@ -34,14 +34,12 @@ test("hides the access screen and its link from a caller who isn't an admin", as
   expect(screen.queryByRole("link", { name: "Access" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Permissions" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Grant access" })).not.toBeInTheDocument();
-  for (const tab of ["Permissions", "Roles", "Users"]) {
-    expect(screen.queryByRole("tab", { name: tab })).not.toBeInTheDocument();
-  }
+  expect(screen.queryByRole("navigation", { name: "Access" })).not.toBeInTheDocument();
 });
 
-test("hides the Users tab from a caller who isn't an admin, even linked to it", async () => {
+test("hides the Users page from a caller who isn't an admin, even linked to it", async () => {
   server.use(...notAnAdmin);
-  renderAt("/access?tab=subjects");
+  renderAt("/access/subjects");
 
   expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Users" })).not.toBeInTheDocument();
@@ -55,20 +53,21 @@ test("lists the grants for an admin, marking a stale one", async () => {
       grant(2, { role: "support", action: "polish", stale: true, grantedBy: "an-admin" }),
     ]).handlers,
   );
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
 
   const table = await grantsTable();
   expect(await within(table).findByText("polish")).toBeInTheDocument();
   expect(within(table).getByText("No longer used")).toBeInTheDocument();
   expect(within(table).getByText("Built in")).toBeInTheDocument();
   expect(within(table).getByText("an-admin")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Access" })).toBeInTheDocument();
+  const platform = screen.getByRole("navigation", { name: "Platform" });
+  expect(within(platform).getByRole("link", { name: "Access" })).toBeInTheDocument();
 });
 
 test("filters the grants by role, keeping the filter in the URL", async () => {
   const api = accessApi([grant(1), grant(2, { role: "support" })]);
   server.use(...api.handlers);
-  const { router } = renderAt("/access?tab=grants");
+  const { router } = renderAt("/access/permissions");
   const user = userEvent.setup();
   const table = await grantsTable();
   await within(table).findByText("support");
@@ -85,7 +84,7 @@ test("filters the grants by role, keeping the filter in the URL", async () => {
 test("offers a resource's actions to filter by, dropping an action it doesn't have", async () => {
   const api = accessApi([grant(1)]);
   server.use(...api.handlers);
-  const { router } = renderAt("/access?tab=grants&action=use");
+  const { router } = renderAt("/access/permissions?action=use");
   const user = userEvent.setup();
   await grantsTable();
   const resourceFilter = screen.getByLabelText("Filter by resource");
@@ -102,7 +101,7 @@ test("offers a resource's actions to filter by, dropping an action it doesn't ha
 test("grants a role an action chosen from the catalog", async () => {
   const api = accessApi([grant(1)]);
   server.use(...api.handlers);
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
   const user = userEvent.setup();
   await grantsTable();
 
@@ -142,7 +141,7 @@ test("shows a refused grant's error beside the field at fault", async () => {
     ),
     ...accessApi([]).handlers,
   );
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
   const user = userEvent.setup();
   await grantsTable();
 
@@ -163,7 +162,7 @@ test("shows a refused grant's error beside the field at fault", async () => {
 test("revokes a grant once confirmed, sending the version listed", async () => {
   const api = accessApi([grant(1, { version: "3" }), grant(2, { role: "support" })]);
   server.use(...api.handlers);
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
   const user = userEvent.setup();
   const table = await grantsTable();
 
@@ -184,7 +183,7 @@ test("a grant changed meanwhile isn't revoked: it says so and reloads the list",
   const items = [grant(1, { role: "support" })];
   const api = accessApi(items);
   server.use(...api.handlers);
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
   const user = userEvent.setup();
   const table = await grantsTable();
   await user.click(
@@ -205,7 +204,7 @@ test("a grant changed meanwhile isn't revoked: it says so and reloads the list",
 
 test("the grant dialog offers only the roles that exist", async () => {
   server.use(...accessApi([]).handlers);
-  renderAt("/access?tab=grants");
+  renderAt("/access/permissions");
   const user = userEvent.setup();
   await grantsTable();
 
@@ -221,25 +220,26 @@ test("the grant dialog offers only the roles that exist", async () => {
   ]);
 });
 
-test("lists the roles on their tab, kept in the URL, marking the built-in ones", async () => {
+test("lists the roles on their page, reached from the sidebar, marking the built-in ones", async () => {
   server.use(...accessApi([]).handlers);
   const { router } = renderAt("/access");
   const user = userEvent.setup();
   await screen.findByRole("region", { name: "Users" });
 
-  await user.click(screen.getByRole("tab", { name: "Roles" }));
+  const areas = screen.getByRole("navigation", { name: "Access" });
+  await user.click(within(areas).getByRole("link", { name: "Roles" }));
 
   const table = await screen.findByRole("region", { name: "Roles" });
   expect(await within(table).findByText("Answers customers")).toBeInTheDocument();
   expect(within(table).getAllByText("Built in")).toHaveLength(2);
   expect(within(table).getByRole("button", { name: "Delete support" })).toBeInTheDocument();
   expect(within(table).queryByRole("button", { name: "Delete admin" })).not.toBeInTheDocument();
-  expect(router.state.location.search).toMatchObject({ tab: "roles" });
+  expect(router.state.location.pathname).toBe("/access/roles");
 });
 
 test("creates a role", async () => {
   server.use(...accessApi([]).handlers);
-  const { user, table } = await rolesTab();
+  const { user, table } = await rolesPage();
 
   await user.click(screen.getByRole("button", { name: "Create role" }));
   const dialog = await screen.findByRole("dialog", { name: "Create role" });
@@ -257,7 +257,7 @@ test("creates a role", async () => {
 
 test("a role whose name exists isn't created: it says so beside the name", async () => {
   server.use(...accessApi([]).handlers);
-  const { user } = await rolesTab();
+  const { user } = await rolesPage();
 
   await user.click(screen.getByRole("button", { name: "Create role" }));
   const dialog = await screen.findByRole("dialog", { name: "Create role" });
@@ -272,7 +272,7 @@ test("a role whose name exists isn't created: it says so beside the name", async
 test("deletes a role once confirmed, sending the version listed", async () => {
   const api = accessApi([], [role("admin"), role("support", { version: "3" }), role("user")]);
   server.use(...api.handlers);
-  const { user, table } = await rolesTab();
+  const { user, table } = await rolesPage();
 
   await user.click(within(table).getByRole("button", { name: "Delete support" }));
   const confirm = await screen.findByRole("alertdialog", { name: "Delete this role?" });
@@ -285,7 +285,7 @@ test("deletes a role once confirmed, sending the version listed", async () => {
 
 test("a role a grant still names isn't deleted: it says why", async () => {
   server.use(...accessApi([grant(1, { role: "support" })]).handlers);
-  const { user, table } = await rolesTab();
+  const { user, table } = await rolesPage();
 
   await user.click(within(table).getByRole("button", { name: "Delete support" }));
   const confirm = await screen.findByRole("alertdialog", { name: "Delete this role?" });
@@ -296,7 +296,7 @@ test("a role a grant still names isn't deleted: it says why", async () => {
   expect(screen.queryByText("Role deleted")).not.toBeInTheDocument();
 });
 
-async function usersTab(path = "/access?tab=subjects") {
+async function usersPage(path = "/access/subjects") {
   const user = userEvent.setup();
   const rendered = renderAt(path);
   const table = await screen.findByRole("region", { name: "Users" });
@@ -308,7 +308,7 @@ function rolesOf(table: HTMLElement, label: string) {
   return within(table).getByRole("list", { name: `Roles of ${label}` });
 }
 
-test("opens on the Users tab, listing everyone with their roles, their ids kept out of sight", async () => {
+test("opens on the Users page, listing everyone with their roles, their ids kept out of sight", async () => {
   server.use(...accessApi([]).handlers);
   renderAt("/access");
 
@@ -321,22 +321,23 @@ test("opens on the Users tab, listing everyone with their roles, their ids kept 
   expect(within(table).getByText("Never signed in")).toBeInTheDocument();
 });
 
-test("returns to the Users tab from another, leaving the tab out of the URL", async () => {
+test("returns to the Users page from another, through the sidebar", async () => {
   server.use(...accessApi([]).handlers);
-  const { router } = renderAt("/access?tab=roles");
+  const { router } = renderAt("/access/roles");
   const user = userEvent.setup();
   await screen.findByRole("region", { name: "Roles" });
 
-  await user.click(screen.getByRole("tab", { name: "Users" }));
+  const areas = screen.getByRole("navigation", { name: "Access" });
+  await user.click(within(areas).getByRole("link", { name: "Users" }));
 
   expect(await screen.findByRole("region", { name: "Users" })).toBeInTheDocument();
-  expect(router.state.location.search).not.toHaveProperty("tab");
+  expect(router.state.location.pathname).toBe("/access/subjects");
 });
 
-test("searches the Users tab by name, email and subject, keeping the search in the URL", async () => {
+test("searches the Users page by name, email and subject, keeping the search in the URL", async () => {
   const api = accessApi([]);
   server.use(...api.handlers);
-  const { user, table, router } = await usersTab();
+  const { user, table, router } = await usersPage();
 
   for (const [text, shown, hidden] of [
     ["lovelace", "Ada Lovelace", "Bob Babbage"],
@@ -356,7 +357,7 @@ test("searches the Users tab by name, email and subject, keeping the search in t
 
 test("assigns a user a role chosen from the roles that can be assigned", async () => {
   server.use(...accessApi([]).handlers);
-  const { user, table } = await usersTab();
+  const { user, table } = await usersPage();
 
   await user.click(within(table).getByRole("button", { name: "Assign a role to Bob Babbage" }));
   const dialog = await screen.findByRole("dialog", { name: "Assign a role to Bob Babbage" });
@@ -377,7 +378,7 @@ test("assigns a user a role chosen from the roles that can be assigned", async (
 
 test("a role the user holds already isn't assigned again: it says so beside the role", async () => {
   server.use(...accessApi([]).handlers);
-  const { user, table } = await usersTab();
+  const { user, table } = await usersPage();
 
   await user.click(within(table).getByRole("button", { name: "Assign a role to Ada Lovelace" }));
   const dialog = await screen.findByRole("dialog", { name: "Assign a role to Ada Lovelace" });
@@ -395,7 +396,7 @@ test("a role the user holds already isn't assigned again: it says so beside the 
 test("removes a role from a user once confirmed, sending the version listed", async () => {
   const api = accessApi([]);
   server.use(...api.handlers);
-  const { user, table } = await usersTab();
+  const { user, table } = await usersPage();
 
   await user.click(within(table).getByRole("button", { name: "Remove support from Ada Lovelace" }));
   const confirm = await screen.findByRole("alertdialog", { name: "Remove this role?" });
@@ -414,7 +415,7 @@ test("a role changed meanwhile isn't removed: it says so and reloads the list", 
   ];
   const api = accessApi([], undefined, subjects);
   server.use(...api.handlers);
-  const { user, table } = await usersTab();
+  const { user, table } = await usersPage();
   await user.click(within(table).getByRole("button", { name: "Remove support from Bob Babbage" }));
   subjects[0].roles[0].version = "3";
 
@@ -429,7 +430,7 @@ test("a role changed meanwhile isn't removed: it says so and reloads the list", 
 
 test("adds a user who hasn't signed in yet by their subject", async () => {
   server.use(...accessApi([]).handlers);
-  const { user, table } = await usersTab();
+  const { user, table } = await usersPage();
 
   await user.click(screen.getByRole("button", { name: "Add user" }));
   const dialog = await screen.findByRole("dialog", { name: "Add user" });
@@ -457,7 +458,7 @@ test("shows a bootstrap admin as such, offering no removal of their admin", asyn
       subject("auth0|bob", { name: "Bob Babbage" }),
     ]).handlers,
   );
-  const { table } = await usersTab();
+  const { table } = await usersPage();
 
   expect(within(table).getByText("Always admin")).toBeInTheDocument();
   const roles = rolesOf(table, "Root");

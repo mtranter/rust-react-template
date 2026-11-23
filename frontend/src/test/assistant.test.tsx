@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 import { server } from "../../vitest.setup";
+import { accessApi } from "./access-fixtures";
 import { assistantApi, rolesConversation, untitledConversation } from "./assistant-fixtures";
 
 function conversations() {
@@ -17,23 +18,52 @@ function listed() {
     .map((item) => item.textContent);
 }
 
-test("links to the assistant from the header when it is on", async () => {
-  server.use(...assistantApi([]).handlers);
+test("opens the assistant beside the screen from the header, and full page from there", async () => {
+  server.use(...assistantApi([rolesConversation]).handlers);
   const user = userEvent.setup();
   const { router } = renderAt("/access");
 
-  await user.click(await screen.findByRole("link", { name: "Assistant" }));
+  await user.click(await screen.findByRole("button", { name: "Assistant" }));
+
+  const panel = await screen.findByRole("complementary", { name: "Assistant" });
+  expect(within(panel).getByRole("region", { name: "Chat" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
+  expect(router.state.location.pathname).toBe("/access/subjects");
+
+  await user.click(await within(panel).findByRole("button", { name: /^Which roles are there/ }));
+  await user.click(within(panel).getByRole("link", { name: "Open the assistant full page" }));
 
   expect(await screen.findByRole("heading", { name: "Assistant" })).toBeInTheDocument();
-  expect(screen.getByRole("region", { name: "Chat" })).toBeInTheDocument();
-  expect(router.state.location.pathname).toBe("/assistant");
+  expect(router.state.location.href).toBe(`/assistant?conversation=${rolesConversation.id}`);
+  expect(screen.queryByRole("complementary", { name: "Assistant" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
 });
 
-test("hides the assistant's link while it is off", async () => {
+test("keeps the assistant open on its conversation from screen to screen, until closed", async () => {
+  server.use(...assistantApi([rolesConversation]).handlers, ...accessApi([]).handlers);
+  const user = userEvent.setup();
+  renderAt("/access");
+  await user.click(await screen.findByRole("button", { name: "Assistant" }));
+  const panel = await screen.findByRole("complementary", { name: "Assistant" });
+  await user.click(await within(panel).findByRole("button", { name: /^Which roles are there/ }));
+  expect(await within(panel).findByRole("article")).toBeInTheDocument();
+
+  const areas = screen.getByRole("navigation", { name: "Access" });
+  await user.click(within(areas).getByRole("link", { name: "Roles" }));
+  await screen.findByRole("region", { name: "Roles" });
+
+  const still = await screen.findByRole("complementary", { name: "Assistant" });
+  expect(within(still).getByRole("article")).toBeInTheDocument();
+
+  await user.click(within(still).getByRole("button", { name: "Close the assistant" }));
+  expect(screen.queryByRole("complementary", { name: "Assistant" })).not.toBeInTheDocument();
+});
+
+test("hides the assistant's button while it is off", async () => {
   renderAt("/access");
 
   expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Assistant" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
 });
 
 test("hides the assistant's page while it is off, even linked to it", async () => {
@@ -41,7 +71,7 @@ test("hides the assistant's page while it is off, even linked to it", async () =
 
   expect(await screen.findByText("The assistant isn't available.")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Chat" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Assistant" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
 });
 
 test("treats a caller who may not chat as the assistant off", async () => {
@@ -57,7 +87,7 @@ test("treats a caller who may not chat as the assistant off", async () => {
 
   expect(await screen.findByText("The assistant isn't available.")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Chat" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Assistant" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
 });
 
 test("lists the caller's conversations newest first, an untitled one as new", async () => {
@@ -101,8 +131,8 @@ test("opens a conversation, showing its messages and each tool call", async () =
 
   await user.click(await screen.findByRole("button", { name: /^Which roles are there\?/ }));
 
-  const opened = await screen.findByRole("article", { name: "Which roles are there?" });
-  expect(within(opened).getByLabelText("You")).toHaveTextContent("Which roles are there?");
+  const opened = await screen.findByRole("article", { name: /^Which roles are there/ });
+  expect(within(opened).getByLabelText("You")).toHaveTextContent(/^Which roles are there/);
   expect(within(opened).getByLabelText("Assistant")).toHaveTextContent(
     "There are two roles: admin and user.",
   );
@@ -127,7 +157,7 @@ test("opens the conversation a link names", async () => {
   renderAt("/assistant?conversation=conversation-roles");
 
   expect(
-    await screen.findByRole("article", { name: "Which roles are there?" }),
+    await screen.findByRole("article", { name: /^Which roles are there/ }),
   ).toBeInTheDocument();
 });
 
@@ -143,7 +173,7 @@ test("deletes a conversation at the version listed, closing it if open", async (
   server.use(...api.handlers);
   const user = userEvent.setup();
   const { router } = renderAt("/assistant?conversation=conversation-roles");
-  await screen.findByRole("article", { name: "Which roles are there?" });
+  await screen.findByRole("article", { name: /^Which roles are there/ });
 
   await user.click(screen.getByRole("button", { name: "Delete Which roles are there?" }));
 

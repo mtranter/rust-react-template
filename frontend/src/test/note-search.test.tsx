@@ -27,7 +27,7 @@ test("a search link keeps its text, page and sort", async () => {
     http.get("*/api/note-search", () => HttpResponse.json(found)),
   );
 
-  renderAt("/search?q=alice&page=2&sort=authorName");
+  renderAt("/notes/search?q=alice&page=2&sort=authorName");
 
   expect(await screen.findByText("Found 0")).toBeInTheDocument();
   expect(list.requests).toContainEqual({ offset: "20", sort: "authorName" });
@@ -36,10 +36,10 @@ test("a search link keeps its text, page and sort", async () => {
 test("searching again starts from the first page", async () => {
   server.use(http.get("*/api/note-search", () => HttpResponse.json(found)));
   const user = userEvent.setup();
-  const { router } = renderAt("/search?page=2");
+  const { router } = renderAt("/notes/search?page=2");
   await screen.findByText("Found 0");
 
   await user.type(screen.getByRole("searchbox", { name: "Search notes" }), "b");
 
-  await waitFor(() => expect(router.state.location.href).toBe("/search?q=b"));
+  await waitFor(() => expect(router.state.location.href).toBe("/notes/search?q=b"));
 });

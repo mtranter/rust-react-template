@@ -231,6 +231,16 @@ _Avoid_: Draft action, proposal (that is what it is shown as)
 What a Pending tool call would do, in its owner's terms, as the server builds it from the call's operation and stored arguments, never from the model's words: its action (the operation id in sentence case), its target (the record it acts on, read as the owner and named), and the business data it sends (no headers, path parameters, versions or ids), each changed value beside its previous one. Approval defends against prompt injection only if what the owner approves is exactly the call that runs.
 _Avoid_: Approval text, description
 
+## The UI
+
+**App**:
+One product of the suite the SPA presents (a CRM, timesheets, billing), with its own icon and entry in the shell's switcher, launcher and Go to (ADR 0046). An App is a UI grouping of one or more Modules' screens, not a Module: one Module may serve several Apps' screens, and one App may call several Modules. The platform's own screens (`access`) are tools kept apart from the Apps, not Apps of the suite.
+_Avoid_: Module (for an App), child app, sub-app
+
+**Area**:
+One function of an App, at its own route under the App's path and its own entry in the App's sidebar (CRM › Contacts). Navigation is never deeper: a record is a page inside its Area, not an Area.
+_Avoid_: Tab, section, sub-function
+
 ## Testing
 
 **Integration Test**:

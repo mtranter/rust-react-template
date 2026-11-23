@@ -1,3 +1,4 @@
+import { Page } from "@/components/page";
 import { AssistantChat, useAssistantOn } from "@/features/assistant";
 import { getRouteApi } from "@tanstack/react-router";
 
@@ -9,8 +10,7 @@ export function AssistantPage() {
   const navigate = route.useNavigate();
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <h1 className="font-heading text-2xl font-semibold">Assistant</h1>
+    <Page title="Assistant">
       {on === false && (
         <p role="alert" className="text-muted-foreground">
           The assistant isn't available.
@@ -22,6 +22,6 @@ export function AssistantPage() {
           onOpen={(id) => navigate({ search: (prev) => ({ ...prev, conversation: id }) })}
         />
       )}
-    </main>
+    </Page>
   );
 }

@@ -1,5 +1,5 @@
 import { listSearch } from "@/components/data-table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Page } from "@/components/page";
 import {
   AssignRoleDialog,
   CreateRoleDialog,
@@ -11,73 +11,79 @@ import {
 } from "@/features/access";
 import { getRouteApi } from "@tanstack/react-router";
 
-const route = getRouteApi("/app/access");
+const usersRoute = getRouteApi("/app/access/subjects");
+const permissionsRoute = getRouteApi("/app/access/permissions");
 
-export function AccessPage() {
-  const { tab, page = 1, sort, role, resource, action, search } = route.useSearch();
-  const navigate = route.useNavigate();
+export function NotAnAdmin() {
+  return (
+    <p role="alert" className="text-muted-foreground">
+      Only an admin can manage who may do what.
+    </p>
+  );
+}
+
+export function AccessUsersPage() {
+  const { search } = usersRoute.useSearch();
+  const navigate = usersRoute.useNavigate();
   const manages = useManagesAccess();
-  const current = tab ?? "subjects";
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <div className="flex items-baseline justify-between gap-4">
-        <h1 className="font-heading text-2xl font-semibold">Access</h1>
-        {manages &&
-          (current === "roles" ? (
-            <CreateRoleDialog />
-          ) : current === "grants" ? (
-            <GrantAccessDialog />
-          ) : (
-            <AssignRoleDialog />
-          ))}
-      </div>
-      {manages === false && (
-        <p role="alert" className="text-muted-foreground">
-          Only an admin can manage who may do what.
-        </p>
-      )}
+    <Page
+      title="Users"
+      description="Everyone who has signed in or been given a role, with their roles."
+      actions={manages && <AssignRoleDialog />}
+    >
+      {manages === false && <NotAnAdmin />}
       {manages && (
-        <Tabs
-          value={current}
-          onValueChange={(value) =>
-            navigate({
-              search: (prev) => ({
-                ...prev,
-                tab: value === "roles" || value === "grants" ? value : undefined,
-              }),
-            })
-          }
-        >
-          <TabsList>
-            <TabsTrigger value="subjects">Users</TabsTrigger>
-            <TabsTrigger value="roles">Roles</TabsTrigger>
-            <TabsTrigger value="grants">Permissions</TabsTrigger>
-          </TabsList>
-          <TabsContent value="grants">
-            <GrantsTable
-              page={page}
-              sort={sort}
-              filter={{ role, resource, action }}
-              onChange={(position) =>
-                navigate({ search: (prev) => ({ ...prev, ...listSearch(position) }) })
-              }
-              onFilter={(filter) =>
-                navigate({ search: (prev) => ({ ...prev, ...filter, page: undefined }) })
-              }
-            />
-          </TabsContent>
-          <TabsContent value="roles">
-            <RolesTable />
-          </TabsContent>
-          <TabsContent value="subjects">
-            <SubjectsTable
-              search={search}
-              onSearch={(text) => navigate({ search: (prev) => ({ ...prev, search: text }) })}
-            />
-          </TabsContent>
-        </Tabs>
+        <SubjectsTable
+          search={search}
+          onSearch={(text) => navigate({ search: (prev) => ({ ...prev, search: text }) })}
+        />
       )}
-    </main>
+    </Page>
+  );
+}
+
+export function AccessRolesPage() {
+  const manages = useManagesAccess();
+
+  return (
+    <Page
+      title="Roles"
+      description="Each role, and what it is for. Open one to choose what it may do."
+      actions={manages && <CreateRoleDialog />}
+    >
+      {manages === false && <NotAnAdmin />}
+      {manages && <RolesTable />}
+    </Page>
+  );
+}
+
+export function AccessPermissionsPage() {
+  const { page = 1, sort, role, resource, action } = permissionsRoute.useSearch();
+  const navigate = permissionsRoute.useNavigate();
+  const manages = useManagesAccess();
+
+  return (
+    <Page
+      title="Permissions"
+      description="Every grant, by role, resource and action."
+      actions={manages && <GrantAccessDialog />}
+    >
+      {manages === false && <NotAnAdmin />}
+      {manages && (
+        <GrantsTable
+          page={page}
+          sort={sort}
+          filter={{ role, resource, action }}
+          onChange={(position) =>
+            navigate({ search: (prev) => ({ ...prev, ...listSearch(position) }) })
+          }
+          onFilter={(filter) =>
+            navigate({ search: (prev) => ({ ...prev, ...filter, page: undefined }) })
+          }
+        />
+      )}
+    </Page>
   );
 }

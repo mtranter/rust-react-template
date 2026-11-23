@@ -9,14 +9,14 @@ async function workshop() {
   return screen.findByRole("region", { name: "Workshop" });
 }
 
-test("a role's name on the Roles tab opens what it may do", async () => {
+test("a role's name on the Roles page opens what it may do", async () => {
   server.use(
     ...accessApi([
       grant(1, { role: "support", resource: "module:workshop", action: "use" }),
       grant(2, { role: "support", action: "view", scope: "maker" }),
     ]).handlers,
   );
-  const { router } = renderAt("/access?tab=roles");
+  const { router } = renderAt("/access/roles");
   const user = userEvent.setup();
   const roles = await screen.findByRole("region", { name: "Roles" });
 

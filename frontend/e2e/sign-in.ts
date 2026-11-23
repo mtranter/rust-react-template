@@ -54,11 +54,11 @@ try {
   });
 
   // Signed out, a deep link leaves for the provider, which approves at once, and comes back to it.
-  await page.goto(`${app}/access?tab=subjects`);
+  await page.goto(`${app}/access/subjects?search=${encodeURIComponent(subject.email)}`);
   const row = page.getByRole("row").filter({ hasText: subject.email });
   await row.getByText("Always admin").waitFor({ timeout: 30_000 });
-  assert.equal(new URL(page.url()).pathname, "/access");
-  assert.equal(new URL(page.url()).searchParams.get("tab"), "subjects");
+  assert.equal(new URL(page.url()).pathname, "/access/subjects");
+  assert.equal(new URL(page.url()).searchParams.get("search"), subject.email);
   assert.equal(authorizations.length, 1, "signed in once");
   // Only an admin's token lists the subjects, and the name shown came from this subject's token.
   await row.getByText(subject.name).waitFor();
@@ -69,7 +69,8 @@ try {
   await page.getByRole("banner").getByText(subject.name).waitFor();
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: `Account: ${subject.name}` }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   const signedOut = page.getByRole("heading", { name: "You're signed out" });
   await signedOut.waitFor();
   await sleep(stays);

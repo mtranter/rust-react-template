@@ -276,32 +276,78 @@ const accessApi = [
 
 export const scenarios: Scenario[] = [
   {
-    name: "notes",
+    name: "launcher",
     route: "/",
+    handlers: [],
+    shows: (page) => page.getByRole("region", { name: "Apps" }),
+  },
+  {
+    name: "launcher-admin",
+    route: "/",
+    handlers: accessApi,
+    shows: (page) => page.getByRole("region", { name: "Platform" }),
+  },
+  {
+    name: "app-switcher",
+    route: "/notes",
+    handlers: notesPage,
+    steps: async (page) => {
+      await page.getByRole("cell", { name: "Shopping list", exact: true }).waitFor();
+      // On a phone the sidebar, and its switcher, is a sheet the header's toggle opens.
+      if (!(await page.getByRole("button", { name: "Switch app" }).isVisible())) {
+        await page.getByRole("banner").getByRole("button", { name: "Toggle Sidebar" }).click();
+      }
+      await page.getByRole("button", { name: "Switch app" }).click();
+    },
+    shows: (page) => page.getByRole("menuitem", { name: "All apps" }),
+  },
+  {
+    name: "go-to",
+    route: "/notes",
+    handlers: [...notesPage, ...accessApi],
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Go to" }).click();
+    },
+    shows: (page) => page.getByRole("option", { name: "Permissions" }),
+  },
+  {
+    // Collapsed to its icons on a desktop; opened as a sheet on a phone.
+    name: "sidebar-toggled",
+    route: "/notes",
+    handlers: notesPage,
+    steps: async (page) => {
+      await page.getByRole("cell", { name: "Shopping list", exact: true }).waitFor();
+      await page.getByRole("banner").getByRole("button", { name: "Toggle Sidebar" }).click();
+    },
+    shows: (page) => page.getByRole("button", { name: "Switch app" }),
+  },
+  {
+    name: "notes",
+    route: "/notes",
     handlers: notesPage,
     shows: (page) => page.getByRole("cell", { name: "Shopping list", exact: true }),
   },
   {
     name: "notes-empty",
-    route: "/",
+    route: "/notes",
     handlers: [listing([])],
     shows: (page) => page.getByText("No notes yet."),
   },
   {
     name: "notes-page-2-sorted",
-    route: "/?page=2&sort=-title",
+    route: "/notes?page=2&sort=-title",
     handlers: notesPage,
     shows: (page) => page.getByText("21–25 of 25"),
   },
   {
     name: "notes-past-last-page",
-    route: "/?page=4",
+    route: "/notes?page=4",
     handlers: notesPage,
     shows: (page) => page.getByText("Nothing on page 4."),
   },
   {
     name: "notes-dark",
-    route: "/",
+    route: "/notes",
     handlers: notesPage,
     steps: async (page) => {
       await page.getByRole("button", { name: "Theme" }).click();
@@ -313,14 +359,14 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "new-note",
-    route: "/",
+    route: "/notes",
     handlers: notesPage,
     steps: (page) => fillNewNote(page, "Dentist appointment"),
     shows: (page) => page.getByRole("button", { name: "Add note" }),
   },
   {
     name: "new-note-refused",
-    route: "/",
+    route: "/notes",
     handlers: [
       http.post("*/api/notes", () =>
         HttpResponse.json(refusal("validation_error", titleTooLong, "title"), { status: 400 }),
@@ -335,7 +381,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "new-note-failed",
-    route: "/",
+    route: "/notes",
     handlers: [
       http.post("*/api/notes", () =>
         HttpResponse.json(refusal("internal_error", "internal error"), { status: 500 }),
@@ -350,7 +396,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "edit-note",
-    route: "/",
+    route: "/notes",
     handlers: notesPage,
     steps: async (page) => {
       await openEditor(page);
@@ -359,7 +405,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "edit-note-refused",
-    route: "/",
+    route: "/notes",
     handlers: [
       http.patch("*/api/notes/:id", () =>
         HttpResponse.json(refusal("validation_error", titleTooLong, "title"), { status: 400 }),
@@ -373,7 +419,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "edit-note-conflict",
-    route: "/",
+    route: "/notes",
     handlers: [
       http.patch("*/api/notes/:id", () =>
         HttpResponse.json(
@@ -397,19 +443,19 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "search",
-    route: "/search?q=alice",
+    route: "/notes/search?q=alice",
     handlers: [searching(summaries)],
     shows: (page) => page.getByRole("cell", { name: "Shopping list", exact: true }),
   },
   {
     name: "search-no-match",
-    route: "/search?q=zebra",
+    route: "/notes/search?q=zebra",
     handlers: [searching(summaries)],
     shows: (page) => page.getByText("No notes match."),
   },
   {
     name: "search-catching-up",
-    route: "/search?q=alice",
+    route: "/notes/search?q=alice",
     handlers: [
       http.get("*/api/note-search", () =>
         HttpResponse.json(
@@ -422,13 +468,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-permissions",
-    route: "/access?tab=grants",
+    route: "/access/permissions",
     handlers: accessApi,
     shows: (page) => page.getByText("No longer used"),
   },
   {
     name: "access-grant",
-    route: "/access?tab=grants",
+    route: "/access/permissions",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Grant access" }).click();
@@ -446,13 +492,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-roles",
-    route: "/access?tab=roles",
+    route: "/access/roles",
     handlers: accessApi,
     shows: (page) => page.getByText("Answers customers"),
   },
   {
     name: "access-role-taken",
-    route: "/access?tab=roles",
+    route: "/access/roles",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Create role" }).click();
@@ -465,13 +511,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access",
-    route: "/access",
+    route: "/access/subjects",
     handlers: accessApi,
     shows: (page) => page.getByText("Always admin"),
   },
   {
     name: "access-users-assign-refused",
-    route: "/access?tab=subjects",
+    route: "/access/subjects",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Assign a role to Ada Lovelace" }).click();
@@ -484,7 +530,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-add-user",
-    route: "/access?tab=subjects",
+    route: "/access/subjects",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Add user" }).click();
@@ -494,7 +540,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: "access-not-an-admin",
-    route: "/access",
+    route: "/access/subjects",
     handlers: [],
     shows: (page) => page.getByRole("alert"),
   },

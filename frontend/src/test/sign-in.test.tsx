@@ -28,18 +28,18 @@ test("with no sign-in configured, shows the app and sends no token of its own", 
   renderAt("/access");
 
   expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Account/ })).not.toBeInTheDocument();
   await waitFor(() => expect(seen).toEqual([null]));
 });
 
 test("sends a visitor who isn't signed in straight to the provider, to come back to the same page", async () => {
   const seen = catalogAuthorizations();
   const provider = stubProvider();
-  renderAt("/access?tab=roles", { session: await sessionOf(provider) });
+  renderAt("/access/roles", { session: await sessionOf(provider) });
 
   await waitFor(() => expect(provider.signinRedirect).toHaveBeenCalledOnce());
   expect(provider.signinRedirect).toHaveBeenCalledWith({
-    state: { returnTo: "/access?tab=roles" },
+    state: { returnTo: "/access/roles" },
     nonce: expect.stringMatching(/^[0-9a-f]{32}$/),
   });
   expect(screen.queryByRole("heading", { name: "Access" })).not.toBeInTheDocument();
@@ -66,13 +66,13 @@ test("sends the signed-in user's access token on every request", async () => {
 test("completes the sign-in at the callback and returns to the page the user started on", async () => {
   const seen = catalogAuthorizations();
   const provider = stubProvider({
-    callback: async () => signedInUser(undefined, { returnTo: "/access?tab=roles" }),
+    callback: async () => signedInUser(undefined, { returnTo: "/access/roles" }),
   });
   const { router } = renderAt("/auth/callback?code=the-code&state=the-state", {
     session: await sessionOf(provider),
   });
 
-  await waitFor(() => expect(router.state.location.href).toBe("/access?tab=roles"));
+  await waitFor(() => expect(router.state.location.href).toBe("/access/roles"));
   expect(provider.signinRedirectCallback).toHaveBeenCalledOnce();
   expect(provider.signinRedirectCallback).toHaveBeenCalledWith(
     expect.stringMatching(/\/auth\/callback\?code=the-code&state=the-state$/),
@@ -89,7 +89,7 @@ test("shows the provider's error when sign-in fails, and signs in again only whe
         new ErrorResponse({
           error: "access_denied",
           error_description: "The user cancelled the sign-in",
-          userState: { returnTo: "/access?tab=roles" },
+          userState: { returnTo: "/access/roles" },
         }),
       ),
   });
@@ -105,7 +105,7 @@ test("shows the provider's error when sign-in fails, and signs in again only whe
   await user.click(screen.getByRole("button", { name: "Try again" }));
 
   expect(provider.signinRedirect).toHaveBeenCalledWith(
-    expect.objectContaining({ state: { returnTo: "/access?tab=roles" } }),
+    expect.objectContaining({ state: { returnTo: "/access/roles" } }),
   );
 });
 
@@ -126,14 +126,18 @@ test("the signed-out page stays until the user signs in again", async () => {
   );
 });
 
-test("the header names the signed-in user, by email when the ID token has no name", async () => {
+test("the header names the signed-in user, by email when the ID token has no name, with a way out", async () => {
   catalogAuthorizations();
   renderAt("/access", {
     session: await sessionOf(stubProvider({ user: signedInUser({ email: "ada@example.com" }) })),
   });
 
-  expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  const user = userEvent.setup();
+  const account = await screen.findByRole("button", { name: "Account: ada@example.com" });
+  expect(account).toHaveTextContent("ada@example.com");
+
+  await user.click(account);
+  expect(await screen.findByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
 });
 
 test("signing out forgets the tokens and ends on the signed-out page", async () => {
@@ -142,7 +146,8 @@ test("signing out forgets the tokens and ends on the signed-out page", async () 
   const user = userEvent.setup();
   const { router } = renderAt("/access", { session: await sessionOf(provider) });
 
-  await user.click(await screen.findByRole("button", { name: "Sign out" }));
+  await user.click(await screen.findByRole("button", { name: /^Account/ }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
 
   expect(await screen.findByRole("heading", { name: "You're signed out" })).toBeInTheDocument();
   expect(router.state.location.pathname).toBe("/auth/signed-out");
@@ -160,7 +165,8 @@ test("signing out also signs out at the provider when it has an end-session endp
   const user = userEvent.setup();
   renderAt("/access", { session: await sessionOf(provider) });
 
-  await user.click(await screen.findByRole("button", { name: "Sign out" }));
+  await user.click(await screen.findByRole("button", { name: /^Account/ }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
 
   await waitFor(() => expect(provider.signoutRedirect).toHaveBeenCalledOnce());
   expect(provider.signinRedirect).not.toHaveBeenCalled();
@@ -197,7 +203,7 @@ const renewedUser = () =>
 test("a 401 renews the token once and retries the request with the new one", async () => {
   const seen = catalogFor(["renewed-access-token"]);
   const provider = stubProvider({ user: signedInUser(), renew: async () => renewedUser() });
-  renderAt("/access?tab=roles", { session: await sessionOf(provider) });
+  renderAt("/access/roles", { session: await sessionOf(provider) });
 
   expect(await screen.findByRole("region", { name: "Roles" })).toBeInTheDocument();
   expect(seen).toEqual(["Bearer ada-access-token", "Bearer renewed-access-token"]);
@@ -208,11 +214,11 @@ test("a 401 renews the token once and retries the request with the new one", asy
 test("when renewal fails after a 401, sends the user to sign in, to come back to the same page", async () => {
   const seen = catalogFor([]);
   const provider = stubProvider({ user: signedInUser() });
-  renderAt("/access?tab=roles", { session: await sessionOf(provider) });
+  renderAt("/access/roles", { session: await sessionOf(provider) });
 
   await waitFor(() => expect(provider.signinRedirect).toHaveBeenCalledOnce());
   expect(provider.signinRedirect).toHaveBeenCalledWith(
-    expect.objectContaining({ state: { returnTo: "/access?tab=roles" } }),
+    expect.objectContaining({ state: { returnTo: "/access/roles" } }),
   );
   expect(provider.signinSilent).toHaveBeenCalledOnce();
   // No retry without a new token, and nothing more after leaving to sign in.
@@ -223,11 +229,11 @@ test("when renewal fails after a 401, sends the user to sign in, to come back to
 test("when the retry gets a 401 too, sends the user to sign in rather than renewing again", async () => {
   const seen = catalogFor([]);
   const provider = stubProvider({ user: signedInUser(), renew: async () => renewedUser() });
-  renderAt("/access", { session: await sessionOf(provider) });
+  renderAt("/access/subjects", { session: await sessionOf(provider) });
 
   await waitFor(() => expect(provider.signinRedirect).toHaveBeenCalledOnce());
   expect(provider.signinRedirect).toHaveBeenCalledWith(
-    expect.objectContaining({ state: { returnTo: "/access" } }),
+    expect.objectContaining({ state: { returnTo: "/access/subjects" } }),
   );
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(provider.signinSilent).toHaveBeenCalledOnce();

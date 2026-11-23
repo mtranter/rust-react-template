@@ -195,6 +195,17 @@ const awaitingAnEdit: ConversationResponse = {
 
 export const assistantScenarios: Scenario[] = [
   {
+    name: "assistant-panel",
+    route: "/",
+    handlers: conversationsOf([untitled, roles]),
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Assistant" }).click();
+      await page.getByRole("button", { name: /^Which roles are there/ }).click();
+    },
+    // Docked beside the page on a desktop; a sheet over it on a phone.
+    shows: (page) => page.getByRole("article", { name: "Which roles are there?" }),
+  },
+  {
     name: "assistant",
     route: "/assistant",
     handlers: conversationsOf([untitled, roles]),

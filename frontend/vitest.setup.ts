@@ -24,6 +24,37 @@ configure({ asyncUtilTimeout: 5_000 });
 // jsdom doesn't implement scrolling; the router scrolls to top on navigation.
 Object.assign(globalThis, { scrollTo: () => {} });
 
+// jsdom has no matchMedia, which the shell's sidebar asks to tell a phone; nothing matches.
+if (typeof (globalThis as { matchMedia?: unknown }).matchMedia !== "function") {
+  Object.assign(globalThis, {
+    matchMedia: (media: string) => ({
+      media,
+      matches: false,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
+// jsdom has no ResizeObserver or scrollIntoView, which the Go to palette's list (cmdk) uses.
+const { Element } = globalThis as unknown as {
+  Element: { prototype: { scrollIntoView?: () => void } };
+};
+Element.prototype.scrollIntoView ??= () => {};
+if (!("ResizeObserver" in globalThis)) {
+  Object.assign(globalThis, {
+    ResizeObserver: class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  });
+}
+
 // jsdom has no PointerEvent, which base-ui's checkbox dispatches when clicked.
 if (!("PointerEvent" in globalThis)) {
   const { MouseEvent } = globalThis as unknown as {
@@ -43,5 +74,7 @@ afterEach(() => {
   cleanup();
   // Sign-in state (oidc-client-ts' and the `Session`'s) lives in the tab's `sessionStorage`.
   sessionStorage.clear();
+  // Per-viewer conveniences (the theme, whether the assistant's panel is open).
+  localStorage.clear();
 });
 afterAll(() => server.close());

@@ -15,7 +15,7 @@ async function openEditor(title: string) {
 test("edits a note's title and body, sending the version it read", async () => {
   const api = notesApi([note(1, { body: "Milk", version: "3" })]);
   server.use(...api.handlers);
-  renderAt("/");
+  renderAt("/notes");
 
   const { user, dialog } = await openEditor("Note 1");
   const title = within(dialog).getByLabelText("Title");
@@ -45,7 +45,7 @@ test("sends back the note's archiveAt, which it doesn't show, so its archive sta
     }),
     ...api.handlers,
   );
-  renderAt("/");
+  renderAt("/notes");
 
   const { user, dialog } = await openEditor("Note 1");
   await user.type(within(dialog).getByLabelText("Title"), ", renamed");
@@ -59,7 +59,7 @@ test("when someone else changed the note meanwhile, it reloads, says so and keep
   const items = [note(1)];
   const api = notesApi(items);
   server.use(...api.handlers);
-  renderAt("/");
+  renderAt("/notes");
   const { user, dialog } = await openEditor("Note 1");
   items[0] = { ...items[0], title: "Renamed elsewhere", version: "2" };
 
@@ -90,7 +90,7 @@ test("shows a refused title beside the Title field and keeps the dialog open", a
     ),
     ...notesApi([note(1)]).handlers,
   );
-  renderAt("/");
+  renderAt("/notes");
 
   const { user, dialog } = await openEditor("Note 1");
   await user.type(within(dialog).getByLabelText("Title"), " that is far too long");
@@ -105,7 +105,7 @@ test("shows a refused title beside the Title field and keeps the dialog open", a
 
 test("an archived note can't be edited", async () => {
   server.use(...notesApi([note(1), note(2, { archivedAt: "2026-02-01T00:00:00Z" })]).handlers);
-  renderAt("/");
+  renderAt("/notes");
 
   expect(await screen.findByRole("button", { name: "Edit Note 1" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Edit Note 2" })).not.toBeInTheDocument();
