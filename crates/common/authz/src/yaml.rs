@@ -19,7 +19,7 @@ pub(crate) enum Kind {
 }
 
 impl Kind {
-    fn describe(&self) -> &'static str {
+    pub(crate) fn describe(&self) -> &'static str {
         match self {
             Kind::Str(_) => "a string",
             Kind::Seq(_) => "a list",

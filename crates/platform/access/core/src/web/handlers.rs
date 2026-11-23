@@ -135,7 +135,7 @@ impl AccessEndpoints {
 
     /// What can be granted: every module's gate (`module:<name>`, action `use`) and resources,
     /// each action with the operations performing it and whether anything in force could allow
-    /// it (`reachable`), and the scopes a grant of it may name. `403` unless the caller is an `admin`, or holds a role granted it.
+    /// it (`reachable`), and the scopes a grant of it may name, each with a `label` to show people. `403` unless the caller is an `admin`, or holds a role granted it.
     #[oai(path = "/catalog", method = "get", operation_id = "get_access_catalog")]
     async fn catalog(
         &self,

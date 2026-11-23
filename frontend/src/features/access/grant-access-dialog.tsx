@@ -1,8 +1,4 @@
-import {
-  getAccessCatalogOptions,
-  getAccessGrantsQueryKey,
-  postAccessGrantsMutation,
-} from "@/api/@tanstack/react-query.gen";
+import { getAccessGrantsQueryKey, postAccessGrantsMutation } from "@/api/@tanstack/react-query.gen";
 import type { CatalogResourceResponse } from "@/api/types.gen";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,13 +12,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  NativeSelect,
+  NativeSelectOptGroup,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { submitErrors } from "@/lib/api-errors";
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { byModule, useCatalog } from "./catalog";
 import { useRoles } from "./use-roles";
 
 const formFields = ["role", "resource", "action", "scope"] as const;
@@ -44,8 +45,8 @@ export function GrantAccessDialog() {
         <DialogHeader>
           <DialogTitle>Grant access</DialogTitle>
           <DialogDescription>
-            Every server allows it within seconds. To grant a role not listed, create it on the
-            Roles tab first.
+            Lets everyone with the role do it, within a few seconds. To grant a role not listed,
+            create it on the Roles tab first.
           </DialogDescription>
         </DialogHeader>
         <GrantAccessForm onGranted={() => setOpen(false)} />
@@ -56,7 +57,7 @@ export function GrantAccessDialog() {
 
 function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const queryClient = useQueryClient();
-  const catalog = useQuery(getAccessCatalogOptions());
+  const { resources } = useCatalog();
   const roles = useRoles();
   const grant = useMutation({
     ...postAccessGrantsMutation(),
@@ -81,7 +82,6 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
     },
   });
 
-  const resources = catalog.data?.resources ?? [];
   const resourceOf = (kind: string): CatalogResourceResponse | undefined =>
     resources.find((r) => r.resource === kind);
 
@@ -127,7 +127,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
       >
         {(field) => (
           <Field data-invalid={field.state.meta.errors.length > 0}>
-            <FieldLabel htmlFor="grant-resource">Resource</FieldLabel>
+            <FieldLabel htmlFor="grant-resource">On</FieldLabel>
             <NativeSelect
               id="grant-resource"
               className="w-full"
@@ -136,11 +136,15 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
               aria-invalid={field.state.meta.errors.length > 0}
               aria-describedby="grant-resource-error"
             >
-              <NativeSelectOption value="">Choose a resource</NativeSelectOption>
-              {resources.map((r) => (
-                <NativeSelectOption key={r.resource} value={r.resource}>
-                  {r.resource} ({r.module})
-                </NativeSelectOption>
+              <NativeSelectOption value="">Choose what</NativeSelectOption>
+              {byModule(resources).map((m) => (
+                <NativeSelectOptGroup key={m.module} label={m.label}>
+                  {m.resources.map((r) => (
+                    <NativeSelectOption key={r.resource} value={r.resource}>
+                      {r.label}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelectOptGroup>
               ))}
             </NativeSelect>
             <FieldError id="grant-resource-error" errors={errorsOf(field.state.meta.errors)} />
@@ -155,7 +159,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
               <form.Field name="action">
                 {(field) => (
                   <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-action">Action</FieldLabel>
+                    <FieldLabel htmlFor="grant-action">Can</FieldLabel>
                     <NativeSelect
                       id="grant-action"
                       className="w-full"
@@ -168,10 +172,8 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
                       <NativeSelectOption value="">Choose an action</NativeSelectOption>
                       {resource?.actions.map((a) => (
                         <NativeSelectOption key={a.name} value={a.name}>
-                          {a.operations.length > 0
-                            ? `${a.name}: ${a.operations.join(", ")}`
-                            : a.name}
-                          {a.reachable ? "" : " (granted to no one)"}
+                          {a.label}
+                          {a.reachable ? "" : " (no one can yet)"}
                         </NativeSelectOption>
                       ))}
                     </NativeSelect>
@@ -185,7 +187,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
               <form.Field name="scope">
                 {(field) => (
                   <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-scope">Scope</FieldLabel>
+                    <FieldLabel htmlFor="grant-scope">Which</FieldLabel>
                     <NativeSelect
                       id="grant-scope"
                       className="w-full"
@@ -195,9 +197,9 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
                       aria-invalid={field.state.meta.errors.length > 0}
                       aria-describedby="grant-scope-error"
                     >
-                      {(resource?.scopes ?? ["any"]).map((scope) => (
-                        <NativeSelectOption key={scope} value={scope}>
-                          {scope}
+                      {(resource?.scopes ?? [{ name: "any", label: "Any" }]).map((scope) => (
+                        <NativeSelectOption key={scope.name} value={scope.name}>
+                          {scope.label}
                         </NativeSelectOption>
                       ))}
                     </NativeSelect>

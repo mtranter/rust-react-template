@@ -20,13 +20,17 @@ import { isPreconditionFailed } from "@/lib/api-errors";
 import { ifMatch } from "@/lib/if-match";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2Icon } from "lucide-react";
+import type { Labels } from "./catalog";
 
-export function describe(grant: GrantResponse) {
-  return `${grant.role} → ${grant.resource}:${grant.action} (${grant.scope})`;
+/** A grant in words: `support can Edit Notes (Notes they wrote)`. */
+export function describe(grant: GrantResponse, labels: Labels) {
+  const action = labels.action(grant.resource, grant.action);
+  const resource = labels.resource(grant.resource);
+  return `${grant.role} can ${action} ${resource} (${labels.scope(grant.resource, grant.scope)})`;
 }
 
 /** Revokes a grant once confirmed, sending the version listed. */
-export function RevokeGrantDialog({ grant }: { grant: GrantResponse }) {
+export function RevokeGrantDialog({ grant, labels }: { grant: GrantResponse; labels: Labels }) {
   const queryClient = useQueryClient();
   const revoke = useMutation({
     ...deleteAccessGrantsByIdMutation(),
@@ -37,7 +41,7 @@ export function RevokeGrantDialog({ grant }: { grant: GrantResponse }) {
   const confirm = async () => {
     try {
       await revoke.mutateAsync({ path: { id: grant.id }, headers: ifMatch(grant.version) });
-      toast.add({ type: "success", title: "Grant revoked" });
+      toast.add({ type: "success", title: "Permission revoked" });
     } catch (error) {
       // The list is reloaded either way, so it shows what the grant is now.
       if (isPreconditionFailed(error)) {
@@ -45,7 +49,7 @@ export function RevokeGrantDialog({ grant }: { grant: GrantResponse }) {
           type: "error",
           title: "Couldn't revoke",
           description:
-            "Someone else changed this grant. It's been reloaded: check it and revoke again.",
+            "Someone else changed this permission. It's been reloaded: check it and revoke again.",
         });
       }
     }
@@ -54,16 +58,22 @@ export function RevokeGrantDialog({ grant }: { grant: GrantResponse }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={`Revoke ${describe(grant)}`} />}
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Revoke: ${describe(grant, labels)}`}
+          />
+        }
       >
         <Trash2Icon />
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Revoke this grant?</AlertDialogTitle>
+          <AlertDialogTitle>Revoke this permission?</AlertDialogTitle>
           <AlertDialogDescription>
-            {describe(grant)}. Every server stops allowing it within seconds.
-            {grant.grantedBy ? "" : " A default grant, once revoked, isn't granted again."}
+            {describe(grant, labels)}. It stops working within a few seconds.
+            {grant.grantedBy ? "" : " It's built in, so once revoked it isn't granted again."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

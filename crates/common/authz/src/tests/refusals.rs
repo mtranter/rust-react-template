@@ -3,6 +3,7 @@ use super::*;
 const NOTE: &str = include_str!("note.yaml");
 const SCOPES: &str = include_str!("notes_scopes.yaml");
 const DEFAULTS: &str = include_str!("default_grants.yaml");
+const LABELS: &str = include_str!("labels.yaml");
 const GATE: &str = "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: \"module:notebook\"\n  version: default\n  rules:\n    - actions: [use]\n      effect: EFFECT_ALLOW\n      roles: [staff]\n";
 
 #[derive(Clone, Copy)]
@@ -11,6 +12,7 @@ enum In {
     Scopes,
     Defaults,
     Gate,
+    Labels,
 }
 
 impl In {
@@ -20,6 +22,7 @@ impl In {
             In::Scopes => "notes_scopes.yaml",
             In::Defaults => "default_grants.yaml",
             In::Gate => "gate.yaml",
+            In::Labels => "labels.yaml",
         }
     }
 }
@@ -39,6 +42,7 @@ fn load_with(file: In, from: &str, to: &str) -> Result<Policies, PolicyError> {
         .resource::<Note>(edit(In::Note, NOTE))
         .derived_roles(edit(In::Scopes, SCOPES))
         .default_grants(edit(In::Defaults, DEFAULTS))
+        .labels(edit(In::Labels, LABELS))
         .build()
 }
 
@@ -181,6 +185,46 @@ fn each_refusal_names_the_file_and_line() {
             "action: use, scope: author }",
             Some(3),
             "a scope there is refused",
+        ),
+        (
+            "a label for another module's resource",
+            In::Labels,
+            "resource: note",
+            "resource: task",
+            Some(8),
+            "`task` is not a resource given",
+        ),
+        (
+            "a label for an unknown action",
+            In::Labels,
+            "create: Write",
+            "publish: Write",
+            Some(11),
+            "`publish` is not an action of `note`",
+        ),
+        (
+            "a label for an unknown scope",
+            In::Labels,
+            "author: Notes they wrote",
+            "team: Their team's",
+            Some(15),
+            "`team` is not a scope of `note`",
+        ),
+        (
+            "an empty label",
+            In::Labels,
+            "label: Notes",
+            "label: \"\"",
+            Some(9),
+            "`label` must be some text",
+        ),
+        (
+            "an unknown key in a resource's labels",
+            In::Labels,
+            "label: Notes",
+            "title: Notes",
+            Some(9),
+            "`title` is not supported in a resource's labels",
         ),
         (
             "a condition on the gate",

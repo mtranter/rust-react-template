@@ -47,6 +47,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Note>(policy_file!("policies/note.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 /// What the worker runs for notes: its reactions to other modules' events,

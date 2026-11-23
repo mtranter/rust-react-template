@@ -208,7 +208,8 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
     let kinds: Vec<_> = catalog.resources.iter().map(|r| r.kind.as_str()).collect();
     assert_eq!(kinds, ["module:notebook", "note"]);
     let note = &catalog.resources[1];
-    assert_eq!(note.scopes, ["author"]);
+    let scopes: Vec<_> = note.scopes.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(scopes, ["any", "author"]);
     assert!(note.actions.iter().all(|a| a.reachable));
 
     let only_users = compile(
@@ -235,4 +236,46 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
             .flat_map(|r| &r.actions)
             .all(|a| !a.reachable)
     );
+}
+
+#[test]
+fn the_catalog_labels_what_its_labels_file_names_and_words_the_rest() {
+    let policies = Policies::builder("notebook")
+        .resource::<Note>(note_policy())
+        .derived_roles(scopes())
+        .default_grants(defaults())
+        .labels(PolicyFile::new("labels.yaml", include_str!("labels.yaml")))
+        .build()
+        .expect("loads");
+    let catalog = policies.catalog(&compile(&policies, &[]));
+    assert_eq!(catalog.label, "Notebook");
+    let gate = &catalog.resources[0];
+    assert_eq!(
+        (gate.label.as_str(), gate.actions[0].label.as_str()),
+        ("Notebook", "Open the notebook")
+    );
+    let note = &catalog.resources[1];
+    assert_eq!(note.label, "Notes");
+    let actions: Vec<_> = note
+        .actions
+        .iter()
+        .map(|a| (a.name.as_str(), a.label.as_str()))
+        .collect();
+    assert!(actions.contains(&("create", "Write")));
+    assert!(actions.contains(&("items:add", "Add items")));
+    assert!(actions.contains(&("items:remove", "Items remove")));
+    let scopes: Vec<_> = note
+        .scopes
+        .iter()
+        .map(|s| (s.name.as_str(), s.label.as_str()))
+        .collect();
+    assert_eq!(
+        scopes,
+        [("any", "Every note"), ("author", "Notes they wrote")]
+    );
+
+    let unlabelled = adr_policies().catalog(&compile(&policies, &[]));
+    assert_eq!(unlabelled.label, "Notebook");
+    assert_eq!(unlabelled.resources[1].label, "Note");
+    assert_eq!(unlabelled.resources[1].scopes[0].label, "Any");
 }

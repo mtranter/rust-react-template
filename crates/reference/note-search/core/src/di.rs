@@ -42,6 +42,7 @@ pub fn policies() -> PoliciesBuilder {
     Policies::builder("note-search")
         .resource::<NoteSummary>(policy_file!("policies/note_summary.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 /// No seed: everything it holds is a copy, filled from the providers' events

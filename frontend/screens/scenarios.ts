@@ -157,19 +157,26 @@ const accessCatalog: CatalogResponse = {
   resources: [
     {
       module: "workshop",
+      moduleLabel: "Workshop",
       resource: "module:workshop",
-      actions: [{ name: "use", operations: [], reachable: true }],
-      scopes: ["any"],
+      label: "Workshop area",
+      actions: [{ name: "use", label: "Open", operations: [], reachable: true }],
+      scopes: [{ name: "any", label: "Any" }],
     },
     {
       module: "workshop",
+      moduleLabel: "Workshop",
       resource: "gadget",
+      label: "Gadgets",
       actions: [
-        { name: "make", operations: ["make_gadget"], reachable: true },
-        { name: "view", operations: ["get_gadget"], reachable: true },
-        { name: "scrap", operations: [], reachable: false },
+        { name: "make", label: "Make", operations: ["make_gadget"], reachable: true },
+        { name: "view", label: "View", operations: ["get_gadget"], reachable: true },
+        { name: "scrap", label: "Scrap", operations: [], reachable: false },
       ],
-      scopes: ["any", "maker"],
+      scopes: [
+        { name: "any", label: "Every gadget" },
+        { name: "maker", label: "Gadgets they made" },
+      ],
     },
   ],
 };
@@ -234,9 +241,15 @@ const subjects: SubjectResponse[] = [
 /** `access` as the server answers an admin. */
 const accessApi = [
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
-  http.get("*/api/access/grants", () =>
-    HttpResponse.json({ items: grants, total: grants.length, limit: 20, offset: 0 }),
-  ),
+  http.get("*/api/access/grants", ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const matching = grants.filter((g) =>
+      (["role", "resource", "action"] as const).every(
+        (field) => !params.get(field) || g[field] === params.get(field),
+      ),
+    );
+    return HttpResponse.json({ items: matching, total: matching.length, limit: 20, offset: 0 });
+  }),
   http.get("*/api/access/roles", () =>
     HttpResponse.json({ items: roles, total: roles.length, limit: 100, offset: 0 }),
   ),
@@ -408,22 +421,28 @@ export const scenarios: Scenario[] = [
     shows: (page) => page.getByRole("alert"),
   },
   {
-    name: "access",
-    route: "/access",
+    name: "access-permissions",
+    route: "/access?tab=grants",
     handlers: accessApi,
-    shows: (page) => page.getByText("Stale"),
+    shows: (page) => page.getByText("No longer used"),
   },
   {
     name: "access-grant",
-    route: "/access",
+    route: "/access?tab=grants",
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Grant access" }).click();
       const dialog = page.getByRole("dialog", { name: "Grant access" });
       await dialog.getByLabel("Role").selectOption("support");
-      await dialog.getByLabel("Resource").selectOption("gadget");
+      await dialog.getByLabel("On").selectOption("gadget");
     },
-    shows: (page) => page.getByRole("dialog", { name: "Grant access" }).getByLabel("Action"),
+    shows: (page) => page.getByRole("dialog", { name: "Grant access" }).getByLabel("Can"),
+  },
+  {
+    name: "access-role",
+    route: "/access/roles/user",
+    handlers: accessApi,
+    shows: (page) => page.getByRole("combobox", { name: "Gadgets: View" }),
   },
   {
     name: "access-roles",
@@ -445,10 +464,10 @@ export const scenarios: Scenario[] = [
       page.getByRole("dialog", { name: "Create role" }).getByText("a role of that name exists"),
   },
   {
-    name: "access-users",
-    route: "/access?tab=subjects",
+    name: "access",
+    route: "/access",
     handlers: accessApi,
-    shows: (page) => page.getByText("Bootstrap admin"),
+    shows: (page) => page.getByText("Always admin"),
   },
   {
     name: "access-users-assign-refused",
@@ -469,7 +488,7 @@ export const scenarios: Scenario[] = [
     handlers: accessApi,
     steps: async (page) => {
       await page.getByRole("button", { name: "Add user" }).click();
-      await page.getByRole("dialog", { name: "Add user" }).getByLabel("Subject").fill("auth0|new");
+      await page.getByRole("dialog", { name: "Add user" }).getByLabel("User ID").fill("auth0|new");
     },
     shows: (page) => page.getByRole("dialog", { name: "Add user" }).getByLabel("Role"),
   },

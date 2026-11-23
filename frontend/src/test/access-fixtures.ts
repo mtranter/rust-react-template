@@ -18,19 +18,26 @@ export const catalog: CatalogResponse = {
   resources: [
     {
       module: "workshop",
+      moduleLabel: "Workshop",
       resource: "module:workshop",
-      actions: [{ name: "use", operations: [], reachable: true }],
-      scopes: ["any"],
+      label: "Workshop area",
+      actions: [{ name: "use", label: "Open", operations: [], reachable: true }],
+      scopes: [{ name: "any", label: "Any" }],
     },
     {
       module: "workshop",
+      moduleLabel: "Workshop",
       resource: "gadget",
+      label: "Gadgets",
       actions: [
-        { name: "make", operations: ["make_gadget"], reachable: true },
-        { name: "view", operations: ["get_gadget"], reachable: true },
-        { name: "scrap", operations: [], reachable: false },
+        { name: "make", label: "Make", operations: ["make_gadget"], reachable: true },
+        { name: "view", label: "View", operations: ["get_gadget"], reachable: true },
+        { name: "scrap", label: "Scrap", operations: [], reachable: false },
       ],
-      scopes: ["any", "maker"],
+      scopes: [
+        { name: "any", label: "Every gadget" },
+        { name: "maker", label: "Gadgets they made" },
+      ],
     },
   ],
 };
@@ -103,7 +110,7 @@ const forbidden = () => HttpResponse.json(refusal("forbidden", "forbidden"), { s
 
 /**
  * `access` as the server answers an admin for `items` and `roles` (changed in place): the
- * catalog, the grants filtered by role, resource and action, a grant checked against the roles
+ * catalog, the grants filtered by role, resource and action and paged, a grant checked against the roles
  * and the catalog and refused when equal to one made, revocations guarded by `If-Match`, and the
  * roles, created unless the name is taken and deleted unless built in or granted; and the
  * `subjects`, searched by part of their subject, name or email, assigned roles that exist unless
@@ -128,11 +135,13 @@ export function accessApi(
           (field) => !params.get(field) || g[field] === params.get(field),
         ),
       );
+      const limit = Number(params.get("limit") ?? 20);
+      const offset = Number(params.get("offset") ?? 0);
       return HttpResponse.json({
-        items: matching,
+        items: matching.slice(offset, offset + limit),
         total: matching.length,
-        limit: 20,
-        offset: 0,
+        limit,
+        offset,
       } satisfies ListResultGrantResponse);
     }),
     http.post("*/api/access/grants", async ({ request }) => {

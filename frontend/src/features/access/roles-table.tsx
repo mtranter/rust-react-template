@@ -7,10 +7,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Link } from "@tanstack/react-router";
 import { DeleteRoleDialog } from "./delete-role-dialog";
 import { useRoles } from "./use-roles";
 
-/** Every role, by name. Not paged: an app has few. */
+/** Every role, by name, each linking to what it may do. Not paged: an app has few. */
 export function RolesTable() {
   const roles = useRoles();
 
@@ -44,7 +45,13 @@ export function RolesTable() {
                 <TableRow key={role.name}>
                   <TableCell className="font-medium">
                     <span className="flex items-center gap-2">
-                      {role.name}
+                      <Link
+                        to="/access/roles/$role"
+                        params={{ role: role.name }}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        {role.name}
+                      </Link>
                       {role.builtIn && <Badge variant="secondary">Built in</Badge>}
                     </span>
                   </TableCell>

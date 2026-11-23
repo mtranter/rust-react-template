@@ -1,0 +1,16 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Widgets
+  resources:
+    - resource: "module:widgets"
+      label: Widgets area
+      actions:
+        use: Open
+    - resource: widget
+      label: Widgets
+      actions:
+        create: Create
+        view: View
+        rename: Rename
+        list: List
+        search: Search

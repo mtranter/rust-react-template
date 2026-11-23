@@ -56,7 +56,7 @@ try {
   // Signed out, a deep link leaves for the provider, which approves at once, and comes back to it.
   await page.goto(`${app}/access?tab=subjects`);
   const row = page.getByRole("row").filter({ hasText: subject.email });
-  await row.getByText("Bootstrap admin").waitFor({ timeout: 30_000 });
+  await row.getByText("Always admin").waitFor({ timeout: 30_000 });
   assert.equal(new URL(page.url()).pathname, "/access");
   assert.equal(new URL(page.url()).searchParams.get("tab"), "subjects");
   assert.equal(authorizations.length, 1, "signed in once");

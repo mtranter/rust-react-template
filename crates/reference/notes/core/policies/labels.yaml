@@ -1,0 +1,22 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Notes
+  resources:
+    - resource: "module:notes"
+      label: Notes area
+      actions:
+        use: Open
+    - resource: note
+      label: Notes
+      actions:
+        create: Write
+        list: List
+        view: Read
+        edit: Edit
+        delete: Delete
+        archive: Archive
+        "items:add": Add items
+        "items:remove": Remove items
+      scopes:
+        any: Every note
+        author: Notes they wrote

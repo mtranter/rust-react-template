@@ -38,8 +38,8 @@ export function SubjectsTable({
     <section className="space-y-3" aria-label="Users">
       <Input
         key={search ?? ""}
-        aria-label="Search by name, email or subject"
-        placeholder="Search by name, email or subject"
+        aria-label="Search by name, email or user ID"
+        placeholder="Search by name, email or user ID"
         className="max-w-sm"
         defaultValue={search ?? ""}
         onKeyDown={(event) => {
@@ -100,24 +100,30 @@ function SubjectRow({ subject }: { subject: SubjectResponse }) {
     <TableRow>
       <TableCell className="whitespace-normal">
         <div className="flex flex-col">
-          <span className="flex items-center gap-2 font-medium">
+          <span className="flex items-center gap-2 font-medium" title={subject.subject}>
             {label}
             {subject.bootstrapAdmin && (
-              <Badge variant="secondary" title="APP_BOOTSTRAP_ADMINS: always an admin">
-                Bootstrap admin
+              <Badge
+                variant="secondary"
+                title="Named in the server's APP_BOOTSTRAP_ADMINS, so always an admin"
+              >
+                Always admin
               </Badge>
             )}
           </span>
           {subject.name && subject.email && (
             <span className="text-muted-foreground text-sm">{subject.email}</span>
           )}
-          {label !== subject.subject && (
-            <span className="text-muted-foreground font-mono text-xs">{subject.subject}</span>
-          )}
         </div>
       </TableCell>
       <TableCell>
-        {subject.lastSeen ? new Date(subject.lastSeen).toLocaleString() : "Never signed in"}
+        {subject.lastSeen ? (
+          <span title={new Date(subject.lastSeen).toLocaleString()}>
+            {new Date(subject.lastSeen).toLocaleDateString()}
+          </span>
+        ) : (
+          "Never signed in"
+        )}
       </TableCell>
       <TableCell className="whitespace-normal">
         <ul className="flex flex-wrap items-center gap-1" aria-label={`Roles of ${label}`}>

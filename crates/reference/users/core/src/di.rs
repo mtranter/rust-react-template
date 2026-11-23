@@ -46,6 +46,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<User>(policy_file!("policies/user.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 pub fn directory(ctx: &Context) -> Arc<dyn UserDirectory> {

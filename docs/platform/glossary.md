@@ -198,7 +198,7 @@ The counter `access` bumps in the unit of work of every change to the Grants or 
 _Avoid_: Version (that is a root's), generation
 
 **Catalog**:
-What admins grant from (`get_access_catalog`): every Module's Gate and resources, each action with the operations performing it and whether anything in force could allow it, and each resource's Scopes. Built from the loaded policies and `OPERATIONS`, never stored.
+What admins grant from (`get_access_catalog`): every Module's Gate and resources, each action with the operations performing it and whether anything in force could allow it, and each resource's Scopes, each with a label for people from its Module's `labels.yaml` (or its name in words). Built from the loaded policies and `OPERATIONS`, never stored.
 _Avoid_: Permission list, schema
 
 **Gate**:
