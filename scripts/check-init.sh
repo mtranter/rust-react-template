@@ -2,7 +2,8 @@
 # Runs `make init` on a scratch copy of this tree (uncommitted changes
 # included) as a factory would on a fresh clone, so a platform change can't
 # silently break it. `init` ends in the app's own `make check`; this then checks
-# what that can't: that `init` refuses what it should, leaves no trace of the
+# what that can't: that `init` refuses what it should, puts the tree back when a
+# step fails, leaves no trace of the
 # reference code on the app's surface, and leaves an app `make new-module` can
 # grow.
 #
@@ -58,6 +59,15 @@ touch untracked
 ! make --no-print-directory init NAME=$name TITLE="$title" >/dev/null 2>&1 || fail "\`make init\` ran on a dirty tree"
 rm untracked
 unchanged "on a dirty tree"
+# A `make` that fails once `init` has edited the tree, as a failing `make check` would.
+mkdir -p "$work/failing"
+printf '#!/bin/sh\ncase " $* " in *" spec "*) exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v make)" >"$work/failing/make"
+chmod +x "$work/failing/make"
+! PATH="$work/failing:$PATH" make --no-print-directory init NAME=$name TITLE="$title" >/dev/null 2>&1 ||
+  fail "\`make init\` passed though a step failed"
+unchanged "by a failing step"
+git stash list | grep -q "make init, failed" || fail "a failed \`make init\` kept nothing to look at"
+git stash drop -q
 
 make --no-print-directory init NAME=$name TITLE="$title"
 

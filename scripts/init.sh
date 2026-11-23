@@ -9,7 +9,8 @@
 #   scripts/init.sh <name> "<title>"    e.g. `crm "Acme CRM"` (`make init NAME=.. TITLE=..`)
 #
 # Refuses on a dirty tree, or once TEMPLATE_VERSION exists. Ends with `make
-# check`; if that fails, the changes are left uncommitted to look at.
+# check`. If that or any step before it fails, the tree goes back to how it was,
+# so `make init` can run again, and what it had changed goes to a stash.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -43,6 +44,24 @@ export NAME=$name TITLE=$title COMMIT=$commit
 
 echo "init: $title ($name) from the template at $short"
 make --no-print-directory setup
+
+# A half-made app can't be initialised again: TEMPLATE_VERSION exists, the tree
+# is dirty and the Makefile has no `init`.
+put_back() {
+  local status=$?
+  trap - EXIT
+  if [ -n "$(git status --porcelain)" ]; then
+    if git stash push -q -u -m "make init, failed" 2>/dev/null; then
+      echo "init: failed. The tree is as it was; what init had changed is in the stash (\`git stash show -p\`, \`git stash drop\`)." >&2
+    else
+      git reset -q --hard
+      git clean -qfd
+      echo "init: failed. The tree is as it was." >&2
+    fi
+  fi
+  exit "$status"
+}
+trap put_back EXIT
 
 # 1. The platform this app was cut from, for pulling its later changes.
 cat >TEMPLATE_VERSION <<EOF
@@ -339,4 +358,5 @@ make --no-print-directory check
 git rm -q scripts/init.sh scripts/check-init.sh
 git add -A
 git commit -q -m "Initialise $title from the template at $short"
+trap - EXIT
 echo "init: committed $(git rev-parse --short HEAD), \"Initialise $title from the template at $short\""
