@@ -83,6 +83,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Role>(policy_file!("policies/role.yaml"))
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
         .resource::<Subject>(policy_file!("policies/subject.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 /// Assigning roles, for another module's seed to give the accounts it seeds theirs, as `System`:

@@ -66,6 +66,7 @@ pub(crate) enum Expect {
     ResourcePolicy,
     DerivedRoles,
     DefaultGrants,
+    Labels,
 }
 
 impl Expect {
@@ -74,6 +75,7 @@ impl Expect {
             Expect::ResourcePolicy => "resourcePolicy",
             Expect::DerivedRoles => "derivedRoles",
             Expect::DefaultGrants => "defaultGrants",
+            Expect::Labels => "labels",
         }
     }
 }
@@ -92,6 +94,7 @@ fn body<'n>(file: &File, root: &'n Node, expect: Expect) -> Result<&'n Node, Pol
         Expect::ResourcePolicy,
         Expect::DerivedRoles,
         Expect::DefaultGrants,
+        Expect::Labels,
     ];
     if !fields.has(expect.key())
         && let Some(other) = kinds.into_iter().find(|k| fields.has(k.key()))
@@ -232,6 +235,95 @@ pub(crate) fn default_grants(file: &File, source: &str) -> Result<Vec<DefaultGra
             })
         })
         .collect()
+}
+
+/// What a Module calls itself, its resources, their actions and their scopes, for admins.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Labels {
+    pub module: Option<String>,
+    pub resources: Vec<ResourceLabels>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResourceLabels {
+    pub resource: Named,
+    pub label: Option<String>,
+    pub actions: Vec<(Named, String)>,
+    pub scopes: Vec<(Named, String)>,
+}
+
+pub(crate) fn labels(file: &File, source: &str) -> Result<Labels, PolicyError> {
+    let root = file.parse(source)?;
+    let node = body(file, &root, Expect::Labels)?;
+    let mut fields = file.map(node, "`labels`")?;
+    let module = fields
+        .take("module")
+        .map(|n| text(file, n, "`module`"))
+        .transpose()?;
+    let resources = match fields.take("resources") {
+        Some(n) => file
+            .seq(n, "`resources`")?
+            .iter()
+            .map(|n| {
+                let mut fields = file.map(n, "a resource's labels")?;
+                let resource = named(file, fields.require(file, "resource")?, "`resource`")?;
+                let label = fields
+                    .take("label")
+                    .map(|n| text(file, n, "`label`"))
+                    .transpose()?;
+                let actions = fields
+                    .take("actions")
+                    .map(|n| label_map(file, n, "`actions`"))
+                    .transpose()?
+                    .unwrap_or_default();
+                let scopes = fields
+                    .take("scopes")
+                    .map(|n| label_map(file, n, "`scopes`"))
+                    .transpose()?
+                    .unwrap_or_default();
+                fields.finish(file, "a resource's labels")?;
+                Ok(ResourceLabels {
+                    resource,
+                    label,
+                    actions,
+                    scopes,
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        None => Vec::new(),
+    };
+    fields.finish(file, "`labels`")?;
+    Ok(Labels { module, resources })
+}
+
+fn label_map(file: &File, node: &Node, what: &str) -> Result<Vec<(Named, String)>, PolicyError> {
+    let entries = match &node.kind {
+        Kind::Map(entries) => entries,
+        other => {
+            return Err(file.refuse(
+                node.line,
+                format!("{what} must be a mapping, not {}", other.describe()),
+            ));
+        }
+    };
+    let mut labels = Vec::new();
+    for (key, value) in entries {
+        if key.name.is_empty() {
+            return Err(file.refuse(key.line, format!("each key of {what} must be a name")));
+        }
+        labels.push((
+            (key.name.clone(), key.line),
+            text(file, value, &format!("`{}`'s label", key.name))?,
+        ));
+    }
+    Ok(labels)
+}
+
+fn text(file: &File, node: &Node, what: &str) -> Result<String, PolicyError> {
+    match &node.kind {
+        Kind::Str(s) if !s.trim().is_empty() => Ok(s.trim().to_owned()),
+        _ => Err(file.refuse(node.line, format!("{what} must be some text"))),
+    }
 }
 
 fn named(file: &File, node: &Node, what: &str) -> Result<Named, PolicyError> {

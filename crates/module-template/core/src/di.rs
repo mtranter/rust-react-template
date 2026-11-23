@@ -33,6 +33,7 @@ pub fn policies() -> PoliciesBuilder {
     Policies::builder("widgets")
         .resource::<Widget>(policy_file!("policies/widget.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 impl Provide for WidgetsProvider {

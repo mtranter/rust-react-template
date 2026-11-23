@@ -523,7 +523,7 @@
         "tags": [
           "Access"
         ],
-        "summary": "What can be granted: every module's gate (`module:<name>`, action `use`) and resources,\neach action with the operations performing it and whether anything in force could allow\nit (`reachable`), and the scopes a grant of it may name. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "summary": "What can be granted: every module's gate (`module:<name>`, action `use`) and resources,\neach action with the operations performing it and whether anything in force could allow\nit (`reachable`), and the scopes a grant of it may name, each with a `label` to show people. `403` unless the caller is an `admin`, or holds a role granted it.",
         "responses": {
           "200": {
             "description": "",
@@ -4926,12 +4926,17 @@
         "title": "CatalogActionResponse",
         "required": [
           "name",
+          "label",
           "operations",
           "reachable"
         ],
         "properties": {
           "name": {
             "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "What the module calls the action, for people."
           },
           "operations": {
             "type": "array",
@@ -4951,7 +4956,9 @@
         "title": "CatalogResourceResponse",
         "required": [
           "module",
+          "moduleLabel",
           "resource",
+          "label",
           "actions",
           "scopes"
         ],
@@ -4960,9 +4967,17 @@
             "type": "string",
             "description": "The module whose resource it is."
           },
+          "moduleLabel": {
+            "type": "string",
+            "description": "What the module calls itself, for people."
+          },
           "resource": {
             "type": "string",
             "description": "`module:<name>` for a module's gate."
+          },
+          "label": {
+            "type": "string",
+            "description": "What the module calls the resource, for people; a gate's is the module's."
           },
           "actions": {
             "type": "array",
@@ -4974,7 +4989,7 @@
             "type": "array",
             "description": "What a grant of it may be scoped to: `any` first, then the resource's own.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/CatalogScopeResponse"
             }
           }
         }
@@ -4992,6 +5007,24 @@
             "items": {
               "$ref": "#/components/schemas/CatalogResourceResponse"
             }
+          }
+        }
+      },
+      "CatalogScopeResponse": {
+        "type": "object",
+        "title": "CatalogScopeResponse",
+        "required": [
+          "name",
+          "label"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "What a grant names."
+          },
+          "label": {
+            "type": "string",
+            "description": "The rows it reaches, for people (`Notes they wrote`)."
           }
         }
       },

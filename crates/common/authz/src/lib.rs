@@ -20,8 +20,8 @@ pub mod testing;
 pub use authorizer::Authorizer;
 pub use condition::Filter;
 pub use policies::{
-    Catalog, CatalogAction, CatalogResource, GATE_ACTION, Grant, GrantRefusal, GrantRefused,
-    Policies, PoliciesBuilder, PolicyFile, Scope, check_grant,
+    Catalog, CatalogAction, CatalogResource, CatalogScope, GATE_ACTION, Grant, GrantRefusal,
+    GrantRefused, Policies, PoliciesBuilder, PolicyFile, Scope, check_grant,
 };
 pub use principal::{Actor, Principal, Value};
 pub use resource::{Action, Resource};

@@ -47,6 +47,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Conversation>(policy_file!("policies/conversation.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
+        .labels(policy_file!("policies/labels.yaml"))
 }
 
 /// `settings` are read when the API is built, so `dump-spec` and `migrate` need none. With a

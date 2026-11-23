@@ -226,10 +226,12 @@ fn a_derived_role_applies_only_to_its_parent_roles() {
         rule_set.plan::<Note>(&user(ALICE, &["user"]), NoteAction::Edit),
         Plan::Denied
     );
-    assert_eq!(
-        policies.catalog(&rule_set).resources[1].scopes,
-        Vec::<String>::new()
-    );
+    let scopes: Vec<_> = policies.catalog(&rule_set).resources[1]
+        .scopes
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    assert_eq!(scopes, ["any"]);
 }
 
 #[test]

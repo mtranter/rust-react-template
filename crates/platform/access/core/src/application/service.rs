@@ -173,7 +173,7 @@ impl AccessService {
     }
 
     /// Every module's gate and resources, their actions with the operations performing each and
-    /// whether anything in force could allow them, and their scopes.
+    /// whether anything in force could allow them, and their scopes, each labelled for admins.
     pub fn catalog(&self, principal: &Principal) -> AppResult<Vec<CatalogResource>> {
         self.authorize(principal, GrantAction::List)?;
         let rule_set = self.authorizer.current();
@@ -188,6 +188,8 @@ impl AccessService {
                     .into_iter()
                     .map(move |resource| CatalogResource {
                         module: catalog.module.clone(),
+                        module_label: catalog.label.clone(),
+                        label: resource.label,
                         actions: resource
                             .actions
                             .into_iter()
@@ -202,6 +204,7 @@ impl AccessService {
                                     .map(|o| o.id)
                                     .collect(),
                                 name: action.name,
+                                label: action.label,
                                 reachable: action.reachable,
                             })
                             .collect(),

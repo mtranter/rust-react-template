@@ -54,8 +54,8 @@ export function AssignRoleDialog({ subject, label }: { subject?: string; label?:
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {subject
-              ? "They hold it on every server within seconds."
-              : "Give someone a role by their subject (the sub their sign-in token carries), before or after they first sign in."}
+              ? "It takes effect within a few seconds."
+              : "Give someone a role before or after they first sign in. Use the user ID your sign-in provider shows for them."}
           </DialogDescription>
         </DialogHeader>
         <AssignRoleForm subject={subject} onAssigned={() => setOpen(false)} />
@@ -106,7 +106,7 @@ function AssignRoleForm({ subject, onAssigned }: { subject?: string; onAssigned:
         {(field) =>
           subject ? null : (
             <Field data-invalid={field.state.meta.errors.length > 0}>
-              <FieldLabel htmlFor="assign-subject">Subject</FieldLabel>
+              <FieldLabel htmlFor="assign-subject">User ID</FieldLabel>
               <Input
                 id="assign-subject"
                 autoComplete="off"

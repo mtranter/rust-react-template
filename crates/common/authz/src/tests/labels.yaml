@@ -1,0 +1,15 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Notebook
+  resources:
+    - resource: "module:notebook"
+      actions:
+        use: Open the notebook
+    - resource: note
+      label: Notes
+      actions:
+        create: Write
+        "items:add": Add items
+      scopes:
+        any: Every note
+        author: Notes they wrote

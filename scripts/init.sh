@@ -187,6 +187,7 @@ import { type GrantFilter, grantSortKeys } from "@/features/access";
 import { AccessPage } from "@/pages/access-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
+import { RolePage } from "@/pages/role-page";
 import { RootLayout } from "@/pages/root-layout";
 import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
 import { SignedOutPage } from "@/pages/signed-out-page";
@@ -228,13 +229,22 @@ const accessRoute = createRoute({
   path: "/access",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "roles" | "subjects"; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
-    tab: search.tab === "roles" || search.tab === "subjects" ? search.tab : undefined,
+  ): { tab?: AccessTab; search?: string } & GrantFilter & ListSearch<GrantSort> => ({
+    tab: accessTabs.find((tab) => tab === search.tab),
     search: typeof search.search === "string" && search.search ? search.search : undefined,
     ...grantFilter(search),
     ...validateListSearch<GrantSort>(search, grantSortKeys),
   }),
   component: AccessPage,
+});
+
+const accessTabs = ["subjects", "roles", "grants"] as const;
+type AccessTab = (typeof accessTabs)[number];
+
+const roleRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/roles/$role",
+  component: RolePage,
 });
 
 const assistantRoute = createRoute({
@@ -250,7 +260,7 @@ const assistantRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  appRoute.addChildren([indexRoute, accessRoute, assistantRoute]),
+  appRoute.addChildren([indexRoute, accessRoute, roleRoute, assistantRoute]),
   callbackRoute,
   signedOutRoute,
 ]);

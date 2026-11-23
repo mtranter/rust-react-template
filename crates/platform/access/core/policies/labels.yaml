@@ -1,0 +1,29 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Access
+  resources:
+    - resource: "module:access"
+      label: Access area
+      actions:
+        use: Open
+    - resource: grant
+      label: Permissions
+      actions:
+        list: View
+        create: Grant
+        revoke: Revoke
+    - resource: role
+      label: Roles
+      actions:
+        list: View
+        create: Create
+        delete: Delete
+    - resource: assignment
+      label: Role assignments
+      actions:
+        assign: Assign
+        unassign: Unassign
+    - resource: subject
+      label: Users
+      actions:
+        list: View

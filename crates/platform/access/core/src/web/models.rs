@@ -98,17 +98,32 @@ pub struct CatalogResponse {
 pub struct CatalogResourceResponse {
     /// The module whose resource it is.
     pub module: String,
+    /// What the module calls itself, for people.
+    pub module_label: String,
     /// `module:<name>` for a module's gate.
     pub resource: String,
+    /// What the module calls the resource, for people; a gate's is the module's.
+    pub label: String,
     pub actions: Vec<CatalogActionResponse>,
     /// What a grant of it may be scoped to: `any` first, then the resource's own.
-    pub scopes: Vec<String>,
+    pub scopes: Vec<CatalogScopeResponse>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CatalogScopeResponse {
+    /// What a grant names.
+    pub name: String,
+    /// The rows it reaches, for people (`Notes they wrote`).
+    pub label: String,
 }
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct CatalogActionResponse {
     pub name: String,
+    /// What the module calls the action, for people.
+    pub label: String,
     /// The operations performing it, by operation id.
     pub operations: Vec<String>,
     /// False when no rule or grant in force could allow it to anyone.
@@ -122,9 +137,18 @@ impl From<Vec<CatalogResource>> for CatalogResponse {
                 .into_iter()
                 .map(|r| CatalogResourceResponse {
                     module: r.module,
+                    module_label: r.module_label,
                     resource: r.resource,
+                    label: r.label,
                     actions: r.actions.into_iter().map(Into::into).collect(),
-                    scopes: std::iter::once("any".to_owned()).chain(r.scopes).collect(),
+                    scopes: r
+                        .scopes
+                        .into_iter()
+                        .map(|s| CatalogScopeResponse {
+                            name: s.name,
+                            label: s.label,
+                        })
+                        .collect(),
                 })
                 .collect(),
         }
@@ -135,6 +159,7 @@ impl From<CatalogAction> for CatalogActionResponse {
     fn from(a: CatalogAction) -> Self {
         Self {
             name: a.name,
+            label: a.label,
             operations: a.operations.into_iter().map(str::to_owned).collect(),
             reachable: a.reachable,
         }

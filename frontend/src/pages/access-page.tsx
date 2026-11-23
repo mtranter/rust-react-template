@@ -17,7 +17,7 @@ export function AccessPage() {
   const { tab, page = 1, sort, role, resource, action, search } = route.useSearch();
   const navigate = route.useNavigate();
   const manages = useManagesAccess();
-  const current = tab ?? "grants";
+  const current = tab ?? "subjects";
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
@@ -26,10 +26,10 @@ export function AccessPage() {
         {manages &&
           (current === "roles" ? (
             <CreateRoleDialog />
-          ) : current === "subjects" ? (
-            <AssignRoleDialog />
-          ) : (
+          ) : current === "grants" ? (
             <GrantAccessDialog />
+          ) : (
+            <AssignRoleDialog />
           ))}
       </div>
       {manages === false && (
@@ -44,15 +44,15 @@ export function AccessPage() {
             navigate({
               search: (prev) => ({
                 ...prev,
-                tab: value === "roles" || value === "subjects" ? value : undefined,
+                tab: value === "roles" || value === "grants" ? value : undefined,
               }),
             })
           }
         >
           <TabsList>
-            <TabsTrigger value="grants">Grants</TabsTrigger>
-            <TabsTrigger value="roles">Roles</TabsTrigger>
             <TabsTrigger value="subjects">Users</TabsTrigger>
+            <TabsTrigger value="roles">Roles</TabsTrigger>
+            <TabsTrigger value="grants">Permissions</TabsTrigger>
           </TabsList>
           <TabsContent value="grants">
             <GrantsTable

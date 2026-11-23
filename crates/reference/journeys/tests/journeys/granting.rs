@@ -92,7 +92,13 @@ async fn the_catalog_offers_each_note_action_with_the_operations_performing_it(p
         .iter()
         .find(|r| r["resource"] == "note")
         .expect("the catalog offers `note`");
-    assert_eq!(note["scopes"], serde_json::json!(["any", "author"]));
+    assert_eq!(
+        note["scopes"],
+        serde_json::json!([
+            { "name": "any", "label": "Every note" },
+            { "name": "author", "label": "Notes they wrote" },
+        ])
+    );
     let operations = |action: &str| -> Vec<Value> {
         note["actions"]
             .as_array()

@@ -24,6 +24,14 @@ configure({ asyncUtilTimeout: 5_000 });
 // jsdom doesn't implement scrolling; the router scrolls to top on navigation.
 Object.assign(globalThis, { scrollTo: () => {} });
 
+// jsdom has no PointerEvent, which base-ui's checkbox dispatches when clicked.
+if (!("PointerEvent" in globalThis)) {
+  const { MouseEvent } = globalThis as unknown as {
+    MouseEvent: new (type: string, init?: object) => object;
+  };
+  Object.assign(globalThis, { PointerEvent: class extends MouseEvent {} });
+}
+
 // Node's fetch rejects the client's relative "/api" baseUrl (browsers resolve it
 // against the origin), so tests use an absolute one.
 beforeAll(() => {
