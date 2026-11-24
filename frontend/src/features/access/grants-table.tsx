@@ -20,6 +20,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { type Labels, useCatalog } from "./catalog";
+import { LoadFailed } from "./load-failed";
 import { RevokeGrantDialog } from "./revoke-grant-dialog";
 import { useRoles } from "./use-roles";
 
@@ -129,9 +130,7 @@ export function GrantsTable({
         <DataTableViewOptions table={table} />
       </div>
       {grants.isError ? (
-        <p role="alert" className="text-destructive">
-          Failed to load the permissions.
-        </p>
+        <LoadFailed error={grants.error} what="the permissions" />
       ) : (
         <DataTable table={table} isLoading={grants.isPending} empty="No permissions." />
       )}

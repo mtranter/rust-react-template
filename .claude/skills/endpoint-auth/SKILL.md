@@ -28,7 +28,7 @@ One JWT Bearer scheme (`app_web::JwtAuth`, `crates/common/web/src/auth.rs`), who
 
 ## Authorization: what every operation needs
 
-Every operation has a security requirement unless it is in `PUBLIC` (`crates/server/src/public.rs`) with its reason; `composed_app.rs` fails on one with none that isn't listed, and on a listed one that has one. So for every operation:
+Every operation has a security requirement unless it is in `PUBLIC` (`crates/server/src/exempt.rs`) with its reason; `composed_app.rs` fails on one with none that isn't listed, and on a listed one that has one. Beside it, `SIGNED_IN` lists, with their reasons, the operations any signed-in caller may call: they take `Caller` but perform no action and are in no `OPERATIONS` (today `get_my_permissions`). `composed_app.rs` fails on an operation in both lists, and on a `SIGNED_IN` one with no security requirement or an `OPERATIONS` row. So for every other operation:
 
 1. **Its handler takes `app_web::Caller`** (`use app_web::Caller;`), never `JwtAuth`. It yields a valid token's `Principal` (no or bad token is **401**) and the token (`caller.token()`, for calls made as the caller), and checks no role: the use case's action does.
 2. **Its use case takes `&Principal`** first and plans its action before it loads or begins anything (`self.authorizer.authorize::<Note>(principal, NoteAction::Edit)?`: `Denied` is **403**). The service holds `ctx.authorizer()`. Reactions, deferred jobs and schedules pass `Principal::System`, which policies don't apply to.
@@ -85,7 +85,15 @@ Name it in a default grant and `migrate` creates it; or an admin creates it (`cr
 
 ### A public operation
 
-Leave its security requirement off and list it in `PUBLIC` (`crates/server/src/public.rs`) with the reason. Keep this rare.
+Leave its security requirement off and list it in `PUBLIC` (`crates/server/src/exempt.rs`) with the reason. Keep this rare.
+
+### An operation any signed-in caller may call
+
+Its handler takes `Caller` and its use case calls no `authorize`; list it in `SIGNED_IN` (`crates/server/src/exempt.rs`) with the reason, and leave it out of `OPERATIONS`. Only for what no admin should be able to take away, as `get_my_permissions` answers only what the caller may do. Keep this rarer still.
+
+### What the caller may do, and the SPA's Areas
+
+`get_my_permissions` (`access`, `AccessService::permissions`) answers every resource and action in the loaded policies whose plan for the caller, in the rule set in force, isn't `Denied`: the plan the server enforces, so built-in rules (`admin` on `access`' resources) count as grants do, and a scoped grant counts. The SPA's shell shows each Area whose `needs` it holds (`frontend/AGENTS.md`); hiding is no protection, so every operation still plans its own action. `make check-modules` fails on an Area naming an action no registered Module declares (`dump-spec --actions` lists them).
 
 ## Debugging
 

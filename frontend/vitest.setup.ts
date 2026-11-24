@@ -5,9 +5,10 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { client } from "./src/api/client.gen";
 
-// Every screen's layout asks whether the caller manages access and whether the assistant is on:
-// unless a test says otherwise, they don't, as the server answers a caller who isn't an admin, and
-// it is off, as with no model configured.
+// Every screen's layout asks what the caller may do and whether the assistant is on: unless a test
+// says otherwise, they may use every Area (`src/test/may-use-everything.ts`, a setup file of its
+// own as it reads the shell's registry), and it is off, as with no model configured. The catalog
+// answers only an admin, so a test of one answers it itself (`accessApi`).
 export const server = setupServer(
   http.get("*/api/assistant/status", () => HttpResponse.json({ on: false })),
   http.get("*/api/access/catalog", () =>

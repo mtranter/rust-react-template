@@ -1,6 +1,6 @@
 use super::models::{
     AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
-    RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
+    PermissionsResponse, RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
 };
 use crate::application::{AccessService, GrantFilter, SubjectFilter, Versioned};
 use crate::domain::{AssignRole, CreateRole, Grant, GrantAccess, GrantId};
@@ -142,6 +142,24 @@ impl AccessEndpoints {
         caller: Caller,
     ) -> ApiResult<Json<CatalogResponse>> {
         Ok(Json(access.0.catalog(&caller)?.into()))
+    }
+
+    /// What the caller may do: every resource and action, by name, that the rules in force let
+    /// the caller perform on at least one row, built-in rules included, sorted by resource then
+    /// action. An action scoped to some rows (a note's author) is listed; one refused outright
+    /// isn't. Any signed-in caller may ask, and it answers only for them. The server still
+    /// refuses each operation the caller may not perform.
+    #[oai(
+        path = "/me/permissions",
+        method = "get",
+        operation_id = "get_my_permissions"
+    )]
+    async fn my_permissions(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+    ) -> ApiResult<Json<PermissionsResponse>> {
+        Ok(Json(access.0.permissions(&caller).into()))
     }
 
     /// List the roles grants can be made to, each with its description and whether it is built

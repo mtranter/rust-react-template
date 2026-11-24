@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Link } from "@tanstack/react-router";
 import { DeleteRoleDialog } from "./delete-role-dialog";
+import { LoadFailed } from "./load-failed";
 import { useRoles } from "./use-roles";
 
 /** Every role, by name, each linking to what it may do. Not paged: an app has few. */
@@ -18,9 +19,7 @@ export function RolesTable() {
   return (
     <section className="space-y-3" aria-label="Roles">
       {roles.isError ? (
-        <p role="alert" className="text-destructive">
-          Failed to load the roles.
-        </p>
+        <LoadFailed error={roles.error} what="the roles" />
       ) : (
         <Table>
           <TableHeader>

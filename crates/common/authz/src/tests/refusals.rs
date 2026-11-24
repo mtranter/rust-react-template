@@ -519,9 +519,9 @@ fn a_module_naming_no_capability_or_a_malformed_one_is_refused() {
 
     for (source, why) in [
         ("id: Notes\nlabel: Notes\n", "is not a Capability id"),
-        ("id: notes\n", "`label` is required"),
+        ("id: journal\n", "`label` is required"),
         (
-            "id: notes\nlabel: Notes\nowner: me\n",
+            "id: journal\nlabel: Journal\nowner: me\n",
             "`owner` is not supported",
         ),
     ] {

@@ -15,6 +15,7 @@ import { ifMatch } from "@/lib/if-match";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Labels, useCatalog } from "./catalog";
+import { LoadFailed } from "./load-failed";
 import { RevokeGrantDialog } from "./revoke-grant-dialog";
 import { useRoles } from "./use-roles";
 
@@ -49,9 +50,10 @@ export function RolePermissions({ role }: { role: string }) {
 
   if (roles.isError || catalog.isError || grants.isError) {
     return (
-      <p role="alert" className="text-destructive">
-        Failed to load this role's permissions.
-      </p>
+      <LoadFailed
+        error={roles.error ?? catalog.error ?? grants.error}
+        what="this role's permissions"
+      />
     );
   }
   if (roles.isPending || catalog.isPending || grants.isPending) {

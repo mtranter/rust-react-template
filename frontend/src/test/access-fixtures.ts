@@ -12,7 +12,19 @@ import type {
   RoleResponse,
   SubjectResponse,
 } from "@/api";
+import { everyAreasNeeds, holding } from "@/test/may-use-everything";
 import { http, HttpResponse } from "msw";
+
+/** What an admin may do: every Area, and every change `access` offers. */
+export const adminPermissions = [
+  ...everyAreasNeeds,
+  { resource: "assignment", action: "assign" },
+  { resource: "assignment", action: "unassign" },
+  { resource: "grant", action: "create" },
+  { resource: "grant", action: "revoke" },
+  { resource: "role", action: "create" },
+  { resource: "role", action: "delete" },
+];
 
 export const catalog: CatalogResponse = {
   capabilities: [
@@ -134,6 +146,7 @@ export function accessApi(
   const requests: URLSearchParams[] = [];
   const ifMatches: (string | null)[] = [];
   const handlers = [
+    holding(adminPermissions),
     http.get("*/api/access/catalog", () => HttpResponse.json(catalog)),
     http.get("*/api/access/grants", ({ request }) => {
       const params = new URL(request.url).searchParams;
@@ -317,8 +330,11 @@ export function accessApi(
   return { handlers, requests, ifMatches };
 }
 
-/** `access` as the server answers a caller who isn't an admin. */
+const accessResources = ["subject", "role", "grant", "assignment"];
+
+/** `access` as the server answers a caller who isn't an admin: they hold none of its actions. */
 export const notAnAdmin = [
+  holding(everyAreasNeeds.filter((needs) => !accessResources.includes(needs.resource))),
   http.get("*/api/access/catalog", forbidden),
   http.get("*/api/access/grants", forbidden),
   http.get("*/api/access/roles", forbidden),

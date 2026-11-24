@@ -1,4 +1,4 @@
-import { accessApi, catalog } from "@/test/access-fixtures";
+import { accessApi, adminPermissions, notAnAdmin } from "@/test/access-fixtures";
 import { renderAt } from "@/test/render-app";
 import { sessionOf, signedInUser, stubProvider } from "@/test/sign-in-fixtures";
 import { cleanup, screen, waitFor } from "@testing-library/react";
@@ -8,32 +8,33 @@ import { ErrorResponse } from "oidc-client-ts";
 import { expect, test } from "vitest";
 import { server } from "../../vitest.setup";
 
-/** Records the `Authorization` header of each catalog request, answering as to a non-admin. */
-function catalogAuthorizations() {
+/**
+ * Records the `Authorization` header of each request for the caller's permissions, answering as
+ * to a non-admin, whom `access` refuses.
+ */
+function permissionsAuthorizations() {
   const seen: (string | null)[] = [];
   server.use(
-    http.get("*/api/access/catalog", ({ request }) => {
+    http.get("*/api/access/me/permissions", ({ request }) => {
       seen.push(request.headers.get("authorization"));
-      return HttpResponse.json(
-        { code: "forbidden", message: "forbidden", requestId: "test" },
-        { status: 403 },
-      );
+      return HttpResponse.json({ permissions: [] });
     }),
+    ...notAnAdmin,
   );
   return seen;
 }
 
 test("with no sign-in configured, shows the app and sends no token of its own", async () => {
-  const seen = catalogAuthorizations();
+  const seen = permissionsAuthorizations();
   renderAt("/access");
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
+  expect(await screen.findByText(/You may not manage this/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Account/ })).not.toBeInTheDocument();
   await waitFor(() => expect(seen).toEqual([null]));
 });
 
 test("sends a visitor who isn't signed in straight to the provider, to come back to the same page", async () => {
-  const seen = catalogAuthorizations();
+  const seen = permissionsAuthorizations();
   const provider = stubProvider();
   renderAt("/access/roles", { session: await sessionOf(provider) });
 
@@ -56,15 +57,15 @@ test("treats an expired session as signed out", async () => {
 });
 
 test("sends the signed-in user's access token on every request", async () => {
-  const seen = catalogAuthorizations();
+  const seen = permissionsAuthorizations();
   renderAt("/access", { session: await sessionOf(stubProvider({ user: signedInUser() })) });
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
+  expect(await screen.findByText(/You may not manage this/)).toBeInTheDocument();
   await waitFor(() => expect(seen).toEqual(["Bearer ada-access-token"]));
 });
 
 test("completes the sign-in at the callback and returns to the page the user started on", async () => {
-  const seen = catalogAuthorizations();
+  const seen = permissionsAuthorizations();
   const provider = stubProvider({
     callback: async () => signedInUser(undefined, { returnTo: "/access/roles" }),
   });
@@ -127,7 +128,7 @@ test("the signed-out page stays until the user signs in again", async () => {
 });
 
 test("the header names the signed-in user, by email when the ID token has no name, with a way out", async () => {
-  catalogAuthorizations();
+  permissionsAuthorizations();
   renderAt("/access", {
     session: await sessionOf(stubProvider({ user: signedInUser({ email: "ada@example.com" }) })),
   });
@@ -141,7 +142,7 @@ test("the header names the signed-in user, by email when the ID token has no nam
 });
 
 test("signing out forgets the tokens and ends on the signed-out page", async () => {
-  catalogAuthorizations();
+  permissionsAuthorizations();
   const provider = stubProvider({ user: signedInUser() });
   const user = userEvent.setup();
   const { router } = renderAt("/access", { session: await sessionOf(provider) });
@@ -157,7 +158,7 @@ test("signing out forgets the tokens and ends on the signed-out page", async () 
 });
 
 test("signing out also signs out at the provider when it has an end-session endpoint", async () => {
-  catalogAuthorizations();
+  permissionsAuthorizations();
   const provider = stubProvider({
     user: signedInUser(),
     endSession: "https://id.example.com/logout",
@@ -173,10 +174,10 @@ test("signing out also signs out at the provider when it has an end-session endp
 });
 
 /**
- * The access screen's API for an admin whose catalog request is authorized only by `valid` tokens
- * (`401` otherwise); records each catalog request's `Authorization` header.
+ * The access screen's API for an admin, authorizing only `valid` tokens (`401` otherwise); records
+ * the `Authorization` header of each request for the caller's permissions.
  */
-function catalogFor(valid: string[]) {
+function adminFor(valid: string[]) {
   const seen: (string | null)[] = [];
   const answer = (request: Request, body: object) =>
     valid.some((token) => request.headers.get("authorization") === `Bearer ${token}`)
@@ -186,9 +187,9 @@ function catalogFor(valid: string[]) {
           { status: 401 },
         );
   server.use(
-    http.get("*/api/access/catalog", ({ request }) => {
+    http.get("*/api/access/me/permissions", ({ request }) => {
       seen.push(request.headers.get("authorization"));
-      return answer(request, catalog);
+      return answer(request, { permissions: adminPermissions });
     }),
     // The header asks too, and the API refuses its token alike.
     http.get("*/api/assistant/status", ({ request }) => answer(request, { on: false })),
@@ -201,7 +202,7 @@ const renewedUser = () =>
   signedInUser(undefined, undefined, { accessToken: "renewed-access-token" });
 
 test("a 401 renews the token once and retries the request with the new one", async () => {
-  const seen = catalogFor(["renewed-access-token"]);
+  const seen = adminFor(["renewed-access-token"]);
   const provider = stubProvider({ user: signedInUser(), renew: async () => renewedUser() });
   renderAt("/access/roles", { session: await sessionOf(provider) });
 
@@ -212,7 +213,7 @@ test("a 401 renews the token once and retries the request with the new one", asy
 });
 
 test("when renewal fails after a 401, sends the user to sign in, to come back to the same page", async () => {
-  const seen = catalogFor([]);
+  const seen = adminFor([]);
   const provider = stubProvider({ user: signedInUser() });
   renderAt("/access/roles", { session: await sessionOf(provider) });
 
@@ -227,7 +228,7 @@ test("when renewal fails after a 401, sends the user to sign in, to come back to
 });
 
 test("when the retry gets a 401 too, sends the user to sign in rather than renewing again", async () => {
-  const seen = catalogFor([]);
+  const seen = adminFor([]);
   const provider = stubProvider({ user: signedInUser(), renew: async () => renewedUser() });
   renderAt("/access/subjects", { session: await sessionOf(provider) });
 
@@ -241,7 +242,16 @@ test("when the retry gets a 401 too, sends the user to sign in rather than renew
 });
 
 test("back from a sign-in whose token the API refuses too, shows the refusal rather than signing in again", async () => {
-  const seen = catalogFor([]);
+  const seen = adminFor([]);
+  // The page's own list is refused too, so the refusal has somewhere to show.
+  server.use(
+    http.get("*/api/access/subjects", () =>
+      HttpResponse.json(
+        { code: "unauthenticated", message: "unauthenticated", requestId: "test" },
+        { status: 401 },
+      ),
+    ),
+  );
   const before = stubProvider({ user: signedInUser() });
   renderAt("/access", { session: await sessionOf(before) });
   await waitFor(() => expect(before.signinRedirect).toHaveBeenCalledOnce());
@@ -251,18 +261,19 @@ test("back from a sign-in whose token the API refuses too, shows the refusal rat
   const after = stubProvider({ user: signedInUser() });
   renderAt("/access", { session: await sessionOf(after) });
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
-  expect(after.signinSilent).toHaveBeenCalledOnce();
+  expect(await screen.findByText("Failed to load the subjects.")).toBeInTheDocument();
+  // Each refused request tries a renewal of its own once the last has ended; none signs in.
+  expect(after.signinSilent).toHaveBeenCalled();
   expect(after.signinRedirect).not.toHaveBeenCalled();
   expect(seen).toHaveLength(2);
 });
 
 test("a 403 neither renews nor signs in: the access screen just hides", async () => {
-  const seen = catalogAuthorizations();
+  const seen = permissionsAuthorizations();
   const provider = stubProvider({ user: signedInUser(), renew: async () => renewedUser() });
   renderAt("/access", { session: await sessionOf(provider) });
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
+  expect(await screen.findByText(/You may not manage this/)).toBeInTheDocument();
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(seen).toEqual(["Bearer ada-access-token"]);
   expect(provider.signinSilent).not.toHaveBeenCalled();
@@ -270,7 +281,7 @@ test("a 403 neither renews nor signs in: the access screen just hides", async ()
 });
 
 test("with no sign-in configured, a 401 is neither renewed nor retried", async () => {
-  const seen = catalogFor([]);
+  const seen = adminFor([]);
   renderAt("/access");
 
   await waitFor(() => expect(seen).toEqual([null]));

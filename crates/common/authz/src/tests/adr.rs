@@ -203,8 +203,8 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
     assert_eq!(
         catalog.capability,
         Capability {
-            id: "notes".into(),
-            label: "Notes".into()
+            id: "journal".into(),
+            label: "Journal".into()
         }
     );
     let kinds: Vec<_> = catalog.resources.iter().map(|r| r.kind.as_str()).collect();

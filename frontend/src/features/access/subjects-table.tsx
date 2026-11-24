@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AssignRoleDialog } from "./assign-role-dialog";
+import { LoadFailed } from "./load-failed";
 import { UnassignRoleDialog } from "./unassign-role-dialog";
 
 /** The most the server answers in a page: past it, a search narrows the list. */
@@ -52,9 +53,7 @@ export function SubjectsTable({
         }}
       />
       {subjects.isError ? (
-        <p role="alert" className="text-destructive">
-          Failed to load the subjects.
-        </p>
+        <LoadFailed error={subjects.error} what="the subjects" />
       ) : (
         <Table>
           <TableHeader>

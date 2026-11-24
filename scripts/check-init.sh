@@ -83,7 +83,7 @@ git diff --quiet "$template" HEAD -- docs/platform || fail "\`make init\` change
 # the only ones, and access' the only MCP tools (the assistant's are REST-only).
 # composed_app.rs, which `init`'s `make check` ran, fails on a tool not in its TOOLS.
 access_ops='["assign_role","create_role","delete_role","get_access_catalog","grant_access","list_grants","list_roles","list_subjects","revoke_grant","unassign_role"]'
-platform_ops=$(jq -c '. + ["decide_tool_call","delete_conversation","get_assistant_status","get_conversation","list_conversations","send_message","start_conversation"] | sort' <<<"$access_ops")
+platform_ops=$(jq -c '. + ["decide_tool_call","get_my_permissions","delete_conversation","get_assistant_status","get_conversation","list_conversations","send_message","start_conversation"] | sort' <<<"$access_ops")
 jq -e --argjson ops "$platform_ops" '[.paths[][].operationId] | sort == $ops' frontend/openapi.json >/dev/null ||
   fail "the app's spec has operations other than the platform's: $(jq -c '[.paths[][].operationId]' frontend/openapi.json)"
 [ "$(sed -n '/^const TOOLS/,/^];/p' crates/server/tests/composed_app.rs | grep -oE '"[a-z_]+"' | tr -d '"' | sort | paste -sd, -)" = \
@@ -107,7 +107,7 @@ $named"
 # An app starts with no Capabilities, so with no workspace members for them:
 # a glob matching nothing would fail the workspace.
 [ ! -e crates/capabilities ] || fail "\`make init\` left crates/capabilities/"
-! grep -qF 'crates/capabilities/' Cargo.toml || fail "\`make init\` left Cargo.toml naming crates/capabilities/"
+! grep -v '^ *#' Cargo.toml | grep -qF 'crates/capabilities/' || fail "\`make init\` left Cargo.toml naming crates/capabilities/"
 
 make --no-print-directory new-module CAPABILITY=crm NAME=contacts
 for made in crates/capabilities/crm/capability.yaml crates/capabilities/crm/contacts/core crates/capabilities/crm/contacts/api; do

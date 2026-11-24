@@ -48,7 +48,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./vitest.setup.ts"],
+    setupFiles: ["./vitest.setup.ts", "./src/test/may-use-everything.ts"],
     // Tests through the router type through whole forms; on a loaded machine one can take past 5s.
     testTimeout: 20_000,
   },

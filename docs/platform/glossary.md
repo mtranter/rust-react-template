@@ -238,7 +238,7 @@ A Capability's screens as the SPA presents them, with its own icon and entry in 
 _Avoid_: Module (for an App), child app, sub-app
 
 **Area**:
-One function of an App, at its own route under the App's path and its own entry in the App's sidebar (CRM › Contacts). Navigation is never deeper: a record is a page inside its Area, not an Area.
+One function of an App, at its own route under the App's path and its own entry in the App's sidebar (CRM › Contacts). Navigation is never deeper: a record is a page inside its Area, not an Area. Each Area needs one action, a resource's as its Module's policies name it (Contacts needs `contact` / `list`): a user is shown the Areas whose action they hold, and the Apps with at least one. Hiding an Area is a convenience: the server still refuses its operations.
 _Avoid_: Tab, section, sub-function
 
 ## Testing

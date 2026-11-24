@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 import { server } from "../../vitest.setup";
-import { accessApi } from "./access-fixtures";
+import { accessApi, notAnAdmin } from "./access-fixtures";
 import { assistantApi, rolesConversation, untitledConversation } from "./assistant-fixtures";
 
 function conversations() {
@@ -48,7 +48,7 @@ test("keeps the assistant open on its conversation from screen to screen, until 
   await user.click(await within(panel).findByRole("button", { name: /^Which roles are there/ }));
   expect(await within(panel).findByRole("article")).toBeInTheDocument();
 
-  const areas = screen.getByRole("navigation", { name: "Access" });
+  const areas = await screen.findByRole("navigation", { name: "Access" });
   await user.click(within(areas).getByRole("link", { name: "Roles" }));
   await screen.findByRole("region", { name: "Roles" });
 
@@ -60,9 +60,10 @@ test("keeps the assistant open on its conversation from screen to screen, until 
 });
 
 test("hides the assistant's button while it is off", async () => {
+  server.use(...notAnAdmin);
   renderAt("/access");
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
+  expect(await screen.findByText(/You may not manage this/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
 });
 

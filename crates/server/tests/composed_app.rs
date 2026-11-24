@@ -12,7 +12,7 @@ use app_web::{JwtVerifier, Provide, PublicUrl};
 use poem::test::TestClient;
 use serde_json::Value;
 use server::sign_in::{self, SignIn};
-use server::{Composition, PUBLIC, Registered};
+use server::{Composition, PUBLIC, Registered, SIGNED_IN};
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -393,6 +393,10 @@ fn the_spas_sign_in_settings_are_no_operation() {
     );
 }
 
+fn listed(list: &[(&str, &str)], id: &str) -> bool {
+    list.iter().any(|(listed, _)| *listed == id)
+}
+
 #[test]
 fn every_operation_is_guarded_unless_it_is_listed_as_public() {
     for (path, method, operation) in operations() {
@@ -400,7 +404,7 @@ fn every_operation_is_guarded_unless_it_is_listed_as_public() {
         let guarded = operation["security"]
             .as_array()
             .is_some_and(|requirements| !requirements.is_empty());
-        let public = PUBLIC.iter().any(|(public, _)| *public == id);
+        let public = listed(PUBLIC, id);
         assert!(
             guarded || public,
             "{method} {path} ({id}) has no security requirement: guard it with its module's \
@@ -421,12 +425,45 @@ fn every_operation_is_guarded_unless_it_is_listed_as_public() {
 }
 
 #[test]
+fn an_operation_open_to_every_signed_in_caller_is_guarded_and_performs_no_action() {
+    let performs = server::operations::<Registered>();
+    for (id, reason) in SIGNED_IN {
+        assert!(
+            !reason.is_empty(),
+            "`{id}` is signed-in only without a reason"
+        );
+        assert!(
+            !listed(PUBLIC, id),
+            "`{id}` is listed in both `server::PUBLIC` and `server::SIGNED_IN`"
+        );
+        let operation = operations()
+            .map(|(_, _, operation)| operation)
+            .find(|operation| operation["operationId"] == *id)
+            .unwrap_or_else(|| {
+                panic!("`{id}` is listed in `server::SIGNED_IN` but there is no such operation")
+            });
+        assert!(
+            operation["security"]
+                .as_array()
+                .is_some_and(|requirements| !requirements.is_empty()),
+            "`{id}` is listed in `server::SIGNED_IN` but has no security requirement: take \
+             `Caller`"
+        );
+        assert!(
+            performs.iter().all(|p| p.operation != *id),
+            "`{id}` is listed in `server::SIGNED_IN` and in its module's `OPERATIONS`: it is \
+             one or the other"
+        );
+    }
+}
+
+#[test]
 fn every_guarded_operation_names_an_action_its_modules_policies_have() {
     let policies = server::policies::<Registered>().expect("every module's policies load");
     let performs = server::operations::<Registered>();
     for (path, method, operation) in operations() {
         let id = operation["operationId"].as_str().unwrap_or_default();
-        if PUBLIC.iter().any(|(public, _)| *public == id) {
+        if listed(PUBLIC, id) || listed(SIGNED_IN, id) {
             continue;
         }
         let named: Vec<_> = performs.iter().filter(|p| p.operation == id).collect();
@@ -434,7 +471,7 @@ fn every_guarded_operation_names_an_action_its_modules_policies_have() {
             named.len(),
             1,
             "{method} {path} ({id}) is guarded, so its module's `OPERATIONS` names the action \
-             it performs, once"
+             it performs, once, unless it is listed in `server::SIGNED_IN` with why"
         );
         let performed = named[0];
         let grant = Grant {

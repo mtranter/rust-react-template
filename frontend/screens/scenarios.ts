@@ -248,6 +248,20 @@ const subjects: SubjectResponse[] = [
 
 /** `access` as the server answers an admin. */
 const accessApi = [
+  http.get("*/api/access/me/permissions", () =>
+    HttpResponse.json({
+      permissions: [
+        ["note", "list"],
+        ["noteSummary", "search"],
+        ["subject", "list"],
+        ["role", "list"],
+        ["role", "create"],
+        ["grant", "list"],
+        ["grant", "create"],
+        ["assignment", "assign"],
+      ].map(([resource, action]) => ({ resource, action })),
+    }),
+  ),
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
   http.get("*/api/access/grants", ({ request }) => {
     const params = new URL(request.url).searchParams;
@@ -549,7 +563,14 @@ export const scenarios: Scenario[] = [
   {
     name: "access-not-an-admin",
     route: "/access/subjects",
-    handlers: [],
+    handlers: [
+      http.get("*/api/access/subjects", () =>
+        HttpResponse.json(
+          { code: "forbidden", message: "forbidden", requestId: "screens" },
+          { status: 403 },
+        ),
+      ),
+    ],
     shows: (page) => page.getByRole("alert"),
   },
   ...assistantScenarios,

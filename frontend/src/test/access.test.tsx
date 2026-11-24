@@ -1,4 +1,12 @@
-import { accessApi, grant, notAnAdmin, role, subject } from "@/test/access-fixtures";
+import {
+  accessApi,
+  adminPermissions,
+  grant,
+  notAnAdmin,
+  role,
+  subject,
+} from "@/test/access-fixtures";
+import { holding } from "@/test/may-use-everything";
 import { renderAt } from "@/test/render-app";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -26,24 +34,52 @@ async function rolesPage() {
   return { user, table };
 }
 
-test("hides the access screen and its link from a caller who isn't an admin", async () => {
+test("hides the access screen and its link from a caller who holds none of its actions", async () => {
   server.use(...notAnAdmin);
-  renderAt("/access");
+  const { queryClient } = renderAt("/");
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Access" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("region", { name: "Permissions" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Grant access" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("navigation", { name: "Access" })).not.toBeInTheDocument();
+  await screen.findByRole("heading", { level: 1 });
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  expect(screen.queryByRole("region", { name: "Platform" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Access/ })).not.toBeInTheDocument();
 });
 
-test("hides the Users page from a caller who isn't an admin, even linked to it", async () => {
+test("shows the server's refusal on an access page linked to directly by a caller who may not", async () => {
   server.use(...notAnAdmin);
   renderAt("/access/subjects");
 
-  expect(await screen.findByText(/Only an admin can manage/)).toBeInTheDocument();
-  expect(screen.queryByRole("region", { name: "Users" })).not.toBeInTheDocument();
+  expect(await screen.findByText(/You may not manage this/)).toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "Access" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Add user" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("shows Access with Roles and Permissions but no Users to a caller who may not list subjects", async () => {
+  server.use(
+    holding(adminPermissions.filter((p) => p.resource !== "subject")),
+    ...accessApi([]).handlers,
+  );
+  renderAt("/access/roles");
+
+  const areas = await screen.findByRole("navigation", { name: "Access" });
+  expect(within(areas).getByRole("link", { name: "Roles" })).toBeInTheDocument();
+  expect(within(areas).getByRole("link", { name: "Permissions" })).toBeInTheDocument();
+  expect(within(areas).queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+});
+
+test("opens Access at the first area the caller may use", async () => {
+  server.use(
+    holding(adminPermissions.filter((p) => p.resource !== "subject")),
+    ...accessApi([]).handlers,
+  );
+  const user = userEvent.setup();
+  const { router } = renderAt("/");
+
+  const platform = await screen.findByRole("region", { name: "Platform" });
+  await user.click(within(platform).getByRole("link", { name: /Access/ }));
+
+  expect(await screen.findByRole("heading", { name: "Roles" })).toBeInTheDocument();
+  expect(router.state.location.pathname).toBe("/access/roles");
 });
 
 test("lists the grants for an admin, marking a stale one", async () => {
@@ -226,7 +262,7 @@ test("lists the roles on their page, reached from the sidebar, marking the built
   const user = userEvent.setup();
   await screen.findByRole("region", { name: "Users" });
 
-  const areas = screen.getByRole("navigation", { name: "Access" });
+  const areas = await screen.findByRole("navigation", { name: "Access" });
   await user.click(within(areas).getByRole("link", { name: "Roles" }));
 
   const table = await screen.findByRole("region", { name: "Roles" });
@@ -327,7 +363,7 @@ test("returns to the Users page from another, through the sidebar", async () => 
   const user = userEvent.setup();
   await screen.findByRole("region", { name: "Roles" });
 
-  const areas = screen.getByRole("navigation", { name: "Access" });
+  const areas = await screen.findByRole("navigation", { name: "Access" });
   await user.click(within(areas).getByRole("link", { name: "Users" }));
 
   expect(await screen.findByRole("region", { name: "Users" })).toBeInTheDocument();

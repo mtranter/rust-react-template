@@ -5,16 +5,16 @@
 
 mod app;
 pub mod config;
+mod exempt;
 mod modules;
-mod public;
 mod shutdown;
 pub mod sign_in;
 pub mod telemetry;
 mod tools;
 
 pub use app::build_app;
+pub use exempt::{PUBLIC, SIGNED_IN};
 pub use modules::Registered;
-pub use public::PUBLIC;
 pub use shutdown::shutdown_signal;
 pub use tools::Tools;
 
@@ -74,6 +74,21 @@ pub fn policies<C: Composition>() -> Result<Vec<Policies>, PoliciesError> {
 /// ([`rules`]) before it serves, and the worker, acting as `System`, needs no more.
 pub fn authorizer<C: Composition>() -> Result<Authorizer, Box<dyn std::error::Error>> {
     Ok(Authorizer::baseline(&policies::<C>()?)?)
+}
+
+/// Every resource and action the modules' policies declare, `(resource, action)`.
+pub fn actions<C: Composition>() -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let rule_set = authorizer::<C>()?.current();
+    Ok(policies::<C>()?
+        .iter()
+        .flat_map(|policies| policies.catalog(&rule_set).resources)
+        .flat_map(|resource| {
+            resource
+                .actions
+                .into_iter()
+                .map(move |action| (resource.kind.clone(), action.name))
+        })
+        .collect())
 }
 
 /// Every module's policies and operations: what `access` grants from.

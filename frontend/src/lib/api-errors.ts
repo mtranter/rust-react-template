@@ -41,3 +41,8 @@ export function isUnavailable(error: unknown): boolean {
 export function isPreconditionFailed(error: unknown): boolean {
   return isErrorBody(error) && error.code === "precondition_failed";
 }
+
+/** The caller may not do it: the server's refusal, whatever the SPA showed them. */
+export function isForbidden(error: unknown): boolean {
+  return isErrorBody(error) && error.code === "forbidden";
+}

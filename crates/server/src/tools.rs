@@ -47,6 +47,11 @@ impl<C: Composition> Surface for Tools<C> {
             operation_id: "decide_tool_call",
             reason: ASSISTANT,
         },
+        RestOnly {
+            operation_id: "get_my_permissions",
+            reason: "what the SPA shows the caller: an agent over MCP is listed the tools it has \
+anyway",
+        },
     ];
 }
 

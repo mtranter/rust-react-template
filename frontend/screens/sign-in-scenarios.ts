@@ -1,4 +1,5 @@
 import type { SignInProvider } from "@/lib/sign-in";
+import { http, HttpResponse } from "msw";
 import { ErrorResponse, User } from "oidc-client-ts";
 import type { Scenario } from "./scenarios.ts";
 
@@ -42,7 +43,15 @@ export const signInScenarios: Scenario[] = [
   {
     name: "signed-in",
     route: "/access/subjects",
-    handlers: [],
+    // As to a user who isn't an admin, whom the page's list refuses.
+    handlers: [
+      http.get("*/api/access/subjects", () =>
+        HttpResponse.json(
+          { code: "forbidden", message: "forbidden", requestId: "screens" },
+          { status: 403 },
+        ),
+      ),
+    ],
     signIn: () => provider({ user: ada() }),
     steps: async (page) => {
       await page.getByRole("button", { name: "Account: Ada Lovelace" }).click();

@@ -1,7 +1,8 @@
 import type { ListResultNoteSummaryResponse } from "@/api";
 import { listRequests } from "@/test/fixtures";
+import { holding } from "@/test/may-use-everything";
 import { renderAt } from "@/test/render-app";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
@@ -42,4 +43,16 @@ test("searching again starts from the first page", async () => {
   await user.type(screen.getByRole("searchbox", { name: "Search notes" }), "b");
 
   await waitFor(() => expect(router.state.location.href).toBe("/notes/search?q=b"));
+});
+
+test("a caller who may only search sees Notes with Search alone", async () => {
+  server.use(
+    holding([{ resource: "noteSummary", action: "search" }]),
+    http.get("*/api/note-search", () => HttpResponse.json(found)),
+  );
+  renderAt("/notes/search");
+
+  const areas = await screen.findByRole("navigation", { name: "Notes" });
+  expect(within(areas).getByRole("link", { name: "Search" })).toBeInTheDocument();
+  expect(within(areas).queryByRole("link", { name: "All notes" })).not.toBeInTheDocument();
 });
