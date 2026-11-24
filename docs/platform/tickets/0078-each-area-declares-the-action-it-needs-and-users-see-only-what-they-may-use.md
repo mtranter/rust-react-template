@@ -1,7 +1,7 @@
 ---
 id: 0078
 name: Each Area declares the action it needs, and users see only the Areas and Apps they may use
-status: needs-info
+status: done
 priority: P1
 size: M
 blocked_by: [0077]
