@@ -2,10 +2,6 @@ apiVersion: auth.flagrante.io/v1
 labels:
   module: Notes
   resources:
-    - resource: "module:notes"
-      label: Notes area
-      actions:
-        use: Open
     - resource: note
       label: Notes
       actions:

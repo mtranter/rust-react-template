@@ -48,7 +48,7 @@ pub struct AccessService {
     pub(super) transactions: Arc<dyn Transactions>,
     pub(super) clock: Arc<dyn Clock>,
     pub(super) authorizer: Arc<Authorizer>,
-    modules: Arc<Modules>,
+    pub(super) modules: Arc<Modules>,
 }
 
 pub(super) fn acting(principal: &Principal) -> GrantedBy {
@@ -172,7 +172,7 @@ impl AccessService {
         tx.commit().await
     }
 
-    /// Every module's gate and resources, their actions with the operations performing each and
+    /// Every module's resources, their actions with the operations performing each and
     /// whether anything in force could allow them, and their scopes, each labelled for admins.
     pub fn catalog(&self, principal: &Principal) -> AppResult<Vec<CatalogResource>> {
         self.authorize(principal, GrantAction::List)?;

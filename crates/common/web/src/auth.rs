@@ -351,7 +351,7 @@ enum AuthError {
 }
 
 /// JWT Bearer security scheme: the token verified, then resolved to the [`Principal`] acting. A
-/// Module's operations take its `Caller` instead, which passes its gate too.
+/// Module's operations take [`crate::Caller`] instead, which also carries the token.
 #[derive(SecurityScheme)]
 #[oai(ty = "bearer", checker = "jwt_checker")]
 pub struct JwtAuth(pub Principal);

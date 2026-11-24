@@ -81,22 +81,17 @@ fn adr_0040s_examples_plan_as_it_says() {
 }
 
 #[test]
-fn the_gate_is_granted_by_role_alone() {
+fn a_role_granted_nothing_is_denied_every_action_with_no_gate_to_pass() {
     let rule_set = compile(&adr_policies(), adr_policies().default_grants());
+    for action in <NoteAction as strum::VariantArray>::VARIANTS {
+        assert_eq!(
+            rule_set.plan::<Note>(&user(ALICE, &["support"]), *action),
+            Plan::Denied,
+            "{action:?}"
+        );
+    }
     assert_eq!(
-        rule_set.plan_gate(&user(ALICE, &["user"]), "notebook"),
-        Plan::Allowed
-    );
-    assert_eq!(
-        rule_set.plan_gate(&user(ALICE, &["support"]), "notebook"),
-        Plan::Denied
-    );
-    assert_eq!(
-        rule_set.plan_gate(&user(ALICE, &["user"]), "billing"),
-        Plan::Denied
-    );
-    assert_eq!(
-        rule_set.plan_gate(&Principal::System, "notebook"),
+        rule_set.plan::<Note>(&user(ALICE, &["user"]), NoteAction::Create),
         Plan::Allowed
     );
 }
@@ -148,12 +143,12 @@ fn default_grants_expand_to_one_per_action() {
         "edit",
         Scope::Named("author".into())
     )));
-    assert!(policies.default_grants().contains(&grant(
-        "user",
-        "module:notebook",
-        "use",
-        Scope::Any
-    )));
+    assert!(
+        policies
+            .default_grants()
+            .iter()
+            .all(|g| !g.resource.starts_with("module:"))
+    );
 }
 
 #[test]
@@ -206,8 +201,8 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
     let catalog = policies.catalog(&compile(&policies, policies.default_grants()));
     assert_eq!(catalog.module, "notebook");
     let kinds: Vec<_> = catalog.resources.iter().map(|r| r.kind.as_str()).collect();
-    assert_eq!(kinds, ["module:notebook", "note"]);
-    let note = &catalog.resources[1];
+    assert_eq!(kinds, ["note"]);
+    let note = &catalog.resources[0];
     let scopes: Vec<_> = note.scopes.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(scopes, ["any", "author"]);
     assert!(note.actions.iter().all(|a| a.reachable));
@@ -221,7 +216,7 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
             .cloned()
             .collect::<Vec<_>>(),
     );
-    let unreachable: Vec<_> = policies.catalog(&only_users).resources[1]
+    let unreachable: Vec<_> = policies.catalog(&only_users).resources[0]
         .actions
         .iter()
         .filter(|a| !a.reachable)
@@ -249,12 +244,7 @@ fn the_catalog_labels_what_its_labels_file_names_and_words_the_rest() {
         .expect("loads");
     let catalog = policies.catalog(&compile(&policies, &[]));
     assert_eq!(catalog.label, "Notebook");
-    let gate = &catalog.resources[0];
-    assert_eq!(
-        (gate.label.as_str(), gate.actions[0].label.as_str()),
-        ("Notebook", "Open the notebook")
-    );
-    let note = &catalog.resources[1];
+    let note = &catalog.resources[0];
     assert_eq!(note.label, "Notes");
     let actions: Vec<_> = note
         .actions
@@ -276,6 +266,6 @@ fn the_catalog_labels_what_its_labels_file_names_and_words_the_rest() {
 
     let unlabelled = adr_policies().catalog(&compile(&policies, &[]));
     assert_eq!(unlabelled.label, "Notebook");
-    assert_eq!(unlabelled.resources[1].label, "Note");
-    assert_eq!(unlabelled.resources[1].scopes[0].label, "Any");
+    assert_eq!(unlabelled.resources[0].label, "Note");
+    assert_eq!(unlabelled.resources[0].scopes[0].label, "Any");
 }

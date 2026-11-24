@@ -2,10 +2,6 @@ apiVersion: auth.flagrante.io/v1
 labels:
   module: Access
   resources:
-    - resource: "module:access"
-      label: Access area
-      actions:
-        use: Open
     - resource: grant
       label: Permissions
       actions:

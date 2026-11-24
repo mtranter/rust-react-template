@@ -36,8 +36,8 @@ pub fn handlers(_ctx: &Context) -> Handlers {
         .project::<UserTopic>(COPY_AUTHORS, AuthorRows)
 }
 
-/// The note-search module's gate and its `noteSummary` resource, and what
-/// `user` and `admin` are granted by default (ADR 0040).
+/// The note-search module's `noteSummary` resource, and what `user` and
+/// `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("note-search")
         .resource::<NoteSummary>(policy_file!("policies/note_summary.yaml"))

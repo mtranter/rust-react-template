@@ -1,6 +1,4 @@
 apiVersion: auth.flagrante.io/v1
 defaultGrants:
-  - { role: user, resource: "module:note-search", action: use }
   - { role: user, resource: noteSummary, action: search }
-  - { role: admin, resource: "module:note-search", action: use }
   - { role: admin, resource: noteSummary, actions: ["*"] }

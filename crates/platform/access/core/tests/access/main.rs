@@ -12,6 +12,7 @@ mod behaviours {
     mod granting;
     mod listing;
     mod rebuilding;
+    mod retiring_gates;
     mod revoking;
     mod roles;
     mod subjects;

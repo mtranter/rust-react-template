@@ -1,4 +1,3 @@
-use super::Caller;
 use super::models::{
     AssistantStatusResponse, ConversationResponse, ConversationSort, ConversationSummaryResponse,
     DecideToolCallRequest, SendMessageRequest, TurnEventResponse,
@@ -8,7 +7,7 @@ use crate::application::{AssistantService, TurnEvent, Versioned, proposals, summ
 use crate::domain::{Conversation, ConversationId, ToolCallId};
 use app_error::AppError;
 use app_web::mcp::Toolbox;
-use app_web::{ApiResult, Draining, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, Caller, Draining, ListResult, WithETag, if_match_version, paged, sorts};
 use futures_util::stream::{self, BoxStream, StreamExt};
 use poem::web::Data;
 use poem_openapi::{

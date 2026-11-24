@@ -39,7 +39,7 @@ fn service(ctx: &Context) -> UserService {
     )
 }
 
-/// The users module's gate, its `user` resource and the `self` scope, and
+/// The users module's `user` resource and the `self` scope, and
 /// what `user` and `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("users")

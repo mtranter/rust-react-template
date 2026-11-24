@@ -34,10 +34,6 @@ async fn a_role_granted_access_to_grants_may_list_them(pool: PgPool) {
     let access = Access::seeded(pool).await;
     access.create_role("auditor", "").await.unwrap();
     access
-        .grant("auditor", "module:access", "use", "any")
-        .await
-        .unwrap();
-    access
         .grant("auditor", "grant", "list", "any")
         .await
         .unwrap();
@@ -63,6 +59,6 @@ async fn no_revocation_takes_an_admins_access_to_grants(pool: PgPool) {
 
     assert!(access.grants().await.unwrap().items.is_empty());
     assert!(access.catalog().await.is_ok());
-    assert!(access.allows("admin", "module:access", "use"));
+    assert!(access.allows("admin", "grant", "create"));
     assert!(access.grant("user", "gadget", "make", "any").await.is_ok());
 }

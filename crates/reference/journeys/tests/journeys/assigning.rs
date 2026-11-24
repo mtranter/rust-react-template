@@ -11,10 +11,6 @@ async fn a_user_holds_a_role_an_admin_assigns_from_the_next_poll_until_it_is_una
     let admin = app.as_admin(ADMIN_ID).await;
     let bob = app.as_user(USER_ID_BOB);
     admin.create_role("support").await.unwrap();
-    admin
-        .grant("support", "module:access", "use", "any")
-        .await
-        .unwrap();
     admin.grant("support", "role", "list", "any").await.unwrap();
     app.polls_the_grants().await;
     assert_eq!(bob.roles().await.err(), Some(Refusal::Forbidden));

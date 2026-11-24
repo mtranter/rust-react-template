@@ -1,6 +1,6 @@
 use app_authz::CatalogScope;
 
-/// A resource as admins grant it: a module's gate (`module:<name>`) or one of its resources.
+/// A module's resource, as admins grant it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogResource {
     pub module: String,

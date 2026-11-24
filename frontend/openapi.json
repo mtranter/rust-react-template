@@ -523,7 +523,7 @@
         "tags": [
           "Access"
         ],
-        "summary": "What can be granted: every module's gate (`module:<name>`, action `use`) and resources,\neach action with the operations performing it and whether anything in force could allow\nit (`reachable`), and the scopes a grant of it may name, each with a `label` to show people. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "summary": "What can be granted: every module's resources,\neach action with the operations performing it and whether anything in force could allow\nit (`reachable`), and the scopes a grant of it may name, each with a `label` to show people. `403` unless the caller is an `admin`, or holds a role granted it.",
         "responses": {
           "200": {
             "description": "",
@@ -4972,12 +4972,11 @@
             "description": "What the module calls itself, for people."
           },
           "resource": {
-            "type": "string",
-            "description": "`module:<name>` for a module's gate."
+            "type": "string"
           },
           "label": {
             "type": "string",
-            "description": "What the module calls the resource, for people; a gate's is the module's."
+            "description": "What the module calls the resource, for people."
           },
           "actions": {
             "type": "array",
@@ -4997,7 +4996,7 @@
       "CatalogResponse": {
         "type": "object",
         "title": "CatalogResponse",
-        "description": "What admins grant from: every module's gate and resources.",
+        "description": "What admins grant from: every module's resources.",
         "required": [
           "resources"
         ],
@@ -5298,14 +5297,14 @@
           },
           "resource": {
             "type": "string",
-            "description": "A module's gate (`module:<name>`, whose only action is `use`) or one of its resources."
+            "description": "One of a module's resources."
           },
           "action": {
             "type": "string"
           },
           "scope": {
             "type": "string",
-            "description": "`any` (every row), or one of the resource's scopes. A gate takes only `any`.",
+            "description": "`any` (every row), or one of the resource's scopes.",
             "default": "any"
           }
         }
@@ -6479,7 +6478,7 @@
     "securitySchemes": {
       "JwtAuth": {
         "type": "http",
-        "description": "JWT Bearer security scheme: the token verified, then resolved to the [`Principal`] acting. A\nModule's operations take its `Caller` instead, which passes its gate too.",
+        "description": "JWT Bearer security scheme: the token verified, then resolved to the [`Principal`] acting. A\nModule's operations take [`crate::Caller`] instead, which also carries the token.",
         "scheme": "bearer"
       }
     }

@@ -1,4 +1,3 @@
-use super::Caller;
 use super::models::{
     AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
     RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
@@ -6,7 +5,7 @@ use super::models::{
 use crate::application::{AccessService, GrantFilter, SubjectFilter, Versioned};
 use crate::domain::{AssignRole, CreateRole, Grant, GrantAccess, GrantId};
 use app_error::AppError;
-use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
     ApiResponse, OpenApi, Tags,
@@ -133,7 +132,7 @@ impl AccessEndpoints {
         Ok(Revoked::Revoked)
     }
 
-    /// What can be granted: every module's gate (`module:<name>`, action `use`) and resources,
+    /// What can be granted: every module's resources,
     /// each action with the operations performing it and whether anything in force could allow
     /// it (`reachable`), and the scopes a grant of it may name, each with a `label` to show people. `403` unless the caller is an `admin`, or holds a role granted it.
     #[oai(path = "/catalog", method = "get", operation_id = "get_access_catalog")]

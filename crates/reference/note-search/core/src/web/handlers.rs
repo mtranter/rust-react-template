@@ -1,7 +1,6 @@
-use super::Caller;
 use super::models::{NoteSummaryResponse, NoteSummarySort};
 use crate::application::NoteSearchService;
-use app_web::{ApiResult, ListResult, paged, sorts};
+use app_web::{ApiResult, Caller, ListResult, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{OpenApi, Tags, param::Query, payload::Json};
 

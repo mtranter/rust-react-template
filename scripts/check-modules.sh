@@ -12,7 +12,7 @@
 #   deny.toml                      both the `sqlx` and `poem` wrappers lists, registered or not
 #
 # A module with operations must have policies (ADR 0040): its `di.rs` registers
-# them with `Module::with_policies(..)`, with its gate, resources and default
+# them with `Module::with_policies(..)`, with its resources and default
 # grants, and its web layer's `OPERATIONS` with `.performing(..)`.
 #
 # It also checks that a module with a seed declares the number its seed ids are

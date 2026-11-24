@@ -16,10 +16,10 @@ use poem_openapi::{Enum, Object};
 #[oai(rename_all = "camelCase")]
 pub struct GrantRequest {
     pub role: String,
-    /// A module's gate (`module:<name>`, whose only action is `use`) or one of its resources.
+    /// One of a module's resources.
     pub resource: String,
     pub action: String,
-    /// `any` (every row), or one of the resource's scopes. A gate takes only `any`.
+    /// `any` (every row), or one of the resource's scopes.
     #[oai(default = "any_scope")]
     pub scope: String,
 }
@@ -86,7 +86,7 @@ impl From<Versioned<Grant>> for GrantResponse {
     }
 }
 
-/// What admins grant from: every module's gate and resources.
+/// What admins grant from: every module's resources.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct CatalogResponse {
@@ -100,9 +100,8 @@ pub struct CatalogResourceResponse {
     pub module: String,
     /// What the module calls itself, for people.
     pub module_label: String,
-    /// `module:<name>` for a module's gate.
     pub resource: String,
-    /// What the module calls the resource, for people; a gate's is the module's.
+    /// What the module calls the resource, for people.
     pub label: String,
     pub actions: Vec<CatalogActionResponse>,
     /// What a grant of it may be scoped to: `any` first, then the resource's own.

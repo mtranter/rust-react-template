@@ -144,9 +144,4 @@ impl Authorizer {
             AppError::not_found(R::KIND)
         })
     }
-
-    /// The Module's gate, `module:<name>` / `use`.
-    pub fn allows_use_of(&self, principal: &Principal, module: &str) -> bool {
-        self.current.load().plan_gate(principal, module) == Plan::Allowed
-    }
 }

@@ -198,12 +198,8 @@ The counter `access` bumps in the unit of work of every change to the Grants or 
 _Avoid_: Version (that is a root's), generation
 
 **Catalog**:
-What admins grant from (`get_access_catalog`): every Module's Gate and resources, each action with the operations performing it and whether anything in force could allow it, and each resource's Scopes, each with a label for people from its Module's `labels.yaml` (or its name in words). Built from the loaded policies and `OPERATIONS`, never stored.
+What admins grant from (`get_access_catalog`): every Module's resources, each action with the operations performing it and whether anything in force could allow it, and each resource's Scopes, each with a label for people from its Module's `labels.yaml` (or its name in words). Built from the loaded policies and `OPERATIONS`, never stored.
 _Avoid_: Permission list, schema
-
-**Gate**:
-A Module's resource `module:<name>` and its one action, `use`, granted on roles only: what a Principal must pass before any of the Module's guarded operations, through its `Caller`.
-_Avoid_: Middleware, guard (for this)
 
 **Plan**:
 What the rule set answers for a Principal's action: `Allowed`, `Denied`, or `Where(filter)`, the conditions left once the Principal's roles are known, checked against a loaded row or pushed into a list's query. A list's repository takes it as `Rows` (`All` or `Where(filter)`), never `Denied`: the service has refused that already.

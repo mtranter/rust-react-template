@@ -1,9 +1,8 @@
-use super::Caller;
 use super::models::{ChangeDisplayNameRequest, CreateUserRequest, UserResponse, UserSort};
 use crate::application::{UserService, Versioned};
 use crate::domain::{ChangeDisplayName, RegisterUser, User, UserId};
 use app_error::AppError;
-use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
     ApiResponse, OpenApi, Tags,

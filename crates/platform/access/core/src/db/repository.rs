@@ -184,6 +184,18 @@ impl GrantRepository for PgGrantRepository {
         Ok(found.into_iter().map(|row| row.restore().entity).collect())
     }
 
+    async fn all_versioned(&self, tx: &mut Tx) -> AppResult<Vec<Versioned<Grant>>> {
+        let found = sqlx::query_as!(
+            GrantRow,
+            r#"SELECT id, role, resource, action, scope, granted_by, granted_at, version
+               FROM access.grant ORDER BY resource, action, role, scope"#,
+        )
+        .fetch_all(conn(tx))
+        .await
+        .map_err(AppError::internal)?;
+        Ok(found.into_iter().map(GrantRow::restore).collect())
+    }
+
     async fn insert(&self, tx: &mut Tx, grant: &Grant) -> AppResult<Version> {
         let version = sqlx::query_scalar!(
             r#"
@@ -287,6 +299,24 @@ impl GrantRepository for PgGrantRepository {
             rule.action,
             scope_name(&rule.scope),
             at,
+        )
+        .execute(conn(tx))
+        .await
+        .map_err(AppError::internal)?;
+        Ok(())
+    }
+
+    async fn gates_retired(&self, tx: &mut Tx) -> AppResult<bool> {
+        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM access.gates_retired) AS "retired!""#)
+            .fetch_one(conn(tx))
+            .await
+            .map_err(AppError::internal)
+    }
+
+    async fn mark_gates_retired(&self, tx: &mut Tx, at: DateTime<Utc>) -> AppResult<()> {
+        sqlx::query!(
+            r#"INSERT INTO access.gates_retired (retired_at) VALUES ($1)"#,
+            at
         )
         .execute(conn(tx))
         .await

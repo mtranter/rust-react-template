@@ -73,12 +73,7 @@ async fn revoking_every_grant_leaves_admins_their_access(pool: PgPool) {
 
     assert!(admin.grants().await.unwrap().items.is_empty());
     assert!(admin.catalog().await.is_ok());
-    assert!(
-        admin
-            .grant("user", "module:notes", "use", "any")
-            .await
-            .is_ok()
-    );
+    assert!(admin.grant("user", "note", "create", "any").await.is_ok());
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]
@@ -113,5 +108,9 @@ async fn the_catalog_offers_each_note_action_with_the_operations_performing_it(p
     assert_eq!(operations("view"), vec![Value::from("get_note")]);
     assert_eq!(operations("items:add"), vec![Value::from("add_note_item")]);
     assert_eq!(operations("archive"), Vec::<Value>::new());
-    assert!(resources.iter().any(|r| r["resource"] == "module:notes"));
+    assert!(
+        resources
+            .iter()
+            .all(|r| !r["resource"].as_str().unwrap().starts_with("module:"))
+    );
 }

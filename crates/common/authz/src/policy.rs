@@ -24,7 +24,6 @@ pub(crate) struct ResourcePolicy {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Rule {
-    pub line: usize,
     pub actions: Vec<Named>,
     pub effect: Effect,
     pub roles: Vec<Named>,
@@ -161,7 +160,6 @@ fn rule(file: &File, node: &Node) -> Result<Rule, PolicyError> {
         .transpose()?;
     fields.finish(file, "a rule")?;
     Ok(Rule {
-        line: node.line,
         actions,
         effect,
         roles,

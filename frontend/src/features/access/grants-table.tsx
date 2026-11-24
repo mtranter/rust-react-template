@@ -19,7 +19,7 @@ import {
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
-import { type Labels, byModule, isGate, useCatalog } from "./catalog";
+import { type Labels, byModule, useCatalog } from "./catalog";
 import { RevokeGrantDialog } from "./revoke-grant-dialog";
 import { useRoles } from "./use-roles";
 
@@ -64,11 +64,7 @@ function columnsFor(labels: Labels) {
     }),
     column.accessor("scope", {
       header: "Which",
-      // A module's area has no rows to choose between.
-      cell: (info) =>
-        isGate(info.row.original.resource)
-          ? null
-          : labels.scope(info.row.original.resource, info.getValue()),
+      cell: (info) => labels.scope(info.row.original.resource, info.getValue()),
     }),
     column.accessor("grantedBy", {
       header: "Granted by",

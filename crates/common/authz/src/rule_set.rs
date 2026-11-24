@@ -1,7 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
 use crate::condition::Condition;
-use crate::policies::GATE_ACTION;
 use crate::policy::Effect;
 use crate::{Action, Filter, Grant, Policies, Principal, Resource, USER};
 
@@ -156,6 +155,7 @@ impl RuleSet {
         }
     }
 
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn unassign(&mut self, subject: &str) {
         self.assigned.remove(subject);
     }
@@ -182,11 +182,6 @@ impl RuleSet {
 
     pub fn plan<R: Resource>(&self, principal: &Principal, action: R::Action) -> Plan {
         self.plan_named(principal, R::KIND, action.name())
-    }
-
-    /// The Module's gate: `Allowed` or `Denied`, since it takes no condition.
-    pub fn plan_gate(&self, principal: &Principal, module: &str) -> Plan {
-        self.plan_named(principal, &format!("module:{module}"), GATE_ACTION)
     }
 
     /// Anything not allowed is denied. Within one role, a matching DENY beats an ALLOW; across

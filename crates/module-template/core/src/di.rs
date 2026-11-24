@@ -26,8 +26,8 @@ pub fn provider(ctx: &Context) -> WidgetsProvider {
     ))
 }
 
-/// The widgets module's gate and its `widget` resource, and what `user` and
-/// `admin` are granted by default (ADR 0040). Add a scope (a derived role
+/// The widgets module's `widget` resource, and what `user` and `admin` are
+/// granted by default (ADR 0040). Add a scope (a derived role
 /// whose `parentRoles` is `["*"]`) to grant an action on some widgets only.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("widgets")

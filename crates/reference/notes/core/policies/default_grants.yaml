@@ -1,7 +1,5 @@
 apiVersion: auth.flagrante.io/v1
 defaultGrants:
-  - { role: user, resource: "module:notes", action: use }
   - { role: user, resource: note, action: create }
   - { role: user, resource: note, actions: [list, view, edit, delete, "items:add", "items:remove"], scope: author }
-  - { role: admin, resource: "module:notes", action: use }
   - { role: admin, resource: note, actions: ["*"] }
