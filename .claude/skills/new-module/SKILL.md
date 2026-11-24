@@ -9,7 +9,9 @@ Extends `crates/AGENTS.md`, which you must have read: its layers, aggregates, ac
 
 ## Scaffold
 
-`make new-module NAME=widgets [ENTITY=<aggregate>]` (Postgres up: `make db-up`) copies `crates/module-template/{core,api}` (workspace crates, packages `widgets` and `widgets-api`, compiled and tested but registered with no server) into a module that compiles, passes its tests and is registered everywhere: every layer, a resource policy with no rules, default grants for `user` and `admin` and an `OPERATIONS` table, a versioned aggregate with create/read/rename/list publishing its events, a projection of its own topic behind a search operation, migrations, seed and tests. It allocates the next module number, applies the migrations to the dev DB and refreshes `.sqlx`. It refuses a name a platform module has (`access`, `assistant`).
+`make new-module CAPABILITY=crm NAME=contacts [ENTITY=<aggregate>]` (Postgres up: `make db-up`) copies `crates/module-template/{core,api}` (workspace crates, packages `widgets` and `widgets-api`, compiled and tested but registered with no server) into `crates/capabilities/crm/contacts/`, a module that compiles, passes its tests and is registered everywhere: every layer, a resource policy with no rules, default grants for `user` and `admin` and an `OPERATIONS` table, a versioned aggregate with create/read/rename/list publishing its events, a projection of its own topic behind a search operation, migrations, seed and tests. It allocates the next module number, applies the migrations to the dev DB and refreshes `.sqlx`. It refuses a module name already taken in any Capability, the platform (`access`, `assistant`) or the reference, and a Capability id another Capability has.
+
+**The Capability** (ADR 0047) is the product the module belongs to: the one whose data it keeps, where a person goes to change it. Every module is in exactly one, whose folder it sits in; pick an existing Capability unless it is a new product. The first module of a Capability also makes `crates/capabilities/<capability>/capability.yaml` (`{ id, label }`, the label the id in words: fix it for admins), the workspace's `crates/capabilities/*/*/core` and `/api` members if it is the first Capability, and its App: an entry `{ id: "<capability>", … }` in `frontend/src/shell/capabilities.ts` with one Area, the module's, routed in `src/router.tsx` to a `src/pages/<capability>-<module>-page.tsx` saying it isn't built yet. Write the App's description and build the Area's feature (`frontend/AGENTS.md`). Same Capability is no licence to couple: its modules still meet only through their `-api` crates.
 
 ## Then
 
@@ -25,6 +27,7 @@ Extends `crates/AGENTS.md`, which you must have read: its layers, aggregates, ac
 
 A read module isn't scaffolded: copy `crates/reference/note-search`. Registered by hand or not, a module is listed in:
 
+- Its Capability's folder: `crates/capabilities/<capability>/<module>/`, beside a `capability.yaml`, which its `policies()` names: `.capability(policy_file!("../../capability.yaml"))`. A new Capability also needs its entry in `frontend/src/shell/capabilities.ts` and, if it is the first, the `crates/capabilities/*/*/core` and `/api` workspace members.
 - `crates/server/src/modules.rs`: the `Endpoints` tuple and `modules()`. Past 12 modules, nest sub-tuples in the `Endpoints` tuple (std's `Default` cap; poem-openapi's is 16).
 - `crates/server/Cargo.toml`: the dependency, and the `seed` feature if it has a seed.
 - The root `Cargo.toml` workspace dependencies: core and `-api`.
@@ -32,4 +35,4 @@ A read module isn't scaffolded: copy `crates/reference/note-search`. Registered 
 - A per-crate `clippy.toml` (copy a sibling's).
 - `pub const MODULE: u32` in its seed, unique across modules.
 
-`make check-modules` fails on any missing entry; `make check-deps` on a core depending on another core or an `-api` on anything impure.
+`make check-modules` fails on any missing entry, a module with no `capability.yaml` above it or not naming it, a Capability folder with no module, and a Capability with no entry in the SPA's registry (`assistant` has none) or an entry with no Capability; `make check-deps` on a core depending on another core or an `-api` on anything impure.

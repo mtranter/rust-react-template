@@ -43,7 +43,7 @@ Every operation has a security requirement unless it is in `PUBLIC` (`crates/ser
 - `default_grants.yaml`: `- { role: user, resource: note, action: create }`, `actions: [..]`, optionally `scope: <derived role>`.
 - `derived_roles.yaml`: scopes such as `author`, `condition: { match: { expr: R.attr.authorId == P.id } }`.
 - `<resource>.yaml`: a resource policy's rules, e.g. an `EFFECT_DENY` on edits while `R.attr.archived == true`.
-- `labels.yaml`: what admins see at `/access`, in the catalog's `label`s: the module's name (`module: Notes`), and per resource its `label` and its `actions` and `scopes` (`any` included) as `name: words`. Loaded with `.labels(policy_file!("policies/labels.yaml"))`; naming a resource, action or scope the module lacks fails loading. Anything left out shows as its name in words (`items:add` → `Items add`), so label a new action when you add it.
+- `labels.yaml`: what admins see at `/access`, in the catalog's `label`s (the catalog groups resources by Capability, labelled by the `capability.yaml` above the module, ADR 0047): the module's name (`module: Notes`), and per resource its `label` and its `actions` and `scopes` (`any` included) as `name: words`. Loaded with `.labels(policy_file!("policies/labels.yaml"))`; naming a resource, action or scope the module lacks fails loading. Anything left out shows as its name in words (`items:add` → `Items add`), so label a new action when you add it.
 
 Copy the files of `crates/reference/notes/core/policies/`.
 

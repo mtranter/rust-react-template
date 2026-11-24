@@ -103,3 +103,15 @@ test("says so for a role that doesn't exist", async () => {
 
   expect(await screen.findByText("There's no role called nobody.")).toBeInTheDocument();
 });
+
+test("a role's permissions are grouped by Capability, its Modules' resources together", async () => {
+  server.use(...accessApi([]).handlers);
+  renderAt("/access/roles/support");
+
+  const capability = await workshop();
+
+  expect(within(capability).getByRole("checkbox", { name: "Widgets: Build" })).toBeInTheDocument();
+  expect(within(capability).getByRole("combobox", { name: "Gadgets: View" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Widgets" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Gadgets" })).not.toBeInTheDocument();
+});

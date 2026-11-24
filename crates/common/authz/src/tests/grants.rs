@@ -9,7 +9,7 @@ fn editor_set() -> PolicyFile {
 }
 
 fn policies() -> Policies {
-    Policies::builder("notebook")
+    Policies::builder("notebook").capability(crate::tests::capability())
         .resource::<Note>(PolicyFile::new(
             "note.yaml",
             "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: note\n  version: default\n  importDerivedRoles: [notes_scopes, editors]\n  rules: []\n",

@@ -31,6 +31,7 @@ pub fn provider(ctx: &Context) -> WidgetsProvider {
 /// whose `parentRoles` is `["*"]`) to grant an action on some widgets only.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("widgets")
+        .capability(policy_file!("../capability.yaml"))
         .resource::<Widget>(policy_file!("policies/widget.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
         .labels(policy_file!("policies/labels.yaml"))

@@ -170,7 +170,7 @@ git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/pages/notes-page.tsx frontend/src/pages/search-page.tsx \
   frontend/src/test/fixtures.ts frontend/src/test/notes-list.test.tsx \
   frontend/src/test/note-editing.test.tsx frontend/src/test/note-search.test.tsx
-cat >frontend/src/shell/apps.ts <<EOF
+cat >frontend/src/shell/capabilities.ts <<EOF
 import { useManagesAccess } from "@/features/access";
 import type { LinkProps } from "@tanstack/react-router";
 import { KeyRoundIcon, ListChecksIcon, type LucideIcon, ShieldIcon, UsersIcon } from "lucide-react";
@@ -180,8 +180,13 @@ export const productName = "$title";
 
 export type Area = { label: string; to: NonNullable<LinkProps["to"]>; icon: LucideIcon };
 
-/** One app of the suite: every route under \`path\` is one of its \`areas\` or a record in one. */
-export type ShellApp = {
+/**
+ * One Capability of the suite (ADR 0047) and its app: every route under \`path\` is one of its
+ * \`areas\` or a record in one. \`id\` is its \`capability.yaml\`'s, which \`make check-modules\` reads
+ * from here as a literal \`id: "<id>"\`.
+ */
+export type Capability = {
+  id: string;
   label: string;
   description: string;
   icon: LucideIcon;
@@ -190,7 +195,8 @@ export type ShellApp = {
   areas: [Area, ...Area[]];
 };
 
-const access: ShellApp = {
+const access: Capability = {
+  id: "access",
   label: "Access",
   description: "Who may use the apps, and what each role may do.",
   icon: ShieldIcon,
@@ -207,13 +213,13 @@ const access: ShellApp = {
  * the sidebar's footer. An app the caller may not use is left out, as \`access\` is from a caller
  * who may not manage access.
  */
-export function useShellApps(): { apps: ShellApp[]; platform: ShellApp[] } {
+export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
   const managesAccess = useManagesAccess();
   return { apps: [], platform: managesAccess ? [access] : [] };
 }
 
 /** The app whose \`path\` holds \`pathname\`, and its area: the one whose \`to\` holds it most closely. */
-export function locate(pathname: string, apps: ShellApp[]): { app?: ShellApp; area?: Area } {
+export function locate(pathname: string, apps: Capability[]): { app?: Capability; area?: Area } {
   const holds = (path: string) => pathname === path || pathname.startsWith(\`\${path}/\`);
   const app = apps.find((candidate) => holds(candidate.path));
   const area = app?.areas
@@ -361,11 +367,11 @@ import { screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { renderAt } from "./test/render-app";
 
-test("shows the launcher at /, with no apps yet", async () => {
+// Not "No apps yet": the first \`make new-module\` gives the launcher an app.
+test("shows the launcher at /", async () => {
   renderAt("/");
 
   expect(await screen.findByRole("heading", { name: "$title" })).toBeInTheDocument();
-  expect(screen.getByText("No apps yet")).toBeInTheDocument();
 });
 EOF
 cat >frontend/screens/scenarios.ts <<EOF

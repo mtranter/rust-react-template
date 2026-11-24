@@ -43,6 +43,7 @@ fn service(ctx: &Context) -> UserService {
 /// what `user` and `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("users")
+        .capability(policy_file!("../../capability.yaml"))
         .resource::<User>(policy_file!("policies/user.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))

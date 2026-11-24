@@ -26,28 +26,14 @@ export function labelsOf(resources: CatalogResourceResponse[]): Labels {
   };
 }
 
-/** The catalog's resources, grouped by module in the catalog's order. */
-export function byModule(resources: CatalogResourceResponse[]) {
-  const modules: { module: string; label: string; resources: CatalogResourceResponse[] }[] = [];
-  for (const resource of resources) {
-    const group = modules.find((m) => m.module === resource.module);
-    if (group) group.resources.push(resource);
-    else
-      modules.push({
-        module: resource.module,
-        label: resource.moduleLabel,
-        resources: [resource],
-      });
-  }
-  return modules;
-}
-
+/** The catalog: each Capability with its Modules' resources, in its order, and every resource. */
 export function useCatalog() {
   const catalog = useQuery(getAccessCatalogOptions());
-  const data = catalog.data?.resources;
-  const { resources, labels } = useMemo(() => {
-    const resources = data ?? [];
-    return { resources, labels: labelsOf(resources) };
+  const data = catalog.data?.capabilities;
+  const { capabilities, resources, labels } = useMemo(() => {
+    const capabilities = data ?? [];
+    const resources = capabilities.flatMap((c) => c.resources);
+    return { capabilities, resources, labels: labelsOf(resources) };
   }, [data]);
-  return { query: catalog, resources, labels };
+  return { query: catalog, capabilities, resources, labels };
 }

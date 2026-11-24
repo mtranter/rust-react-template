@@ -40,6 +40,7 @@ pub fn handlers(_ctx: &Context) -> Handlers {
 /// `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("note-search")
+        .capability(policy_file!("../../capability.yaml"))
         .resource::<NoteSummary>(policy_file!("policies/note_summary.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
         .labels(policy_file!("policies/labels.yaml"))

@@ -79,10 +79,20 @@ pub enum GrantRefusal {
     UnknownScope { resource: String, scope: String },
 }
 
+/// One product of the suite, owning the Modules in its folder (ADR 0047): its `capability.yaml`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Capability {
+    /// What the SPA's registry and the folder name it by.
+    pub id: String,
+    /// What admins see it called.
+    pub label: String,
+}
+
 /// One Module's policy files and default grants, checked against its resources' Rust types.
 #[derive(Debug, Clone)]
 pub struct Policies {
     module: String,
+    capability: Capability,
     label: Option<String>,
     resources: Vec<ResourceEntry>,
     default_grants: Vec<Grant>,
@@ -126,6 +136,7 @@ struct Given {
 
 pub struct PoliciesBuilder {
     module: String,
+    capability: Option<PolicyFile>,
     resources: Vec<Given>,
     derived_roles: Vec<PolicyFile>,
     default_grants: Vec<PolicyFile>,
@@ -136,6 +147,7 @@ impl Policies {
     pub fn builder(module: impl Into<String>) -> PoliciesBuilder {
         PoliciesBuilder {
             module: module.into(),
+            capability: None,
             resources: Vec::new(),
             derived_roles: Vec::new(),
             default_grants: Vec::new(),
@@ -145,6 +157,11 @@ impl Policies {
 
     pub fn module(&self) -> &str {
         &self.module
+    }
+
+    /// The Capability whose folder the Module sits in.
+    pub fn capability(&self) -> &Capability {
+        &self.capability
     }
 
     pub fn default_grants(&self) -> &[Grant] {
@@ -217,6 +234,7 @@ impl Policies {
     pub fn catalog(&self, rule_set: &RuleSet) -> Catalog {
         let module_label = self.label.clone().unwrap_or_else(|| humanize(&self.module));
         Catalog {
+            capability: self.capability.clone(),
             module: self.module.clone(),
             resources: self
                 .resources
@@ -287,6 +305,7 @@ pub fn check_grant(policies: &[Policies], grant: &Grant) -> Result<(), GrantRefu
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
+    pub capability: Capability,
     pub module: String,
     /// What the Module calls itself to admins.
     pub label: String,
@@ -340,6 +359,13 @@ impl PoliciesBuilder {
         self
     }
 
+    /// The `capability.yaml` above the Module's crates, which every Module has:
+    /// `policy_file!("../../capability.yaml")`, or `"../capability.yaml"` for the platform's.
+    pub fn capability(mut self, file: PolicyFile) -> Self {
+        self.capability = Some(file);
+        self
+    }
+
     pub fn derived_roles(mut self, file: PolicyFile) -> Self {
         self.derived_roles.push(file);
         self
@@ -358,6 +384,21 @@ impl PoliciesBuilder {
     }
 
     pub fn build(self) -> Result<Policies, PolicyError> {
+        let capability = match &self.capability {
+            Some(pf) => policy::capability(&File { name: &pf.name }, &pf.source)?,
+            None => {
+                return Err(File {
+                    name: "capability.yaml",
+                }
+                .refuse(
+                    1,
+                    format!(
+                        "the `{}` module names no Capability: give the `capability.yaml` above it to `.capability(..)`",
+                        self.module
+                    ),
+                ));
+            }
+        };
         let mut sets: HashMap<String, (String, DerivedRoleSet)> = HashMap::new();
         for pf in &self.derived_roles {
             let file = File { name: &pf.name };
@@ -443,6 +484,7 @@ impl PoliciesBuilder {
 
         Ok(Policies {
             module: self.module,
+            capability,
             label,
             resources,
             default_grants,

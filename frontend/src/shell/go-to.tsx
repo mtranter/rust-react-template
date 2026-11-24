@@ -13,7 +13,7 @@ import { useAssistantOn } from "@/features/assistant";
 import { useNavigate } from "@tanstack/react-router";
 import { LayoutGridIcon, SearchIcon, SparklesIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { type Area, useShellApps } from "./apps";
+import { type Area, useCapabilities } from "./capabilities";
 
 const onMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -21,7 +21,7 @@ const onMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 export function GoTo() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { apps, platform } = useShellApps();
+  const { apps, platform } = useCapabilities();
   const assistantOn = useAssistantOn();
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function GoTo() {
           <CommandList>
             <CommandEmpty>Nothing matches.</CommandEmpty>
             {[...apps, ...platform].map((app) => (
-              <CommandGroup key={app.path} heading={app.label}>
+              <CommandGroup key={app.id} heading={app.label}>
                 {app.areas.map((area) => (
                   <CommandItem
                     key={area.to}

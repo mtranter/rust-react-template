@@ -1,5 +1,13 @@
 use app_authz::CatalogScope;
 
+/// A Capability and its Modules' resources, as admins grant from them (ADR 0047).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogCapability {
+    pub capability: String,
+    pub label: String,
+    pub resources: Vec<CatalogResource>,
+}
+
 /// A module's resource, as admins grant it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogResource {

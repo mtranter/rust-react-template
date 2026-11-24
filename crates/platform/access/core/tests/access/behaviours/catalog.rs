@@ -3,10 +3,9 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 
 fn resource<'a>(catalog: &'a CatalogJson, kind: &str) -> &'a Value {
-    catalog["resources"]
-        .as_array()
-        .unwrap()
-        .iter()
+    catalog
+        .resources()
+        .into_iter()
         .find(|r| r["resource"] == kind)
         .unwrap_or_else(|| panic!("the catalog offers `{kind}`"))
 }
@@ -38,9 +37,8 @@ async fn the_catalog_offers_each_resources_actions_operations_and_scopes_named_f
         })
     );
     assert!(
-        catalog["resources"]
-            .as_array()
-            .unwrap()
+        catalog
+            .resources()
             .iter()
             .all(|r| !r["resource"].as_str().unwrap().starts_with("module:")),
         "a Module has no gate to offer"
@@ -77,5 +75,44 @@ async fn an_action_becomes_reachable_once_granted(pool: PgPool) {
     assert_eq!(
         resource(&catalog, "gadget")["actions"][2]["reachable"],
         true
+    );
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn the_catalog_groups_resources_by_capability_in_the_order_modules_are_registered(
+    pool: PgPool,
+) {
+    let access = Access::seeded(pool).await;
+
+    let catalog = access.catalog().await.unwrap();
+
+    let capabilities: Vec<_> = catalog["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            let resources: Vec<_> = c["resources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| r["resource"].as_str().unwrap())
+                .collect();
+            (
+                c["capability"].as_str().unwrap(),
+                c["label"].as_str().unwrap(),
+                resources,
+            )
+        })
+        .collect();
+    assert_eq!(
+        capabilities,
+        [
+            (
+                "access",
+                "Access",
+                vec!["grant", "role", "assignment", "subject"]
+            ),
+            ("workshop", "Workshop", vec!["gadget"]),
+        ]
     );
 }

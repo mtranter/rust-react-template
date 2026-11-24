@@ -9,7 +9,8 @@ mod rows;
 mod swapping;
 
 use crate::{
-    Filter, Grant, Policies, PolicyError, PolicyFile, Principal, Resource, RuleSet, Scope, Value,
+    Capability, Filter, Grant, Policies, PolicyError, PolicyFile, Principal, Resource, RuleSet,
+    Scope, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray, strum::IntoStaticStr)]
@@ -82,6 +83,7 @@ pub fn defaults() -> PolicyFile {
 /// ADR 0040's example files, as the `notebook` Module would load them.
 pub fn adr_policies() -> Policies {
     Policies::builder("notebook")
+        .capability(crate::tests::capability())
         .resource::<Note>(note_policy())
         .derived_roles(scopes())
         .default_grants(defaults())
@@ -108,6 +110,7 @@ pub fn note_rules(rules: &str) -> PolicyFile {
 
 pub fn with_rules(rules: &str) -> Result<Policies, PolicyError> {
     Policies::builder("notebook")
+        .capability(crate::tests::capability())
         .resource::<Note>(note_rules(rules))
         .derived_roles(scopes())
         .build()
@@ -124,4 +127,9 @@ pub fn grant(role: &str, resource: &str, action: &str, scope: Scope) -> Grant {
 
 pub fn eq(attr: &str, value: impl Into<Value>) -> Filter {
     Filter::Eq(attr.into(), value.into())
+}
+
+/// The Capability the `notebook` Module sits in.
+pub fn capability() -> PolicyFile {
+    PolicyFile::new("capability.yaml", "id: notes\nlabel: Notes\n")
 }

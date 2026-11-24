@@ -104,7 +104,20 @@ named=$(git grep -nIwE 'rust-vite-template|notes|users|note-search|note_search|n
 [ -z "$named" ] || fail "the app names the template or its reference code:
 $named"
 
-make --no-print-directory new-module NAME=contacts
+# An app starts with no Capabilities, so with no workspace members for them:
+# a glob matching nothing would fail the workspace.
+[ ! -e crates/capabilities ] || fail "\`make init\` left crates/capabilities/"
+! grep -qF 'crates/capabilities/' Cargo.toml || fail "\`make init\` left Cargo.toml naming crates/capabilities/"
+
+make --no-print-directory new-module CAPABILITY=crm NAME=contacts
+for made in crates/capabilities/crm/capability.yaml crates/capabilities/crm/contacts/core crates/capabilities/crm/contacts/api; do
+  [ -e "$made" ] || fail "\`make new-module CAPABILITY=crm NAME=contacts\` didn't make $made"
+done
+grep -qF 'id: "crm",' frontend/src/shell/capabilities.ts ||
+  fail "\`make new-module\` didn't give the new \`crm\` Capability an entry in the SPA's registry"
+make --no-print-directory check-modules
 SQLX_OFFLINE=true DATABASE_URL=postgres://app:app@localhost:5432/postgres \
   cargo test -p contacts -p contacts-api -p server
+# The new app's entry routes to a page, so the SPA still type-checks, lints and passes its tests.
+make --no-print-directory generate typecheck lint-frontend test-frontend
 echo "check-init ok"

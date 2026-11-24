@@ -351,3 +351,26 @@ fn non_empty(file: &File, fields: &mut Fields, key: &str) -> Result<Vec<Named>, 
     }
     Ok(items)
 }
+
+/// A Capability's `capability.yaml` (ADR 0047): `{ id, label }`, beside the Modules it owns.
+pub(crate) fn capability(file: &File, source: &str) -> Result<crate::Capability, PolicyError> {
+    let root = file.parse(source)?;
+    let mut fields = file.map(&root, "a capability file")?;
+    let id_node = fields.require(file, "id")?;
+    let id = file.str(id_node, "`id`")?.to_owned();
+    let valid = id.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !valid {
+        return Err(file.refuse(
+            id_node.line,
+            format!(
+                "`{id}` is not a Capability id: lowercase letters, digits and '-', from a letter"
+            ),
+        ));
+    }
+    let label = text(file, fields.require(file, "label")?, "`label`")?;
+    fields.finish(file, "a capability file")?;
+    Ok(crate::Capability { id, label })
+}

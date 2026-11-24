@@ -82,7 +82,16 @@ async fn the_catalog_offers_each_note_action_with_the_operations_performing_it(p
 
     let catalog = app.as_admin(ADMIN_ID).await.catalog().await.unwrap();
 
-    let resources = catalog["resources"].as_array().unwrap();
+    let notes = catalog["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["capability"] == "notes")
+        .expect("the catalog offers the `notes` Capability");
+    assert_eq!(notes["label"], "Notes");
+    let resources = notes["resources"].as_array().unwrap();
+    let kinds: Vec<_> = resources.iter().map(|r| r["resource"].clone()).collect();
+    assert_eq!(kinds, ["user", "note", "noteSummary"]);
     let note = resources
         .iter()
         .find(|r| r["resource"] == "note")

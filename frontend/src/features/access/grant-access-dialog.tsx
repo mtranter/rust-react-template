@@ -23,7 +23,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
-import { byModule, useCatalog } from "./catalog";
+import { useCatalog } from "./catalog";
 import { useRoles } from "./use-roles";
 
 const formFields = ["role", "resource", "action", "scope"] as const;
@@ -57,7 +57,7 @@ export function GrantAccessDialog() {
 
 function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const queryClient = useQueryClient();
-  const { resources } = useCatalog();
+  const { capabilities, resources } = useCatalog();
   const roles = useRoles();
   const grant = useMutation({
     ...postAccessGrantsMutation(),
@@ -137,9 +137,9 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
               aria-describedby="grant-resource-error"
             >
               <NativeSelectOption value="">Choose what</NativeSelectOption>
-              {byModule(resources).map((m) => (
-                <NativeSelectOptGroup key={m.module} label={m.label}>
-                  {m.resources.map((r) => (
+              {capabilities.map((c) => (
+                <NativeSelectOptGroup key={c.capability} label={c.label}>
+                  {c.resources.map((r) => (
                     <NativeSelectOption key={r.resource} value={r.resource}>
                       {r.label}
                     </NativeSelectOption>

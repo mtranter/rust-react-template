@@ -35,6 +35,7 @@ fn load_with(file: In, from: &str, to: &str) -> Result<Policies, PolicyError> {
         }
     };
     Policies::builder("notebook")
+        .capability(crate::tests::capability())
         .resource::<Note>(edit(In::Note, NOTE))
         .derived_roles(edit(In::Scopes, SCOPES))
         .default_grants(edit(In::Defaults, DEFAULTS))
@@ -505,4 +506,32 @@ fn a_refusal_reads_as_file_line_and_reason() {
         refused.to_string(),
         "note.yaml:8: `publish` is not an action of `note`"
     );
+}
+
+#[test]
+fn a_module_naming_no_capability_or_a_malformed_one_is_refused() {
+    let without = Policies::builder("notebook")
+        .resource::<Note>(PolicyFile::new("note.yaml", NOTE))
+        .derived_roles(PolicyFile::new("notes_scopes.yaml", SCOPES))
+        .build()
+        .unwrap_err();
+    assert!(without.reason.contains("names no Capability"), "{without}");
+
+    for (source, why) in [
+        ("id: Notes\nlabel: Notes\n", "is not a Capability id"),
+        ("id: notes\n", "`label` is required"),
+        (
+            "id: notes\nlabel: Notes\nowner: me\n",
+            "`owner` is not supported",
+        ),
+    ] {
+        let refused = Policies::builder("notebook")
+            .capability(PolicyFile::new("capability.yaml", source))
+            .resource::<Note>(PolicyFile::new("note.yaml", NOTE))
+            .derived_roles(PolicyFile::new("notes_scopes.yaml", SCOPES))
+            .build()
+            .unwrap_err();
+        assert_eq!(refused.file, "capability.yaml");
+        assert!(refused.reason.contains(why), "{refused}");
+    }
 }

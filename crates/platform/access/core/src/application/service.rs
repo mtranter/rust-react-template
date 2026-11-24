@@ -1,9 +1,9 @@
 use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
-    AssignmentRepository, CatalogAction, CatalogResource, EventPublisher, GrantFilter,
-    GrantRepository, GrantSortKey, ListQuery, Listed, RoleRepository, SubjectRepository,
-    Transactions, Version, Versioned,
+    AssignmentRepository, CatalogAction, CatalogCapability, CatalogResource, EventPublisher,
+    GrantFilter, GrantRepository, GrantSortKey, ListQuery, Listed, RoleRepository,
+    SubjectRepository, Transactions, Version, Versioned,
 };
 use crate::domain::{
     CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
@@ -172,47 +172,54 @@ impl AccessService {
         tx.commit().await
     }
 
-    /// Every module's resources, their actions with the operations performing each and
-    /// whether anything in force could allow them, and their scopes, each labelled for admins.
-    pub fn catalog(&self, principal: &Principal) -> AppResult<Vec<CatalogResource>> {
+    /// Every Capability, in the order its first Module is registered, with its Modules'
+    /// resources, their actions with the operations performing each and whether anything in force
+    /// could allow them, and their scopes, each labelled for admins.
+    pub fn catalog(&self, principal: &Principal) -> AppResult<Vec<CatalogCapability>> {
         self.authorize(principal, GrantAction::List)?;
         let rule_set = self.authorizer.current();
-        Ok(self
-            .modules
-            .policies
-            .iter()
-            .flat_map(|policies| {
-                let catalog = policies.catalog(&rule_set);
-                catalog
-                    .resources
-                    .into_iter()
-                    .map(move |resource| CatalogResource {
-                        module: catalog.module.clone(),
-                        module_label: catalog.label.clone(),
-                        label: resource.label,
-                        actions: resource
-                            .actions
-                            .into_iter()
-                            .map(|action| CatalogAction {
-                                operations: self
-                                    .modules
-                                    .operations
-                                    .iter()
-                                    .filter(|o| {
-                                        o.resource == resource.kind && o.action == action.name
-                                    })
-                                    .map(|o| o.id)
-                                    .collect(),
-                                name: action.name,
-                                label: action.label,
-                                reachable: action.reachable,
-                            })
-                            .collect(),
-                        resource: resource.kind,
-                        scopes: resource.scopes,
-                    })
-            })
-            .collect())
+        let mut capabilities: Vec<CatalogCapability> = Vec::new();
+        for policies in &self.modules.policies {
+            let catalog = policies.catalog(&rule_set);
+            let resources = catalog
+                .resources
+                .into_iter()
+                .map(|resource| CatalogResource {
+                    module: catalog.module.clone(),
+                    module_label: catalog.label.clone(),
+                    label: resource.label,
+                    actions: resource
+                        .actions
+                        .into_iter()
+                        .map(|action| CatalogAction {
+                            operations: self
+                                .modules
+                                .operations
+                                .iter()
+                                .filter(|o| o.resource == resource.kind && o.action == action.name)
+                                .map(|o| o.id)
+                                .collect(),
+                            name: action.name,
+                            label: action.label,
+                            reachable: action.reachable,
+                        })
+                        .collect(),
+                    resource: resource.kind,
+                    scopes: resource.scopes,
+                });
+            match capabilities
+                .iter_mut()
+                .find(|c| c.capability == catalog.capability.id)
+            {
+                Some(capability) => capability.resources.extend(resources),
+                None => capabilities.push(CatalogCapability {
+                    capability: catalog.capability.id,
+                    label: catalog.capability.label,
+                    resources: resources.collect(),
+                }),
+            }
+        }
+        Ok(capabilities)
     }
 
     /// Grants, as `System`, every module's default grant not applied before, in one unit of

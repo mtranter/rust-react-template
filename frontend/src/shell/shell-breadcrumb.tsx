@@ -7,11 +7,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { locate, useShellApps } from "./apps";
+import { locate, useCapabilities } from "./capabilities";
 
 /** App › area. On a record inside an area, the area links back to it; the page's heading names the record. */
 export function ShellBreadcrumb() {
-  const { apps, platform } = useShellApps();
+  const { apps, platform } = useCapabilities();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { app, area } = locate(pathname, [...apps, ...platform]);
   if (!app) return null;

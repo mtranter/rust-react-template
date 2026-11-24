@@ -43,6 +43,7 @@ pub fn provider(
 /// default (ADR 0040), and its `conversation` resource, scoped to each one's `owner`.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("assistant")
+        .capability(policy_file!("../capability.yaml"))
         .resource::<Assistant>(policy_file!("policies/assistant.yaml"))
         .resource::<Conversation>(policy_file!("policies/conversation.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))

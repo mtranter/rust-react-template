@@ -14,7 +14,7 @@ import { isPreconditionFailed } from "@/lib/api-errors";
 import { ifMatch } from "@/lib/if-match";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { type Labels, byModule, useCatalog } from "./catalog";
+import { type Labels, useCatalog } from "./catalog";
 import { RevokeGrantDialog } from "./revoke-grant-dialog";
 import { useRoles } from "./use-roles";
 
@@ -40,10 +40,10 @@ function useRoleGrants(role: string) {
   });
 }
 
-/** What `role` may do, module by module, changed in place: each change grants or revokes. */
+/** What `role` may do, Capability by Capability, changed in place: each change grants or revokes. */
 export function RolePermissions({ role }: { role: string }) {
   const roles = useRoles();
-  const { query: catalog, resources, labels } = useCatalog();
+  const { query: catalog, capabilities, labels } = useCatalog();
   const grants = useRoleGrants(role);
   const found = roles.data?.items.find((r) => r.name === role);
 
@@ -78,11 +78,11 @@ export function RolePermissions({ role }: { role: string }) {
               : "Changes take effect within a few seconds for everyone with this role."}
         </p>
       </div>
-      {byModule(resources).map((m) => (
-        <section key={m.module} aria-label={m.label} className="space-y-2">
-          <h2 className="font-heading text-lg font-semibold">{m.label}</h2>
+      {capabilities.map((c) => (
+        <section key={c.capability} aria-label={c.label} className="space-y-2">
+          <h2 className="font-heading text-lg font-semibold">{c.label}</h2>
           <div className="divide-y rounded-lg border">
-            {m.resources.map((resource) => (
+            {c.resources.map((resource) => (
               <ResourcePermissions
                 key={resource.resource}
                 role={role}

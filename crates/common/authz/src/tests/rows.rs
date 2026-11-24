@@ -54,7 +54,7 @@ fn an_authors_archived_note_is_forbidden_to_edit_since_they_may_still_view_it() 
 
 #[test]
 fn a_public_note_is_forbidden_to_edit_not_hidden_when_a_rule_lets_anyone_view_it() {
-    let policies = Policies::builder("notebook")
+    let policies = Policies::builder("notebook").capability(crate::tests::capability())
         .resource::<Note>(note_rules(
             "    - actions: [view]\n      effect: EFFECT_ALLOW\n      roles: [\"*\"]\n      condition:\n        match:\n          expr: R.attr.visibility == \"public\"\n",
         ))

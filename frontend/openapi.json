@@ -4951,6 +4951,31 @@
           }
         }
       },
+      "CatalogCapabilityResponse": {
+        "type": "object",
+        "title": "CatalogCapabilityResponse",
+        "required": [
+          "capability",
+          "label",
+          "resources"
+        ],
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "The Capability's id: the product of the suite whose Modules these resources are."
+          },
+          "label": {
+            "type": "string",
+            "description": "What the Capability is called, for people."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogResourceResponse"
+            }
+          }
+        }
+      },
       "CatalogResourceResponse": {
         "type": "object",
         "title": "CatalogResourceResponse",
@@ -4996,15 +5021,15 @@
       "CatalogResponse": {
         "type": "object",
         "title": "CatalogResponse",
-        "description": "What admins grant from: every module's resources.",
+        "description": "What admins grant from: every Capability, each with its Modules' resources.",
         "required": [
-          "resources"
+          "capabilities"
         ],
         "properties": {
-          "resources": {
+          "capabilities": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CatalogResourceResponse"
+              "$ref": "#/components/schemas/CatalogCapabilityResponse"
             }
           }
         }

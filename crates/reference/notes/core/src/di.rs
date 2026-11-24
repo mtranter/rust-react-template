@@ -44,6 +44,7 @@ fn service(ctx: &Context, users: Arc<dyn UserDirectory>) -> NoteService {
 /// what `user` and `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("notes")
+        .capability(policy_file!("../../capability.yaml"))
         .resource::<Note>(policy_file!("policies/note.yaml"))
         .derived_roles(policy_file!("policies/derived_roles.yaml"))
         .default_grants(policy_file!("policies/default_grants.yaml"))
