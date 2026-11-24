@@ -1,6 +1,6 @@
 # A Capability owns its Modules' data, its App shows what each user may use, and data appears across Apps without changing who owns it
 
-Status: proposed (ticket 0074). Amends [ADR 0040](0040-code-declares-what-can-be-granted-admins-grant-it-at-runtime-and-lists-filter-in-sql.md): Modules have no gate, and resource grants alone guard operations. Also amends [ADR 0046](0046-the-spa-is-a-suite-of-apps-in-one-shell-each-with-a-few-areas.md): its App is a Capability's, and each Area declares what it needs.
+Status: accepted (tickets 0074, 0077, 0078). Amends [ADR 0040](0040-code-declares-what-can-be-granted-admins-grant-it-at-runtime-and-lists-filter-in-sql.md): Modules have no gate, and resource grants alone guard operations. Also amends [ADR 0046](0046-the-spa-is-a-suite-of-apps-in-one-shell-each-with-a-few-areas.md): its App is a Capability's, and each Area declares what it needs.
 
 The suite grows products (a CRM, timesheets, billing, rostering), each built from several Modules: a CRM might be contacts, deals and a projection searching both. Two gaps:
 - **Nothing in the code says which Modules make a product.** ADR 0046 gave the SPA an App per product, but only as a UI grouping, and the glossary let one Module serve several Apps. `crates/modules/` was flat.
@@ -41,7 +41,7 @@ This template is the base of a software factory for people who aren't engineers.
 
 **Admins grant from Capabilities.** The Catalog lists each Capability, then its Modules' resources under it. The access screen reads as "what can Sales do in the CRM?".
 
-**Grants already made keep their effect.** Once, `migrate` does two things:
+**Grants already made keep their effect.** Once, before it applies the defaults, `migrate` does two things:
 - It revokes every grant on a Module's resources held by a role that wasn't also granted that Module's gate. Under the gate those grants allowed nothing, and without it they would start to.
 - It then revokes every `module:*` grant.
 
