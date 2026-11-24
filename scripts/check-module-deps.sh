@@ -22,8 +22,8 @@ pure_common='["app-authz", "app-domain", "app-error", "app-events", "app-persist
 
 cargo metadata --no-deps --format-version 1 | jq -r --arg root "$PWD/" --argjson pure "$pure_common" '
   def rel: ltrimstr($root);
-  def core: .manifest_path | rel | test("^(crates/(modules|platform|reference)/[^/]+|crates/module-template)/core/Cargo.toml$");
-  def api: .manifest_path | rel | test("^(crates/(modules|platform|reference)/[^/]+|crates/module-template)/api/Cargo.toml$");
+  def core: .manifest_path | rel | test("^(crates/capabilities/[^/]+/[^/]+|crates/(platform|reference)/[^/]+|crates/module-template)/core/Cargo.toml$");
+  def api: .manifest_path | rel | test("^(crates/capabilities/[^/]+/[^/]+|crates/(platform|reference)/[^/]+|crates/module-template)/api/Cargo.toml$");
   def shipped: .dependencies[] | select(.path and .kind != "dev");
 
   [.packages[] | select(core) | .name] as $cores

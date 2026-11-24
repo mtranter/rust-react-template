@@ -2,11 +2,12 @@
 resolver = "3"
 members = [
     "crates/common/*",
-    # Every module's `core` and `api` crates, in `crates/modules/`, the
-    # platform's in `crates/platform/` and the reference modules in
-    # `crates/reference/` (see crates/AGENTS.md), so a new
-    # module needs no entry here. Cargo reads a glob matching nothing as a path,
-    # so `crates/modules/*/*` would fail while there are no modules.
+    # The platform's Modules' `core` and `api` crates, in `crates/platform/`, and
+    # the reference Modules' in `crates/reference/` (see crates/AGENTS.md). The
+    # app's, in `crates/capabilities/<capability>/<module>/`, need members of
+    # their own: Cargo reads a glob matching nothing as a path, so
+    # `crates/capabilities/*/*/core` would fail while there are no Capabilities,
+    # and `make new-module` adds it with the first.
     "crates/*/*/core",
     "crates/*/*/api",
     # What `make new-module` copies, `core` and `api`: compiled, linted and

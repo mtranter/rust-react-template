@@ -2,8 +2,8 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogResource, GrantSortKey, HeldRole, Listing, RoleSortKey, SubjectListing,
-    SubjectSortKey, Versioned, scope_name,
+    CatalogAction, CatalogCapability, CatalogResource, GrantSortKey, HeldRole, Listing,
+    RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
 };
 use crate::domain::{Assignment, Grant, Role, Scope};
 use app_persistence::{Direction, Sort};
@@ -86,10 +86,20 @@ impl From<Versioned<Grant>> for GrantResponse {
     }
 }
 
-/// What admins grant from: every module's resources.
+/// What admins grant from: every Capability, each with its Modules' resources.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct CatalogResponse {
+    pub capabilities: Vec<CatalogCapabilityResponse>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CatalogCapabilityResponse {
+    /// The Capability's id: the product of the suite whose Modules these resources are.
+    pub capability: String,
+    /// What the Capability is called, for people.
+    pub label: String,
     pub resources: Vec<CatalogResourceResponse>,
 }
 
@@ -129,25 +139,35 @@ pub struct CatalogActionResponse {
     pub reachable: bool,
 }
 
-impl From<Vec<CatalogResource>> for CatalogResponse {
-    fn from(resources: Vec<CatalogResource>) -> Self {
+impl From<Vec<CatalogCapability>> for CatalogResponse {
+    fn from(capabilities: Vec<CatalogCapability>) -> Self {
         Self {
-            resources: resources
+            capabilities: capabilities
                 .into_iter()
-                .map(|r| CatalogResourceResponse {
-                    module: r.module,
-                    module_label: r.module_label,
-                    resource: r.resource,
-                    label: r.label,
-                    actions: r.actions.into_iter().map(Into::into).collect(),
-                    scopes: r
-                        .scopes
-                        .into_iter()
-                        .map(|s| CatalogScopeResponse {
-                            name: s.name,
-                            label: s.label,
-                        })
-                        .collect(),
+                .map(|c| CatalogCapabilityResponse {
+                    capability: c.capability,
+                    label: c.label,
+                    resources: c.resources.into_iter().map(Into::into).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<CatalogResource> for CatalogResourceResponse {
+    fn from(r: CatalogResource) -> Self {
+        CatalogResourceResponse {
+            module: r.module,
+            module_label: r.module_label,
+            resource: r.resource,
+            label: r.label,
+            actions: r.actions.into_iter().map(Into::into).collect(),
+            scopes: r
+                .scopes
+                .into_iter()
+                .map(|s| CatalogScopeResponse {
+                    name: s.name,
+                    label: s.label,
                 })
                 .collect(),
         }

@@ -22,14 +22,14 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LayoutGridIcon } from "lucide-react";
-import { type ShellApp, locate, productName, useShellApps } from "./apps";
+import { type Capability, locate, productName, useCapabilities } from "./capabilities";
 
 /**
  * The open app's areas under a switcher to the others; with no app open, the apps themselves.
  * The platform's tools sit in the footer.
  */
 export function AppSidebar() {
-  const { apps, platform } = useShellApps();
+  const { apps, platform } = useCapabilities();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { app, area } = locate(pathname, [...apps, ...platform]);
   const { setOpenMobile } = useSidebar();
@@ -59,7 +59,7 @@ export function AppSidebar() {
                     </SidebarMenuItem>
                   ))
                 : apps.map((each) => (
-                    <SidebarMenuItem key={each.path}>
+                    <SidebarMenuItem key={each.id}>
                       <SidebarMenuButton
                         tooltip={each.label}
                         render={<Link to={each.areas[0].to} onClick={close} />}
@@ -78,7 +78,7 @@ export function AppSidebar() {
           <nav aria-label="Platform">
             <SidebarMenu>
               {platform.map((each) => (
-                <SidebarMenuItem key={each.path}>
+                <SidebarMenuItem key={each.id}>
                   <SidebarMenuButton
                     isActive={each === app}
                     tooltip={each.label}
@@ -98,11 +98,11 @@ export function AppSidebar() {
   );
 }
 
-function AppSwitcher({ current, apps }: { current?: ShellApp; apps: ShellApp[] }) {
+function AppSwitcher({ current, apps }: { current?: Capability; apps: Capability[] }) {
   const navigate = useNavigate();
   const { setOpenMobile } = useSidebar();
   const Icon = current?.icon ?? LayoutGridIcon;
-  const go = (to: ShellApp["areas"][number]["to"]) => {
+  const go = (to: Capability["areas"][number]["to"]) => {
     setOpenMobile(false);
     void navigate({ to });
   };
@@ -129,7 +129,7 @@ function AppSwitcher({ current, apps }: { current?: ShellApp; apps: ShellApp[] }
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Apps</DropdownMenuLabel>
                   {apps.map((app) => (
-                    <DropdownMenuItem key={app.path} onClick={() => go(app.areas[0].to)}>
+                    <DropdownMenuItem key={app.id} onClick={() => go(app.areas[0].to)}>
                       <app.icon />
                       {app.label}
                     </DropdownMenuItem>

@@ -78,6 +78,7 @@ pub fn sign_ins(ctx: &Context) -> Arc<dyn PrincipalResolver> {
 /// grants.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("access")
+        .capability(policy_file!("../capability.yaml"))
         .resource::<Grant>(policy_file!("policies/grant.yaml"))
         .resource::<Role>(policy_file!("policies/role.yaml"))
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))

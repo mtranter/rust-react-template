@@ -19,7 +19,7 @@ import {
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
-import { type Labels, byModule, useCatalog } from "./catalog";
+import { type Labels, useCatalog } from "./catalog";
 import { RevokeGrantDialog } from "./revoke-grant-dialog";
 import { useRoles } from "./use-roles";
 
@@ -150,7 +150,7 @@ function GrantFilters({
   onFilter: (filter: GrantFilter) => void;
 }) {
   const roles = useRoles();
-  const { resources, labels } = useCatalog();
+  const { capabilities, resources, labels } = useCatalog();
   const actionsOf = (resource?: string) =>
     resources.find((r) => r.resource === resource)?.actions.map((a) => a.name) ?? [];
 
@@ -168,8 +168,8 @@ function GrantFilters({
         label="Resource"
         all="Everything"
         value={filter.resource}
-        options={byModule(resources).flatMap((m) =>
-          m.resources.map((r) => ({ value: r.resource, label: r.label, group: m.label })),
+        options={capabilities.flatMap((c) =>
+          c.resources.map((r) => ({ value: r.resource, label: r.label, group: c.label })),
         )}
         onChange={(resource) =>
           onFilter({

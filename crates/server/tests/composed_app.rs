@@ -494,6 +494,7 @@ impl Composition for MisGranted {
     fn modules() -> Vec<Module> {
         vec![Module::new(|_| NoData).with_policies(|| {
             Policies::builder("gadgets")
+                .capability(PolicyFile::new("capability.yaml", "id: gadgets\nlabel: Gadgets\n"))
                 .resource::<Gadget>(PolicyFile::new(
                     "policies/gadget.yaml",
                     "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: gadget\n  version: default\n  rules: []\n",

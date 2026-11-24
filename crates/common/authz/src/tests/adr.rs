@@ -200,6 +200,13 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
     let policies = adr_policies();
     let catalog = policies.catalog(&compile(&policies, policies.default_grants()));
     assert_eq!(catalog.module, "notebook");
+    assert_eq!(
+        catalog.capability,
+        Capability {
+            id: "notes".into(),
+            label: "Notes".into()
+        }
+    );
     let kinds: Vec<_> = catalog.resources.iter().map(|r| r.kind.as_str()).collect();
     assert_eq!(kinds, ["note"]);
     let note = &catalog.resources[0];
@@ -236,6 +243,7 @@ fn the_catalog_lists_resources_actions_and_scopes_and_marks_the_unreachable() {
 #[test]
 fn the_catalog_labels_what_its_labels_file_names_and_words_the_rest() {
     let policies = Policies::builder("notebook")
+        .capability(crate::tests::capability())
         .resource::<Note>(note_policy())
         .derived_roles(scopes())
         .default_grants(defaults())

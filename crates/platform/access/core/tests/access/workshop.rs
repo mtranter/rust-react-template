@@ -87,6 +87,10 @@ defaultGrants:
 /// What `access` is built from in `release`: its own policies and the workshop's.
 pub fn modules(release: Release) -> Modules {
     let builder = Policies::builder("workshop")
+        .capability(PolicyFile::new(
+            "capability.yaml",
+            "id: workshop\nlabel: Workshop\n",
+        ))
         .derived_roles(PolicyFile::new("policies/derived_roles.yaml", SCOPES));
     let workshop = match release {
         Release::First => builder

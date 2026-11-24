@@ -82,3 +82,13 @@ ADR 0047 removes every Module's gate (`module:<name>` / `use`), and no gate repl
   - `note-search`: `noteSummary` / `search` at `any`: every signed-in user can search every note's summary, other authors' included, since the search has no `Columns` to scope it (it refuses only a `Where` plan).
   - `module-template` (`widgets`): `widget` / `*` at `any`: every signed-in user can create, view, rename, list and search every widget. Every module `make new-module` scaffolds starts so.
   - `notes` (create, and the rest at `author`) and `assistant` (`chat`, `start`, the rest at `owner`) are exact.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: git push --set-upstream origin factory/0074-modules-lose-their-gates-and-resource-grants-alone-guard-operations:factory/0074-modules-lose-their-gates-and-resource-grants-alone-guard-operations failed: To https://github.com/mtranter/rust-react-template.git
+ ! [rejected]        factory/0074-modules-lose-their-gates-and-resource-grants-alone-guard-operations -> factory/0074-modules-lose-their-gates-and-resource-grants-alone-guard-operations (non-fast-forward)
+error: failed to push some refs to 'https://github.com/mtranter/rust-react-template.git'
+hint: Updates were rejected because the tip of your current branch is behind
+hint: its remote counterpart. If you want to integrate the remote changes,
+hint: use 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.

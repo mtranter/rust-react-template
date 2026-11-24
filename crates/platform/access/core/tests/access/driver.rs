@@ -71,6 +71,18 @@ impl GrantJson {
 
 json_newtype!(pub CatalogJson);
 
+impl CatalogJson {
+    /// Every Capability's resources, in the catalog's order.
+    pub fn resources(&self) -> Vec<&serde_json::Value> {
+        self["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|c| c["resources"].as_array().unwrap())
+            .collect()
+    }
+}
+
 json_newtype!(pub RoleJson);
 
 json_newtype!(pub AssignmentJson);

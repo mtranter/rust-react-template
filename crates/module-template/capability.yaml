@@ -1,0 +1,4 @@
+# What `make new-module` copies has no Capability of its own: this stands in for the one
+# above `crates/capabilities/<capability>/<module>/`, which it names instead.
+id: module-template
+label: Module template

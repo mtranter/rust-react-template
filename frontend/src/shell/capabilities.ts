@@ -16,8 +16,13 @@ export const productName = "rust-vite-template";
 
 export type Area = { label: string; to: NonNullable<LinkProps["to"]>; icon: LucideIcon };
 
-/** One app of the suite: every route under `path` is one of its `areas` or a record in one. */
-export type ShellApp = {
+/**
+ * One Capability of the suite (ADR 0047) and its app: every route under `path` is one of its
+ * `areas` or a record in one. `id` is its `capability.yaml`'s, which `make check-modules` reads
+ * from here as a literal `id: "<id>"`.
+ */
+export type Capability = {
+  id: string;
   label: string;
   description: string;
   icon: LucideIcon;
@@ -26,7 +31,8 @@ export type ShellApp = {
   areas: [Area, ...Area[]];
 };
 
-const notes: ShellApp = {
+const notes: Capability = {
+  id: "notes",
   label: "Notes",
   description: "Write notes, keep their checklists and find them again.",
   icon: NotebookPenIcon,
@@ -37,7 +43,8 @@ const notes: ShellApp = {
   ],
 };
 
-const access: ShellApp = {
+const access: Capability = {
+  id: "access",
   label: "Access",
   description: "Who may use the apps, and what each role may do.",
   icon: ShieldIcon,
@@ -54,13 +61,13 @@ const access: ShellApp = {
  * the sidebar's footer. An app the caller may not use is left out, as `access` is from a caller
  * who may not manage access.
  */
-export function useShellApps(): { apps: ShellApp[]; platform: ShellApp[] } {
+export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
   const managesAccess = useManagesAccess();
   return { apps: [notes], platform: managesAccess ? [access] : [] };
 }
 
 /** The app whose `path` holds `pathname`, and its area: the one whose `to` holds it most closely. */
-export function locate(pathname: string, apps: ShellApp[]): { app?: ShellApp; area?: Area } {
+export function locate(pathname: string, apps: Capability[]): { app?: Capability; area?: Area } {
   const holds = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
   const app = apps.find((candidate) => holds(candidate.path));
   const area = app?.areas

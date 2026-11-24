@@ -10,6 +10,10 @@ The overall architecture: many isolated Modules compiled and deployed as a singl
 **Module**:
 A self-contained unit of the business domain (e.g. `users`, `notes`). Each is its own crate and owns everything it needs: its HTTP surface, its business logic and its persistence, including its database schema and migrations. Designed to be **liftable**: extractable into a standalone service with little surgery, because it declares its own dependencies and never reaches into another Module's internals.
 
+**Capability**:
+One product of the suite (a CRM, timesheets, billing) and the code's name for it (ADR 0047): a folder of the Modules it owns, `crates/capabilities/<capability>/`, beside a `capability.yaml` holding its id and its label for admins. Every Module belongs to exactly one Capability, the one whose folder it sits in; the platform's Modules are each their own (`access`, `assistant`) and the reference Modules one, `notes`. A Capability *keeps* its Modules' data (it is where that data is written and answered for), has one App, and groups the Catalog admins grant from. It is not a crate and owns no code, tables or `-api`: its Modules meet only through their Module APIs, as any two Modules do.
+_Avoid_: Product (in code), bounded context, App (for the backend's grouping)
+
 **Layer**:
 A horizontal concern within a Module. There are exactly four (a Read Module has no Domain Layer):
 - **Web Layer**: the Module's HTTP surface, its operations and request/response shapes. The only Layer that knows the web framework. Translates requests into Commands and hands them to a Service.
@@ -60,14 +64,14 @@ Where the application reads the time. Injected, so a test can fix it and move it
 ## Between Modules
 
 **Module API**:
-The small, pure surface a Module offers to other Modules in-process, in its own `<module>-api` crate: capability traits, Published Records, Topics and a description of its Seed, with ids crossing as plain values. The only way one Module may depend on another. Distinct from the Web Layer, a Module's HTTP surface for clients.
+The small, pure surface a Module offers to other Modules in-process, in its own `<module>-api` crate: Module API traits, Published Records, Topics and a description of its Seed, with ids crossing as plain values. The only way one Module may depend on another. Distinct from the Web Layer, a Module's HTTP surface for clients.
 _Avoid_: Interface crate, contracts
 
 **Published View**:
 A versioned, read-only view of a Module's data (e.g. `users_api.user_v1`) that other Modules' SQL may read, in a schema named for the Module API: a data product the Module publishes for querying. It is to SQL what the Module API is to Rust. It only gains columns; a breaking change is a new version beside the old. No Module reads them any more: a Module keeps a Projection instead.
 
 **Published Record**:
-The plain Rust row of a Published View (e.g. `users_api::v1::User` for `users_api.user_v1`), in the providing Module's API. It describes the Module's Seed data to other Modules and is what their tests assert against. It never stands in for the Aggregate, and a capability trait never returns it.
+The plain Rust row of a Published View (e.g. `users_api::v1::User` for `users_api.user_v1`), in the providing Module's API. It describes the Module's Seed data to other Modules and is what their tests assert against. It never stands in for the Aggregate, and a Module API trait never returns it.
 
 **Read Module**:
 A Module that owns no source data and enforces no business rules: it answers queries no one Module owns (notes with their authors' names) from its own Projections of other Modules' Aggregate Roots, returning Read Models. It has Web, Application and DB Layers but no Domain Layer.
@@ -230,7 +234,7 @@ _Avoid_: Approval text, description
 ## The UI
 
 **App**:
-One product of the suite the SPA presents (a CRM, timesheets, billing), with its own icon and entry in the shell's switcher, launcher and Go to (ADR 0046). An App is a UI grouping of one or more Modules' screens, not a Module: one Module may serve several Apps' screens, and one App may call several Modules. The platform's own screens (`access`) are tools kept apart from the Apps, not Apps of the suite.
+A Capability's screens as the SPA presents them, with its own icon and entry in the shell's registry (`frontend/src/shell/capabilities.ts`, keyed by the Capability's id), switcher, launcher and Go to (ADR 0046, 0047). Each Capability has one App, apart from those with no screens (`assistant`); an App may show data another Capability owns, by linking to, embedding or copying it, without changing who owns it. The platform's own screens (`access`) are tools kept apart from the Apps, not Apps of the suite.
 _Avoid_: Module (for an App), child app, sub-app
 
 **Area**:

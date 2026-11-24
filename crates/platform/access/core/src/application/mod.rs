@@ -15,7 +15,7 @@ mod subjects;
 pub use app_persistence::{
     EventPublisher, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
-pub use catalog::{CatalogAction, CatalogResource};
+pub use catalog::{CatalogAction, CatalogCapability, CatalogResource};
 pub(crate) use events::scope_name;
 pub use repository::{
     AssignmentRepository, GrantFilter, GrantRepository, GrantSortKey, RoleRepository, RoleSortKey,

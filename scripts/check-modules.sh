@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every module core crate (`crates/modules/*/core`, and the platform's in
+# Every module core crate (`crates/capabilities/*/*/core`, and the platform's in
 # `crates/platform/*/core`) must be registered everywhere the server and CI look
 # for it — a missing entry compiles and passes the module's own tests, then
 # fails only in a deployed environment. A reference
@@ -15,6 +15,15 @@
 # them with `Module::with_policies(..)`, with its resources and default
 # grants, and its web layer's `OPERATIONS` with `.performing(..)`.
 #
+# Every Module sits in a Capability's folder (ADR 0047), beside its
+# `capability.yaml`: `crates/capabilities/<capability>/`, whose id is the
+# folder's name; each of the platform's `crates/platform/<module>/`, whose id is
+# the Module's; and `crates/reference/`. Its `di.rs` names that file in its
+# policies. Each Capability folder holds a Module, and each live Capability (the
+# reference's only while its Modules are registered) has an entry in the SPA's
+# registry, frontend/src/shell/capabilities.ts, as a literal `id: "<id>"`, but
+# `assistant`, which has no app; each entry there names a live Capability.
+#
 # It also checks that a module with a seed declares the number its seed ids are
 # built from (`pub const MODULE: u32 = N;` in its `-api` crate's `src/seed.rs` if
 # it has one, else its core's; ADR 0028), and that the numbers are unique.
@@ -24,6 +33,9 @@ cd "$(dirname "$0")/.."
 
 registry=crates/server/src/modules.rs
 server=crates/server/Cargo.toml
+spa=frontend/src/shell/capabilities.ts
+# Capabilities with no app in the SPA.
+appless=(assistant)
 
 failed=0
 fail() {
@@ -52,13 +64,50 @@ registrations() {
   fi
 }
 
+id_of() { sed -nE 's/^id: *"?([^"]*)"? *$/\1/p' "$1" | head -1; }
+
+# The folder of the Capability the Module at $1 sits in, and the id the folder
+# gives it (none for the reference's).
+capability_of() {
+  case $1 in
+    crates/capabilities/*) echo "$(dirname "$(dirname "$1")") $(basename "$(dirname "$(dirname "$1")")")" ;;
+    crates/platform/*) echo "$(dirname "$1") $(basename "$(dirname "$1")")" ;;
+    crates/reference/*) echo "crates/reference " ;;
+  esac
+}
+
+for folder in crates/capabilities/*/; do
+  folder=${folder%/}
+  cores=("$folder"/*/core)
+  ((${#cores[@]})) || fail "$folder: a Capability with no Module: give it one (\`make new-module CAPABILITY=$(basename "$folder") NAME=..\`) or remove it"
+done
+
 numbers=()
-for module in crates/modules/*/core crates/platform/*/core crates/reference/*/core; do
+live=()
+for module in crates/capabilities/*/*/core crates/platform/*/core crates/reference/*/core; do
   name=$(sed -nE 's/^name = "([^"]+)"/\1/p' "$module/Cargo.toml" | head -1)
 
   found=$(registrations "$module")
-  if [[ $module == crates/modules/* || $module == crates/platform/* ]] || grep -q '^1' <<<"$found"; then
+  registered=false
+  if [[ $module == crates/capabilities/* || $module == crates/platform/* ]] || grep -q '^1' <<<"$found"; then
+    registered=true
     while IFS= read -r missing; do fail "${missing#0 }"; done < <(grep '^0' <<<"$found" || true)
+  fi
+
+  read -r folder expected <<<"$(capability_of "$module")"
+  if [ ! -f "$folder/capability.yaml" ]; then
+    fail "$module: no capability.yaml above it, in $folder: every Module sits in a Capability's folder (ADR 0047)"
+  else
+    id=$(id_of "$folder/capability.yaml")
+    [ -z "$expected" ] || [ "$id" = "$expected" ] ||
+      fail "$folder/capability.yaml: its id is \`$id\`, but its folder makes it \`$expected\`"
+    path=../../capability.yaml
+    [[ $module == crates/platform/* ]] && path=../capability.yaml
+    if grep -qE '\.with_policies\(' "$module/src/di.rs" 2>/dev/null; then
+      grep -qF "policy_file!(\"$path\")" "$module/src/di.rs" ||
+        fail "$module/src/di.rs: its policies don't name its Capability: \`.capability(policy_file!(\"$path\"))\`"
+    fi
+    if $registered; then live+=("$id"); fi
   fi
 
   if grep -qE 'operation_id = ' "$module"/src/web/*.rs 2>/dev/null; then
@@ -83,6 +132,17 @@ for module in crates/modules/*/core crates/platform/*/core crates/reference/*/co
     *) fail "$module: \`pub const MODULE: u32\` is declared more than once in ${seeds[*]}" ;;
   esac
 done
+
+ids=$(sed -nE 's/^ *id: "([^"]+)",.*/\1/p' "$spa" 2>/dev/null || true)
+[ -f "$spa" ] || fail "$spa: missing, so no Capability has an app"
+for id in $(printf '%s\n' "${live[@]}" | sort -u); do
+  [[ " ${appless[*]} " == *" $id "* ]] && continue
+  grep -qxF "$id" <<<"$ids" || fail "$spa: the \`$id\` Capability has no entry (\`id: \"$id\"\`)"
+done
+for id in $ids; do
+  printf '%s\n' "${live[@]}" | grep -qxF "$id" || fail "$spa: \`id: \"$id\"\` names no Capability with a registered Module"
+done
+for id in $(sort <<<"$ids" | uniq -d); do fail "$spa: \`id: \"$id\"\` is given twice"; done
 
 duplicates=$(printf '%s\n' "${numbers[@]}" | sort -n | awk '$1 == prev { print $1 } { prev = $1 }' | sort -u)
 for number in $duplicates; do

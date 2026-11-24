@@ -1,12 +1,12 @@
 import { Page } from "@/components/page";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { type ShellApp, productName, useShellApps } from "@/shell/apps";
+import { type Capability, productName, useCapabilities } from "@/shell/capabilities";
 import { Link } from "@tanstack/react-router";
 
 /** The launcher: every app the caller may open, then the platform's tools. */
 export function HomePage() {
-  const { apps, platform } = useShellApps();
+  const { apps, platform } = useCapabilities();
 
   return (
     <Page title={productName} description="Choose an app.">
@@ -25,13 +25,13 @@ export function HomePage() {
   );
 }
 
-function AppGrid({ label, apps }: { label: string; apps: ShellApp[] }) {
+function AppGrid({ label, apps }: { label: string; apps: Capability[] }) {
   return (
     <section aria-label={label} className="space-y-3">
       <h2 className="text-muted-foreground text-sm font-medium">{label}</h2>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {apps.map((app) => (
-          <li key={app.path}>
+          <li key={app.id}>
             <Link
               to={app.areas[0].to}
               className="group block rounded-xl focus-visible:outline-none"

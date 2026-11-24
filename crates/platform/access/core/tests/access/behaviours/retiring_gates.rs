@@ -24,10 +24,9 @@ const FIRST_RELEASE_GATES: &[(&str, &str)] = &[("user", "workshop"), ("admin", "
 
 /// `(module, resource, action)` for everything the catalog offers.
 fn offered(catalog: &CatalogJson) -> Vec<(String, String, String)> {
-    catalog["resources"]
-        .as_array()
-        .unwrap()
-        .iter()
+    catalog
+        .resources()
+        .into_iter()
         .flat_map(|r| {
             r["actions"].as_array().unwrap().iter().map(|a| {
                 (

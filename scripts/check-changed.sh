@@ -8,7 +8,8 @@
 # what's across their boundaries, and the crates composing modules depend on
 # them (`server` on every registered module, `reference-journeys` on the
 # reference modules), so a module's change runs its own tests and the composed
-# app's. The platform's modules (`crates/platform/`) are modules like the app's. A change to what every crate shares (common, the lockfile, the .sqlx
+# app's. The platform's modules (`crates/platform/`) are modules like the app's
+# (`crates/capabilities/`). A change to what every crate shares (common, the lockfile, the .sqlx
 # cache) tests the whole workspace.
 #
 # The end-to-end check (`make e2e`) runs when what it signs in through can
@@ -34,7 +35,8 @@ while IFS= read -r path; do
     frontend/openapi.json) backend=true frontend=true e2e=true ;;
     frontend/*) frontend=true e2e=true ;;
     crates/reference/journeys/*) backend=true crates+=(crates/reference/journeys) ;;
-    crates/modules/*/*/* | crates/platform/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
+    crates/capabilities/*/*/*/*) backend=true crates+=("$(cut -d/ -f1-5 <<<"$path")") ;;
+    crates/platform/*/*/* | crates/reference/*/*/*) backend=true crates+=("$(cut -d/ -f1-4 <<<"$path")") ;;
     crates/module-template/*/*) backend=true crates+=("$(cut -d/ -f1-3 <<<"$path")") ;;
     crates/server/*) backend=true e2e=true crates+=(crates/server) ;;
     crates/common/web/* | crates/common/fake-oidc/*) backend=true all_tests=true e2e=true ;;
@@ -59,7 +61,7 @@ if ! $all_tests && [ ${#crates[@]} -gt 0 ]; then
     if [ ! -f "$crate/Cargo.toml" ]; then all_tests=true; break; fi
     package=$(package_of "$crate")
     packages+=("$package")
-    for manifest in crates/modules/*/*/Cargo.toml crates/platform/*/*/Cargo.toml crates/reference/*/*/Cargo.toml crates/reference/journeys/Cargo.toml \
+    for manifest in crates/capabilities/*/*/*/Cargo.toml crates/platform/*/*/Cargo.toml crates/reference/*/*/Cargo.toml crates/reference/journeys/Cargo.toml \
       crates/module-template/*/Cargo.toml crates/server/Cargo.toml; do
       [ -f "$manifest" ] || continue
       grep -Eq "^$package(\.workspace| *=)" "$manifest" && packages+=("$(package_of "$(dirname "$manifest")")")

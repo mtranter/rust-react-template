@@ -15,28 +15,36 @@ import type {
 import { http, HttpResponse } from "msw";
 
 export const catalog: CatalogResponse = {
-  resources: [
+  capabilities: [
     {
-      module: "workshop",
-      moduleLabel: "Workshop",
-      resource: "widget",
-      label: "Widgets",
-      actions: [{ name: "build", label: "Build", operations: ["build_widget"], reachable: true }],
-      scopes: [{ name: "any", label: "Any" }],
-    },
-    {
-      module: "workshop",
-      moduleLabel: "Workshop",
-      resource: "gadget",
-      label: "Gadgets",
-      actions: [
-        { name: "make", label: "Make", operations: ["make_gadget"], reachable: true },
-        { name: "view", label: "View", operations: ["get_gadget"], reachable: true },
-        { name: "scrap", label: "Scrap", operations: [], reachable: false },
-      ],
-      scopes: [
-        { name: "any", label: "Every gadget" },
-        { name: "maker", label: "Gadgets they made" },
+      capability: "workshop",
+      label: "Workshop",
+      resources: [
+        {
+          module: "widgets",
+          moduleLabel: "Widgets",
+          resource: "widget",
+          label: "Widgets",
+          actions: [
+            { name: "build", label: "Build", operations: ["build_widget"], reachable: true },
+          ],
+          scopes: [{ name: "any", label: "Any" }],
+        },
+        {
+          module: "gadgets",
+          moduleLabel: "Gadgets",
+          resource: "gadget",
+          label: "Gadgets",
+          actions: [
+            { name: "make", label: "Make", operations: ["make_gadget"], reachable: true },
+            { name: "view", label: "View", operations: ["get_gadget"], reachable: true },
+            { name: "scrap", label: "Scrap", operations: [], reachable: false },
+          ],
+          scopes: [
+            { name: "any", label: "Every gadget" },
+            { name: "maker", label: "Gadgets they made" },
+          ],
+        },
       ],
     },
   ],
@@ -151,7 +159,9 @@ export function accessApi(
           status: 400,
         });
       }
-      const resource = catalog.resources.find((r) => r.resource === body.resource);
+      const resource = catalog.capabilities
+        .flatMap((c) => c.resources)
+        .find((r) => r.resource === body.resource);
       if (!resource) {
         return HttpResponse.json(refusal("validation_error", "no such resource", "resource"), {
           status: 400,

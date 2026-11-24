@@ -86,7 +86,7 @@ jobs:
       - name: start Postgres (docker compose)
         run: docker compose up -d --wait postgres
       - name: scaffold a module
-        run: make new-module NAME=gadgets
+        run: make new-module CAPABILITY=workshop NAME=gadgets
       - name: clippy
         run: cargo clippy -p gadgets -p gadgets-api -p server --all-targets --features server/seed -- -D warnings
       - name: test
