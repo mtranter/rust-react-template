@@ -36,10 +36,10 @@ async function rolesPage() {
 
 test("hides the access screen and its link from a caller who holds none of its actions", async () => {
   server.use(...notAnAdmin);
-  renderAt("/");
+  const { queryClient } = renderAt("/");
 
-  const apps = await screen.findByRole("region", { name: "Apps" });
-  await within(apps).findByRole("link", { name: /Notes/ });
+  await screen.findByRole("heading", { level: 1 });
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   expect(screen.queryByRole("region", { name: "Platform" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: /Access/ })).not.toBeInTheDocument();
 });
