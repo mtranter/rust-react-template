@@ -1,7 +1,7 @@
 ---
 id: 0078
 name: Each Area declares the action it needs, and users see only the Areas and Apps they may use
-status: in-progress
+status: needs-info
 priority: P1
 size: M
 blocked_by: [0077]
@@ -77,3 +77,7 @@ This replaces `useManagesAccess`. Hiding is a convenience: the server still refu
 
 - An Area needs exactly one action until one needs more ("any of", "all of").
 - 0075 (disabling) and 0076 (embedded panels) are descoped. Don't build for them.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: Claude Code process exited with code 143
