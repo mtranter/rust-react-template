@@ -1,7 +1,7 @@
 ---
 id: 0076
 name: A Capability's panel can be embedded in a slot on another App's page, calling its owner's API
-status: needs-triage
+status: wontfix
 priority: P2
 size: M
 blocked_by: [0074]
@@ -31,3 +31,7 @@ ADR 0047 lists three ways data appears in an App other than its owner's: Link, E
 ## Open questions
 
 - How does a slot pass its record across Capabilities when the ids differ (a contact versus the Person it refers to)? The host passes what it has, and the panel resolves it through its own API.
+
+## Comments
+
+- 2026-11-24: Descoped for now, so not to be actioned. Kept because ADR 0047 refers to it; reopen it, rather than starting a new ticket, when it is needed.

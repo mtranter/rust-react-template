@@ -5,7 +5,7 @@ status: needs-triage
 priority: P1
 size: L
 blocked_by: []
-blocks: [0075, 0076]
+blocks: []
 source: conversation on 2026-11-24, following ADR 0046's shell; decision drafted as ADR 0047 (option B)
 ---
 
@@ -75,7 +75,11 @@ Docs, in the slice that makes each one true:
 - `make new-module CAPABILITY=crm NAME=contacts` in a fresh `make init` app scaffolds `crates/capabilities/crm/contacts/`, whose tests pass. `make check-init` passes.
 - `make check-changed` passes, including e2e.
 
-## Open questions
+## Decisions (2026-11-24)
 
-1. **Who may call `get_my_permissions`?** I lean towards any signed-in caller (a Principal asking about itself), which makes it neither `PUBLIC` nor guarded by a resource grant: a third kind, which needs its reason recorded where `PUBLIC` is.
-2. **Does an Area ever need more than one action** (any of several, or all)? Assume exactly one until an Area needs more.
+1. **Any signed-in caller may call `get_my_permissions`.** It answers only what the caller may do. It is a third kind of operation, neither `PUBLIC` nor guarded by a resource grant, and is listed with its reason beside `PUBLIC` (`crates/server/src/public.rs`). A resource grant to `user` was rejected because an admin could revoke it from a role, and every App would vanish for that role's users.
+2. **An Area needs exactly one action.** "Any of" or "all of" is added when an Area first needs it.
+
+## Notes
+
+- Tickets 0075 (disabling a Capability) and 0076 (embedded panels) are descoped for now (`wontfix`), so this ticket blocks nothing.

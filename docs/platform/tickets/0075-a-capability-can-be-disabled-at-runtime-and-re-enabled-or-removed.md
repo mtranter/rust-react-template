@@ -1,7 +1,7 @@
 ---
 id: 0075
 name: A Capability can be disabled at runtime, keeping its code and data, then re-enabled or removed
-status: needs-triage
+status: wontfix
 priority: P2
 size: M
 blocked_by: [0074]
@@ -43,3 +43,7 @@ Soft-delete a Capability: stop serving it, but keep its code, its migrations and
 
 - Which of a Capability's Schedules count as retention, and is it the Schedule's own declaration that says so?
 - Should disabling be a deploy-time setting (an environment variable) or something an admin toggles?
+
+## Comments
+
+- 2026-11-24: Descoped for now, so not to be actioned. Kept because ADR 0047 refers to it; reopen it, rather than starting a new ticket, when it is needed.
