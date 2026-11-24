@@ -1,7 +1,7 @@
 ---
 id: 0074
 name: Modules lose their gates, and resource grants alone guard operations
-status: ready-for-agent
+status: in-progress
 priority: P1
 size: M
 blocked_by: []
