@@ -107,7 +107,7 @@ $named"
 # An app starts with no Capabilities, so with no workspace members for them:
 # a glob matching nothing would fail the workspace.
 [ ! -e crates/capabilities ] || fail "\`make init\` left crates/capabilities/"
-! grep -qF 'crates/capabilities/' Cargo.toml || fail "\`make init\` left Cargo.toml naming crates/capabilities/"
+! grep -v '^ *#' Cargo.toml | grep -qF 'crates/capabilities/' || fail "\`make init\` left Cargo.toml naming crates/capabilities/"
 
 make --no-print-directory new-module CAPABILITY=crm NAME=contacts
 for made in crates/capabilities/crm/capability.yaml crates/capabilities/crm/contacts/core crates/capabilities/crm/contacts/api; do
