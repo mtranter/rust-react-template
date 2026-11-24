@@ -5,13 +5,13 @@ description: How the backend authenticates and authorizes requests, and how to g
 
 # Endpoint auth (ADR 0025, 0040, 0041)
 
-Authentication is one JWT bearer scheme; authorization is policies declared in code and grants held as data, at the module and action levels (engine `app-authz`). **Never hand-roll a role check** in a module: express it as an action and a grant.
+Authentication is one JWT bearer scheme; authorization is policies declared in code and grants held as data, of actions on resources (engine `app-authz`). A Module has no gate (ADR 0047): an operation is allowed by its action's grant alone. **Never hand-roll a role check** in a module: express it as an action and a grant.
 
 Extends `crates/AGENTS.md`; if this file and the code disagree, the code wins: fix this file in the same change.
 
 | Doing | Copy |
 |---|---|
-| A guarded operation and its policies | `crates/reference/notes`' `policies/`, `web/access.rs` (gate, `Caller`, `OPERATIONS`), `domain/access.rs` (`impl Resource for Note`), `di.rs` (`policies()`), and a use case's `self.authorize(..)` |
+| A guarded operation and its policies | `crates/reference/notes`' `policies/`, `web/access.rs` (`OPERATIONS`), a handler's `app_web::Caller`, `domain/access.rs` (`impl Resource for Note`), `di.rs` (`policies()`), and a use case's `self.authorize(..)` |
 | A row only some may act on, and a list holding only the rows the caller may see | `crates/reference/notes`' `db/repository.rs` (`NoteColumns`, `push_scope` in `list`), its service's `load_for(..)` and `list(..)`, and its tests' `behaviours/scoping.rs` (the agreement test) |
 | Who may do what at runtime: roles, grants, assignments, defaults, the rule set's rebuild | `crates/platform/access` (its `application/rules.rs`, `application/roles.rs`, `application/assignments.rs`, `apply_defaults`), wired in `server::rules` / `server::apply_default_grants`, journeys in `crates/reference/journeys/tests/journeys/granting.rs` and `assigning.rs` |
 
@@ -30,7 +30,7 @@ One JWT Bearer scheme (`app_web::JwtAuth`, `crates/common/web/src/auth.rs`), who
 
 Every operation has a security requirement unless it is in `PUBLIC` (`crates/server/src/public.rs`) with its reason; `composed_app.rs` fails on one with none that isn't listed, and on a listed one that has one. So for every operation:
 
-1. **Its handler takes the module's `Caller`** (`web/access.rs`: `pub struct Widgets; impl Gate for Widgets { const MODULE: &str = "widgets"; }`, `pub type Caller = app_web::Caller<Widgets>;`), never `JwtAuth`. It yields the `Principal` only once the gate (`module:<name>` / `use`) allows its roles: no token is **401**, a refused gate **403**.
+1. **Its handler takes `app_web::Caller`** (`use app_web::Caller;`), never `JwtAuth`. It yields a valid token's `Principal` (no or bad token is **401**) and the token (`caller.token()`, for calls made as the caller), and checks no role: the use case's action does.
 2. **Its use case takes `&Principal`** first and plans its action before it loads or begins anything (`self.authorizer.authorize::<Note>(principal, NoteAction::Edit)?`: `Denied` is **403**). The service holds `ctx.authorizer()`. Reactions, deferred jobs and schedules pass `Principal::System`, which policies don't apply to.
 3. **A row is checked once loaded, before any domain action** (`self.authorizer.check(principal, &plan, &note)?`, in the `load_for` of `crates/reference/notes`): refused, it is **404** when the principal may not `view` that row either (the resource's `Resource::VIEW`), so its existence isn't revealed, and **403** when they may. So an author's archived note is 403 to edit (the policy's deny rule answers before the domain's 409, which stays for `Principal::System`), another user's 404. Say both in the operation's summary.
 4. **A list asks for its rows** (`self.authorizer.rows::<Note>(principal, NoteAction::List)?`, `Denied` is **403**) and hands them to its repository, which pushes them into its SQL with `app_db::push_scope::<XColumns>`. `XColumns` (`impl app_db::Columns` in `db/`) maps each of the resource's `ATTRS` to a column or a module-authored expression, with its kind, so a policy's value is bound as the column's type and never written into the SQL. Its DB tests check it with `XColumns::assert_every_attribute_is_mapped()` and `app_authz::testing::assert_lists_agree` (the `testing` feature): for several principals and every action, the scoped query holds exactly the rows `Filter::matches` does in memory, so the SQL and the row check can't drift. Rerun it after adding an attribute, scope or rule. Never filter rows after the query.
@@ -43,7 +43,7 @@ Every operation has a security requirement unless it is in `PUBLIC` (`crates/ser
 - `default_grants.yaml`: `- { role: user, resource: note, action: create }`, `actions: [..]`, optionally `scope: <derived role>`.
 - `derived_roles.yaml`: scopes such as `author`, `condition: { match: { expr: R.attr.authorId == P.id } }`.
 - `<resource>.yaml`: a resource policy's rules, e.g. an `EFFECT_DENY` on edits while `R.attr.archived == true`.
-- `labels.yaml`: what admins see at `/access`, in the catalog's `label`s: the module's name (`module: Notes`), and per resource (its gate, `module:<name>`, included) its `label` and its `actions` and `scopes` (`any` included) as `name: words`. Loaded with `.labels(policy_file!("policies/labels.yaml"))`; naming a resource, action or scope the module lacks fails loading. Anything left out shows as its name in words (`items:add` → `Items add`), so label a new action when you add it.
+- `labels.yaml`: what admins see at `/access`, in the catalog's `label`s: the module's name (`module: Notes`), and per resource its `label` and its `actions` and `scopes` (`any` included) as `name: words`. Loaded with `.labels(policy_file!("policies/labels.yaml"))`; naming a resource, action or scope the module lacks fails loading. Anything left out shows as its name in words (`items:add` → `Items add`), so label a new action when you add it.
 
 Copy the files of `crates/reference/notes/core/policies/`.
 
@@ -51,12 +51,13 @@ Copy the files of `crates/reference/notes/core/policies/`.
 
 The platform's `access` module (`crates/platform/access`) holds them.
 
-- **Default grants apply once.** `migrate` applies each default once: editing a default already applied changes nothing deployed, a new one is granted by the next `migrate`, and one an admin revoked stays revoked. Removing an action leaves its stored grants stale (listed, skipped) until an admin revokes them. So a role restriction in `default_grants.yaml` is a default, not a guarantee.
+- **Default grants apply once.** `migrate` applies each default once: editing a default already applied changes nothing deployed, a new one is granted by the next `migrate`, and one an admin revoked stays revoked. Removing an action leaves its stored grants stale (listed, skipped) until an admin revokes them. So a role restriction in `default_grants.yaml` is a default, not a guarantee. A resource named `module:<name>` (a gate's, before ADR 0047) is refused when policies load, naming the file and line.
+- **Gates were retired once.** Before it applies the defaults, `migrate` runs `access`' `retire_gates` (`application/gates.rs`) while `access.gates_retired` has no row: it revokes, as `System` and announced, every grant on a Module's resources whose role its gate didn't let through (no grant of `module:<m>` / `use` to that role or to `user`, and for `access` not `admin`), then every `module:*` grant, and sets the row in the same unit of work, so no role gains or loses anything. Never clear that row: run again with no gate grants left, it would revoke every grant.
 - **Grants**: admins grant and revoke over `list_grants`, `grant_access`, `revoke_grant` and `get_access_catalog` (and the SPA's `/access`), refused `400` naming the field when the role doesn't exist or the catalog lacks the rest, and `409` when equal to a grant made.
 - **Roles** are records (`list_roles`, `create_role`, `delete_role`): a grant's role must name one (a foreign key in `access`' own schema), `admin` and `user` are built in, a role a grant names can't be deleted, and `migrate` creates a role a default grant names when it first applies that grant. A test granting a role of its own creates it first (`create_role`).
 - **Assignments**: who holds a role beyond `user` (`assign_role`, `unassign_role` with `If-Match`; `list_subjects` lists everyone signed in, assigned a role or a bootstrap admin, with their roles): `user` is refused `400`, a role that doesn't exist `400` naming `role`, deleting a role an assignment names `409`, and unassigning a bootstrap admin's `admin`, or the last stored `admin` while `APP_BOOTSTRAP_ADMINS` is empty, `409`.
 - **Seeds and journeys**: a seed assigns its accounts' roles through `access_api::RoleAssignments` as `System` (the `module(access::assignments)` of `crates/reference/users`; `Module::with_seed` is given the `Context`), a journey through the admin's API or that Module API, never in a token.
-- **The rule set**: each process starts from every module's baseline rules (`server::authorizer`); a server instance then reads the stored grants and assignments before it serves (`server::rules`, `Rules::refresh`) and every `access::POLL_EVERY` (5 s) after, rebuilding its rule set, assignments included, when `access.revision` has moved, keeping the old one on a failed read. The worker doesn't poll: it acts as `System`. `access`' own gate and actions are `admin`'s by baseline rules, so no revocation locks admins out.
+- **The rule set**: each process starts from every module's baseline rules (`server::authorizer`); a server instance then reads the stored grants and assignments before it serves (`server::rules`, `Rules::refresh`) and every `access::POLL_EVERY` (5 s) after, rebuilding its rule set, assignments included, when `access.revision` has moved, keeping the old one on a failed read. The worker doesn't poll: it acts as `System`. `access`' own actions are `admin`'s by baseline rules, so no revocation locks admins out.
 - **A module's own tests have no `access`**: their driver compiles its defaults in memory (`Authorizer::from_policies`) and gives a signed-in user roles with `Authorizer::assign_in_memory`.
 
 ## Recipes
@@ -72,7 +73,7 @@ The platform's `access` module (`crates/platform/access`) holds them.
 
 ### Restrict a whole module to a role
 
-Grant `module:<name>` / `use` only to that role in `default_grants.yaml`. Everyone else gets 403 at the gate on every operation.
+There is no gate to grant (ADR 0047): grant each of its resources' actions only to that role in `default_grants.yaml`, and none to `user`. Everyone else gets 403 on every operation. A default grant to `user` is exactly what every signed-in user may do, with nothing outside it to fence the module, so ask "should every user be able to do this?" of each one.
 
 ### Scope rows to their owner
 
@@ -89,7 +90,7 @@ Leave its security requirement off and list it in `PUBLIC` (`crates/server/src/p
 ## Debugging
 
 - **401**: token missing, expired, or failing `iss`/`aud`/signature; see the `configure-auth-provider` skill.
-- **403 everywhere in one module**: the caller's roles lack `module:<name>` / `use`.
+- **403 everywhere in one module**: the caller's roles hold none of its resources' actions.
 - **403 on one operation**: no grant for that action, or a resource rule denies it (e.g. archived).
 - **404 on a row that exists**: the caller may not `view` it (its scope didn't match).
 - **A just-assigned role doesn't apply**: allow up to 5 s for the rule set to refresh.

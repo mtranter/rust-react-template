@@ -35,6 +35,8 @@ pub trait GrantRepository: Send + Sync {
     ) -> AppResult<Listed<Versioned<Grant>>>;
     /// Every grant, for the rule set.
     async fn all(&self) -> AppResult<Vec<Grant>>;
+    /// Every grant with its version, read in `tx`.
+    async fn all_versioned(&self, tx: &mut Tx) -> AppResult<Vec<Versioned<Grant>>>;
     /// `Conflict` when an equal grant exists.
     async fn insert(&self, tx: &mut Tx, grant: &Grant) -> AppResult<Version>;
     async fn exists(&self, tx: &mut Tx, rule: &app_authz::Grant) -> AppResult<bool>;
@@ -56,6 +58,10 @@ pub trait GrantRepository: Send + Sync {
         rule: &app_authz::Grant,
         at: DateTime<Utc>,
     ) -> AppResult<()>;
+
+    /// Whether `migrate` has retired the Modules' gates (ADR 0047).
+    async fn gates_retired(&self, tx: &mut Tx) -> AppResult<bool>;
+    async fn mark_gates_retired(&self, tx: &mut Tx, at: DateTime<Utc>) -> AppResult<()>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

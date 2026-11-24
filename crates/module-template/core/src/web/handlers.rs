@@ -1,11 +1,10 @@
-use super::Caller;
 use super::models::{
     CreateWidgetRequest, RenameWidgetRequest, WidgetMatchResponse, WidgetResponse, WidgetSort,
 };
 use crate::application::{PageRequest, Versioned, WidgetService};
 use crate::domain::{CreateWidget, RenameWidget, Widget, WidgetId};
 use app_error::AppError;
-use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::{
     OpenApi, Tags,

@@ -2,10 +2,6 @@ apiVersion: auth.flagrante.io/v1
 labels:
   module: Users
   resources:
-    - resource: "module:users"
-      label: Users area
-      actions:
-        use: Open
     - resource: user
       label: User profiles
       actions:

@@ -4,14 +4,12 @@ const NOTE: &str = include_str!("note.yaml");
 const SCOPES: &str = include_str!("notes_scopes.yaml");
 const DEFAULTS: &str = include_str!("default_grants.yaml");
 const LABELS: &str = include_str!("labels.yaml");
-const GATE: &str = "apiVersion: auth.flagrante.io/v1\nresourcePolicy:\n  resource: \"module:notebook\"\n  version: default\n  rules:\n    - actions: [use]\n      effect: EFFECT_ALLOW\n      roles: [staff]\n";
 
 #[derive(Clone, Copy)]
 enum In {
     Note,
     Scopes,
     Defaults,
-    Gate,
     Labels,
 }
 
@@ -21,13 +19,12 @@ impl In {
             In::Note => "note.yaml",
             In::Scopes => "notes_scopes.yaml",
             In::Defaults => "default_grants.yaml",
-            In::Gate => "gate.yaml",
             In::Labels => "labels.yaml",
         }
     }
 }
 
-/// Loads ADR 0040's files, and a gate policy, with `from` replaced by `to` in one of them.
+/// Loads ADR 0040's files with `from` replaced by `to` in one of them.
 fn load_with(file: In, from: &str, to: &str) -> Result<Policies, PolicyError> {
     let edit = |which: In, source: &str| {
         if std::mem::discriminant(&which) == std::mem::discriminant(&file) {
@@ -38,7 +35,6 @@ fn load_with(file: In, from: &str, to: &str) -> Result<Policies, PolicyError> {
         }
     };
     Policies::builder("notebook")
-        .gate(edit(In::Gate, GATE))
         .resource::<Note>(edit(In::Note, NOTE))
         .derived_roles(edit(In::Scopes, SCOPES))
         .default_grants(edit(In::Defaults, DEFAULTS))
@@ -119,7 +115,7 @@ fn each_refusal_names_the_file_and_line() {
             In::Defaults,
             "scope: author",
             "scope: team",
-            Some(5),
+            Some(4),
             "`team` is not a scope of `note`",
         ),
         (
@@ -136,30 +132,30 @@ fn each_refusal_names_the_file_and_line() {
             "resource: note",
             "resource: \"module:notebook\"",
             Some(3),
-            "this is `module:notebook`'s policy, but was given for `note`",
+            "`module:notebook` names a Module's gate, and Modules have none (ADR 0047)",
         ),
         (
             "a default grant for another module's resource",
             In::Defaults,
             "resource: note, actions: [create",
             "resource: task, actions: [create",
-            Some(4),
+            Some(3),
             "`task` is not a resource given",
         ),
         (
-            "a default grant for another module's gate",
+            "a default grant for a module's gate",
             In::Defaults,
-            "\"module:notebook\", action: use }\n  - { role: admin",
-            "\"module:tasks\", action: use }\n  - { role: admin",
-            Some(6),
-            "`module:tasks` is not a resource given",
+            "resource: note, actions: [create",
+            "resource: \"module:notebook\", action: use }\n  - { role: user, resource: note, actions: [create",
+            Some(3),
+            "`module:notebook` names a Module's gate, and Modules have none (ADR 0047)",
         ),
         (
             "a default grant's unknown action",
             In::Defaults,
             "[create, list]",
             "[create, publish]",
-            Some(4),
+            Some(3),
             "`publish` is not an action of `note`",
         ),
         (
@@ -167,7 +163,7 @@ fn each_refusal_names_the_file_and_line() {
             In::Defaults,
             "[\"*\"]",
             "[\"items:*\"]",
-            Some(7),
+            Some(5),
             "`items:*` is not an action of `note`",
         ),
         (
@@ -175,31 +171,31 @@ fn each_refusal_names_the_file_and_line() {
             In::Defaults,
             "role: user, resource: note, actions: [create",
             "role: \"\", resource: note, actions: [create",
-            Some(4),
-            "names a role",
-        ),
-        (
-            "a scope on the gate in a default grant",
-            In::Defaults,
-            "action: use }",
-            "action: use, scope: author }",
             Some(3),
-            "a scope there is refused",
+            "names a role",
         ),
         (
             "a label for another module's resource",
             In::Labels,
             "resource: note",
             "resource: task",
-            Some(8),
+            Some(5),
             "`task` is not a resource given",
+        ),
+        (
+            "a label for a module's gate",
+            In::Labels,
+            "resource: note",
+            "resource: \"module:notebook\"",
+            Some(5),
+            "`module:notebook` names a Module's gate",
         ),
         (
             "a label for an unknown action",
             In::Labels,
             "create: Write",
             "publish: Write",
-            Some(11),
+            Some(8),
             "`publish` is not an action of `note`",
         ),
         (
@@ -207,7 +203,7 @@ fn each_refusal_names_the_file_and_line() {
             In::Labels,
             "author: Notes they wrote",
             "team: Their team's",
-            Some(15),
+            Some(12),
             "`team` is not a scope of `note`",
         ),
         (
@@ -215,7 +211,7 @@ fn each_refusal_names_the_file_and_line() {
             In::Labels,
             "label: Notes",
             "label: \"\"",
-            Some(9),
+            Some(6),
             "`label` must be some text",
         ),
         (
@@ -223,40 +219,8 @@ fn each_refusal_names_the_file_and_line() {
             In::Labels,
             "label: Notes",
             "title: Notes",
-            Some(9),
-            "`title` is not supported in a resource's labels",
-        ),
-        (
-            "a condition on the gate",
-            In::Gate,
-            "roles: [staff]\n",
-            "roles: [staff]\n      condition:\n        match:\n          expr: R.attr.archived == true\n",
-            Some(11),
-            "a condition there is refused",
-        ),
-        (
-            "a derived role on the gate",
-            In::Gate,
-            "roles: [staff]\n",
-            "derivedRoles: [author]\n",
-            Some(8),
-            "a scope there is refused",
-        ),
-        (
-            "an import on the gate",
-            In::Gate,
-            "version: default\n",
-            "version: default\n  importDerivedRoles: [notes_scopes]\n",
-            Some(5),
-            "a scope there is refused",
-        ),
-        (
-            "another action on the gate",
-            In::Gate,
-            "[use]",
-            "[admin]",
             Some(6),
-            "the gate's only action is `use`",
+            "`title` is not supported in a resource's labels",
         ),
         // Unsupported kinds, fields and expressions.
         (
@@ -390,16 +354,16 @@ fn each_refusal_names_the_file_and_line() {
         (
             "a default grant's unknown field",
             In::Defaults,
-            "action: use }",
-            "action: use, effect: EFFECT_DENY }",
+            "actions: [create, list] }",
+            "actions: [create, list], effect: EFFECT_DENY }",
             Some(3),
             "`effect` is not supported in a default grant",
         ),
         (
             "both action and actions",
             In::Defaults,
-            "action: use }",
-            "action: use, actions: [use] }",
+            "actions: [create, list] }",
+            "action: create, actions: [create, list] }",
             Some(3),
             "one of `action` or `actions`",
         ),
@@ -523,7 +487,7 @@ fn a_default_grant_naming_a_derived_role_that_isnt_a_scope_is_refused() {
     let refused = load_with(In::Scopes, "[\"*\"]", "[user]").unwrap_err();
     assert_eq!(
         (refused.file.as_str(), refused.line),
-        ("default_grants.yaml", 5),
+        ("default_grants.yaml", 4),
         "{refused}"
     );
     assert!(

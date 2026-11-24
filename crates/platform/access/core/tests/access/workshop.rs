@@ -71,20 +71,16 @@ resourcePolicy:
 
 const FIRST_DEFAULTS: &str = "apiVersion: auth.flagrante.io/v1
 defaultGrants:
-  - { role: user, resource: \"module:workshop\", action: use }
   - { role: user, resource: gadget, action: make }
   - { role: user, resource: gadget, action: polish, scope: maker }
-  - { role: admin, resource: \"module:workshop\", action: use }
   - { role: admin, resource: gadget, actions: [make, polish] }
   - { role: maintainer, resource: gadget, action: polish }
 ";
 
 const SECOND_DEFAULTS: &str = "apiVersion: auth.flagrante.io/v1
 defaultGrants:
-  - { role: user, resource: \"module:workshop\", action: use }
   - { role: user, resource: gadget, action: make }
   - { role: user, resource: gadget, action: inspect }
-  - { role: admin, resource: \"module:workshop\", action: use }
   - { role: admin, resource: gadget, actions: [make] }
 ";
 
@@ -129,10 +125,8 @@ pub fn modules(release: Release) -> Modules {
 /// The default grants of the first release, as `list_grants` answers them: `(role, resource,
 /// action, scope)`.
 pub const FIRST_RELEASE_DEFAULTS: &[(&str, &str, &str, &str)] = &[
-    ("user", "module:workshop", "use", "any"),
     ("user", "gadget", "make", "any"),
     ("user", "gadget", "polish", "maker"),
-    ("admin", "module:workshop", "use", "any"),
     ("admin", "gadget", "make", "any"),
     ("admin", "gadget", "polish", "any"),
     ("maintainer", "gadget", "polish", "any"),

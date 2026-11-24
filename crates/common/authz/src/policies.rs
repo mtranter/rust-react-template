@@ -7,9 +7,6 @@ use crate::rule_set::{Roles, Rule};
 use crate::yaml::File;
 use crate::{Action, PolicyError, Resource, RuleSet};
 
-/// The action a Module's gate, `module:<name>`, is planned for.
-pub const GATE_ACTION: &str = "use";
-
 /// A policy file's name, for refusals, and its YAML. `app_authz::policy_file!("policies/note.yaml")`
 /// embeds one from the calling crate's root.
 #[derive(Debug, Clone)]
@@ -80,8 +77,6 @@ pub enum GrantRefusal {
     UnknownAction { resource: String, action: String },
     #[error("`{scope}` is not a scope of `{resource}`")]
     UnknownScope { resource: String, scope: String },
-    #[error("a module's gate is granted to roles only, without a scope")]
-    ScopeOnGate,
 }
 
 /// One Module's policy files and default grants, checked against its resources' Rust types.
@@ -131,7 +126,6 @@ struct Given {
 
 pub struct PoliciesBuilder {
     module: String,
-    gate: Option<PolicyFile>,
     resources: Vec<Given>,
     derived_roles: Vec<PolicyFile>,
     default_grants: Vec<PolicyFile>,
@@ -142,7 +136,6 @@ impl Policies {
     pub fn builder(module: impl Into<String>) -> PoliciesBuilder {
         PoliciesBuilder {
             module: module.into(),
-            gate: None,
             resources: Vec::new(),
             derived_roles: Vec::new(),
             default_grants: Vec::new(),
@@ -154,12 +147,13 @@ impl Policies {
         &self.module
     }
 
-    pub fn gate(&self) -> String {
-        gate_kind(&self.module)
-    }
-
     pub fn default_grants(&self) -> &[Grant] {
         &self.default_grants
+    }
+
+    /// Whether `kind` is one of this Module's resources.
+    pub fn has_resource(&self, kind: &str) -> bool {
+        self.resource(kind).is_some()
     }
 
     pub(crate) fn resources(&self) -> &[ResourceEntry] {
@@ -199,9 +193,6 @@ impl Policies {
             })?;
         let condition = match &grant.scope {
             Scope::Any => None,
-            Scope::Named(_) if grant.resource == self.gate() => {
-                return Err(refuse(GrantRefusal::ScopeOnGate));
-            }
             Scope::Named(scope) => resource
                 .scope(scope)
                 .ok_or_else(|| {
@@ -220,12 +211,11 @@ impl Policies {
         })
     }
 
-    /// What admins grant from: the gate and each resource, their actions and scopes (`any` first),
+    /// What admins grant from: each resource, their actions and scopes (`any` first),
     /// each with its label, or one made from its name. An action no rule in `rule_set` could allow
     /// is marked unreachable.
     pub fn catalog(&self, rule_set: &RuleSet) -> Catalog {
         let module_label = self.label.clone().unwrap_or_else(|| humanize(&self.module));
-        let gate = self.gate();
         Catalog {
             module: self.module.clone(),
             resources: self
@@ -240,13 +230,7 @@ impl Policies {
                     };
                     CatalogResource {
                         kind: r.kind.clone(),
-                        label: r.label.clone().unwrap_or_else(|| {
-                            if r.kind == gate {
-                                module_label.clone()
-                            } else {
-                                humanize(&r.kind)
-                            }
-                        }),
+                        label: r.label.clone().unwrap_or_else(|| humanize(&r.kind)),
                         actions: r
                             .actions
                             .iter()
@@ -331,10 +315,6 @@ pub struct CatalogScope {
     pub label: String,
 }
 
-fn gate_kind(module: &str) -> String {
-    format!("module:{module}")
-}
-
 /// `*` matches every action; otherwise each `:`-separated segment matches itself or `*`.
 pub(crate) fn action_matches(pattern: &str, action: &str) -> bool {
     pattern == "*" || {
@@ -360,13 +340,6 @@ impl PoliciesBuilder {
         self
     }
 
-    /// A policy for the Module's gate, `module:<name>`, whose only action is `use`: rules on roles,
-    /// with no condition and no derived role.
-    pub fn gate(mut self, file: PolicyFile) -> Self {
-        self.gate = Some(file);
-        self
-    }
-
     pub fn derived_roles(mut self, file: PolicyFile) -> Self {
         self.derived_roles.push(file);
         self
@@ -385,8 +358,6 @@ impl PoliciesBuilder {
     }
 
     pub fn build(self) -> Result<Policies, PolicyError> {
-        let gate = gate_kind(&self.module);
-
         let mut sets: HashMap<String, (String, DerivedRoleSet)> = HashMap::new();
         for pf in &self.derived_roles {
             let file = File { name: &pf.name };
@@ -414,10 +385,6 @@ impl PoliciesBuilder {
         }
 
         let mut resources = Vec::new();
-        resources.push(match &self.gate {
-            Some(pf) => gate_entry(&gate, pf)?,
-            None => ResourceEntry::new(gate.clone(), vec![GATE_ACTION]),
-        });
         for given in &self.resources {
             if resources
                 .iter()
@@ -428,7 +395,7 @@ impl PoliciesBuilder {
                 };
                 return Err(file.refuse(1, format!("`{}` is given twice", given.kind)));
             }
-            resources.push(self.resource_entry(given, &gate, &sets)?);
+            resources.push(self.resource_entry(given, &sets)?);
         }
 
         let mut default_grants = Vec::new();
@@ -445,12 +412,6 @@ impl PoliciesBuilder {
                 let scope = match &d.scope {
                     None => Scope::Any,
                     Some((s, _)) if s == "any" => Scope::Any,
-                    Some((_, line)) if *kind == gate => {
-                        return Err(file.refuse(
-                            *line,
-                            "the gate is granted to roles only: a scope there is refused",
-                        ));
-                    }
                     Some((s, line)) => {
                         if resource.scope(s).is_none() {
                             return Err(file.refuse(*line, self.why_not_a_scope(kind, s, &sets)));
@@ -543,7 +504,6 @@ impl PoliciesBuilder {
     fn resource_entry(
         &self,
         given: &Given,
-        gate: &str,
         sets: &HashMap<String, (String, DerivedRoleSet)>,
     ) -> Result<ResourceEntry, PolicyError> {
         let file = File {
@@ -551,8 +511,11 @@ impl PoliciesBuilder {
         };
         let policy = policy::resource_policy(&file, &given.file.source)?;
         let (kind, line) = &policy.resource;
+        if given.kind.starts_with(GATE_PREFIX) {
+            return Err(file.refuse(*line, not_ours(given.kind, &self.module)));
+        }
         if kind != given.kind {
-            let reason = if self.resources.iter().any(|r| r.kind == kind) || kind == gate {
+            let reason = if self.resources.iter().any(|r| r.kind == kind) {
                 format!(
                     "this is `{kind}`'s policy, but was given for `{}`",
                     given.kind
@@ -679,62 +642,6 @@ impl PoliciesBuilder {
     }
 }
 
-fn gate_entry(gate: &str, pf: &PolicyFile) -> Result<ResourceEntry, PolicyError> {
-    let file = File { name: &pf.name };
-    let policy = policy::resource_policy(&file, &pf.source)?;
-    let (kind, line) = &policy.resource;
-    if kind != gate {
-        return Err(file.refuse(
-            *line,
-            format!("the gate's policy is for `{gate}`, not `{kind}`"),
-        ));
-    }
-    if let Some((_, line)) = policy.imports.first() {
-        return Err(file.refuse(
-            *line,
-            "the gate takes no derived roles: a scope there is refused",
-        ));
-    }
-    let mut rules = Vec::new();
-    for rule in &policy.rules {
-        if let Some((_, line)) = rule.derived_roles.first() {
-            return Err(file.refuse(
-                *line,
-                "the gate takes no derived roles: a scope there is refused",
-            ));
-        }
-        if let Some(c) = &rule.condition {
-            let line = c.attrs.first().map_or(rule.line, |(_, l)| *l);
-            return Err(file.refuse(
-                line,
-                "the gate is planned before any row exists: a condition there is refused",
-            ));
-        }
-        for (pattern, line) in &rule.actions {
-            if !action_matches(pattern, GATE_ACTION) {
-                return Err(
-                    file.refuse(*line, format!("the gate's only action is `{GATE_ACTION}`"))
-                );
-            }
-        }
-        rules.push(Rule {
-            actions: vec![GATE_ACTION],
-            roles: Roles::from(
-                rule.roles
-                    .iter()
-                    .map(|(r, _)| r.clone())
-                    .collect::<Vec<_>>(),
-            ),
-            effect: rule.effect,
-            condition: None,
-        });
-    }
-    Ok(ResourceEntry {
-        rules,
-        ..ResourceEntry::new(gate.to_owned(), vec![GATE_ACTION])
-    })
-}
-
 fn both(a: Option<&Condition>, b: Option<&Condition>) -> Option<Condition> {
     match (a, b) {
         (Some(a), Some(b)) => Some(Condition::All(vec![a.clone(), b.clone()])),
@@ -742,7 +649,15 @@ fn both(a: Option<&Condition>, b: Option<&Condition>) -> Option<Condition> {
     }
 }
 
+/// What a Module's gate was named before ADR 0047 removed gates: no resource may be named so.
+const GATE_PREFIX: &str = "module:";
+
 fn not_ours(kind: &str, module: &str) -> String {
+    if kind.starts_with(GATE_PREFIX) {
+        return format!(
+            "`{kind}` names a Module's gate, and Modules have none (ADR 0047): grant the actions of its resources instead"
+        );
+    }
     format!(
         "`{kind}` is not a resource given to the `{module}` module's policies: a Module's policies name only its own resources"
     )

@@ -1,14 +1,4 @@
-use app_web::{Gate, Performs};
-
-/// The widgets module's gate, `module:widgets` / `use` (ADR 0040).
-pub struct Widgets;
-
-impl Gate for Widgets {
-    const MODULE: &'static str = "widgets";
-}
-
-/// Who is calling a widgets operation, once the gate has let them in.
-pub type Caller = app_web::Caller<Widgets>;
+use app_web::Performs;
 
 /// The action each operation performs, as an admin granting it sees it.
 pub const OPERATIONS: &[Performs] = &[

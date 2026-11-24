@@ -39,7 +39,7 @@ pub fn provider(
     ))
 }
 
-/// The assistant's gate, its `assistant` resource, whose `chat` every `user` is granted by
+/// The assistant's `assistant` resource, whose `chat` every `user` is granted by
 /// default (ADR 0040), and its `conversation` resource, scoped to each one's `owner`.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("assistant")

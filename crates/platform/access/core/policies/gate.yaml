@@ -1,9 +1,0 @@
-apiVersion: auth.flagrante.io/v1
-resourcePolicy:
-  resource: "module:access"
-  version: default
-  rules:
-    - name: admins always reach access, whatever is granted or revoked
-      actions: [use]
-      effect: EFFECT_ALLOW
-      roles: [admin]

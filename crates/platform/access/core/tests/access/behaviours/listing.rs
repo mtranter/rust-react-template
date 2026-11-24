@@ -15,9 +15,9 @@ async fn grants_are_filtered_by_role_resource_and_action(pool: PgPool) {
         .await
         .unwrap();
 
-    assert_eq!(held_by_user.items.len(), 3);
+    assert_eq!(held_by_user.items.len(), 2);
     assert!(held_by_user.items.iter().all(|g| g.rule().0 == "user"));
-    assert_eq!(held_by_user.total, 3);
+    assert_eq!(held_by_user.total, 2);
     assert_eq!(roles(&making), ["admin", "user"]);
 }
 
@@ -29,14 +29,6 @@ async fn grants_are_sorted_by_any_key(pool: PgPool) {
 
     assert_eq!(
         roles(&by_role),
-        [
-            "user",
-            "user",
-            "user",
-            "maintainer",
-            "admin",
-            "admin",
-            "admin"
-        ]
+        ["user", "user", "maintainer", "admin", "admin"]
     );
 }

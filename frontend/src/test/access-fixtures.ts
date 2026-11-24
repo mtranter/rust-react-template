@@ -19,9 +19,9 @@ export const catalog: CatalogResponse = {
     {
       module: "workshop",
       moduleLabel: "Workshop",
-      resource: "module:workshop",
-      label: "Workshop area",
-      actions: [{ name: "use", label: "Open", operations: [], reachable: true }],
+      resource: "widget",
+      label: "Widgets",
+      actions: [{ name: "build", label: "Build", operations: ["build_widget"], reachable: true }],
       scopes: [{ name: "any", label: "Any" }],
     },
     {

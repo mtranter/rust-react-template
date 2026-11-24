@@ -158,9 +158,9 @@ const accessCatalog: CatalogResponse = {
     {
       module: "workshop",
       moduleLabel: "Workshop",
-      resource: "module:workshop",
-      label: "Workshop area",
-      actions: [{ name: "use", label: "Open", operations: [], reachable: true }],
+      resource: "widget",
+      label: "Widgets",
+      actions: [{ name: "build", label: "Build", operations: ["build_widget"], reachable: true }],
       scopes: [{ name: "any", label: "Any" }],
     },
     {
@@ -182,7 +182,7 @@ const accessCatalog: CatalogResponse = {
 };
 
 const grants: GrantResponse[] = [
-  ["user", "module:workshop", "use", "any"],
+  ["user", "widget", "build", "any"],
   ["user", "gadget", "make", "any"],
   ["user", "gadget", "view", "maker"],
   ["admin", "gadget", "view", "any"],

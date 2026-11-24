@@ -71,3 +71,14 @@ ADR 0047 removes every Module's gate (`module:<name>` / `use`), and no gate repl
 
 - Ticket 0077 moves the Modules into Capability folders, and 0078 adds `get_my_permissions` and Areas' `needs`. Don't start either here.
 - 0075 and 0076 are descoped.
+
+## Resolution
+
+- **No gates.** `app_web::Caller` is a valid token's Principal and nothing else; `Gate`, every Module's gate struct and `Caller` alias, `Policies::gate`, `PoliciesBuilder::gate`, `gate_entry`, `GATE_ACTION`, `GrantRefusal::ScopeOnGate`, `RuleSet::plan_gate` and `Authorizer::allows_use_of` are gone. A resource, resource policy, label or default grant naming `module:<name>` fails loading at its file and line, saying Modules have no gates (ADR 0047).
+- **Retiring the gates** is `AccessService::retire_gates` (`crates/platform/access/core/src/application/gates.rs`), run by `access::apply_default_grants` before the defaults while `access.gates_retired` (migration `0005`) has no row. One refinement to "a role was allowed if it held a grant on `module:<m>`": **every Principal holds `user`**, so when `user` held a gate, every role passed it, and none of that Module's grants is revoked. Without it, a role such as the workshop fixture's `maintainer` (granted `polish` with no gate of its own, but whose holders all passed the gate as `user`) would have lost what it could do. A grant on a resource no loaded Module has is left alone: it allowed nothing before and allows nothing now. What stays imprecise: a role whose grant took effect only beside another assigned role holding the gate (neither `user`) loses that grant; the holder loses nothing they couldn't regain by a grant to that role, and no one gains anything.
+- **The rule set rebuilds once**: the step bumps `access.revision` once, in its one unit of work, so each instance rebuilds once at its next poll.
+- **Default grants to `user`, read with no gate to fence them.** Each is what every signed-in user may do now. None changed. These look broad:
+  - `users`: `user` / `list` and `view` at `any`: every signed-in user can list and read every user's profile, email included.
+  - `note-search`: `noteSummary` / `search` at `any`: every signed-in user can search every note's summary, other authors' included, since the search has no `Columns` to scope it (it refuses only a `Where` plan).
+  - `module-template` (`widgets`): `widget` / `*` at `any`: every signed-in user can create, view, rename, list and search every widget. Every module `make new-module` scaffolds starts so.
+  - `notes` (create, and the rest at `author`) and `assistant` (`chat`, `start`, the rest at `owner`) are exact.

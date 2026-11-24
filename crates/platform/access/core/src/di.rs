@@ -73,12 +73,11 @@ pub fn sign_ins(ctx: &Context) -> Arc<dyn PrincipalResolver> {
     })
 }
 
-/// `access`' gate and its `grant`, `role`, `assignment` and `subject` resources, all `admin`'s by baseline
+/// `access`' `grant`, `role`, `assignment` and `subject` resources, all `admin`'s by baseline
 /// rules rather than grants, so no revocation can lock admins out (ADR 0040). It has no default
 /// grants.
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("access")
-        .gate(policy_file!("policies/gate.yaml"))
         .resource::<Grant>(policy_file!("policies/grant.yaml"))
         .resource::<Role>(policy_file!("policies/role.yaml"))
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
@@ -108,10 +107,16 @@ pub fn rules(ctx: &Context, modules: Arc<Modules>) -> Rules {
     )
 }
 
-/// What `migrate` runs once every module is migrated: grants each module's default grants not
-/// applied before. Returns how many it granted.
+/// What `migrate` runs once every module is migrated: retires the Modules' gates if it hasn't
+/// yet (ADR 0047), then grants each module's default grants not applied before. Returns how many
+/// it granted.
 pub async fn apply_default_grants(ctx: &Context, modules: Arc<Modules>) -> AppResult<usize> {
-    service(ctx, modules).apply_defaults().await
+    let service = service(ctx, modules);
+    let revoked = service.retire_gates().await?;
+    if revoked > 0 {
+        tracing::info!(revoked, "Modules' gates retired");
+    }
+    service.apply_defaults().await
 }
 
 /// `composed` is every module the server registers, this one included, as the server lists

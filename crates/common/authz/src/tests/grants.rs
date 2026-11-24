@@ -31,7 +31,7 @@ fn a_grant_checks_its_resource_action_and_scope() {
         ),
         (
             grant("support", "module:notebook", "use", Scope::Any),
-            Ok(()),
+            Err(GrantRefusal::UnknownResource("module:notebook".into())),
         ),
         (
             grant("", "note", "view", Scope::Any),
@@ -71,17 +71,6 @@ fn a_grant_checks_its_resource_action_and_scope() {
             Err(GrantRefusal::UnknownScope {
                 resource: "note".into(),
                 scope: "editor".into(),
-            }),
-        ),
-        (
-            grant("support", "module:notebook", "use", named("author")),
-            Err(GrantRefusal::ScopeOnGate),
-        ),
-        (
-            grant("support", "module:notebook", "view", Scope::Any),
-            Err(GrantRefusal::UnknownAction {
-                resource: "module:notebook".into(),
-                action: "view".into(),
             }),
         ),
     ];
@@ -136,8 +125,6 @@ fn a_resource_in_two_modules_policies_fails_the_compile() {
     let twice = [policies.clone(), policies];
     assert_eq!(
         crate::RuleSet::compile(&twice, &[]).map(|_| ()),
-        Err(crate::CompileError::DuplicateResource(
-            "module:notebook".into()
-        ))
+        Err(crate::CompileError::DuplicateResource("note".into()))
     );
 }

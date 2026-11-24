@@ -49,7 +49,7 @@ pub(crate) fn refused(refused: GrantRefused) -> AppError {
         GrantRefusal::NoRole => "role",
         GrantRefusal::UnknownResource(_) => "resource",
         GrantRefusal::UnknownAction { .. } => "action",
-        GrantRefusal::UnknownScope { .. } | GrantRefusal::ScopeOnGate => "scope",
+        GrantRefusal::UnknownScope { .. } => "scope",
     };
     AppError::invalid_field(field, refused.reason.to_string())
 }

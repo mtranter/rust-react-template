@@ -37,16 +37,13 @@ async fn the_catalog_offers_each_resources_actions_operations_and_scopes_named_f
             ],
         })
     );
-    assert_eq!(
-        *resource(&catalog, "module:workshop"),
-        json!({
-            "module": "workshop",
-            "moduleLabel": "Workshop",
-            "resource": "module:workshop",
-            "label": "Workshop",
-            "actions": [{ "name": "use", "label": "Use", "operations": [], "reachable": true }],
-            "scopes": [{ "name": "any", "label": "Any" }],
-        })
+    assert!(
+        catalog["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| !r["resource"].as_str().unwrap().starts_with("module:")),
+        "a Module has no gate to offer"
     );
     assert_eq!(resource(&catalog, "grant")["module"], "access");
     assert_eq!(resource(&catalog, "role")["module"], "access");

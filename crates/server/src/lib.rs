@@ -70,7 +70,7 @@ pub fn policies<C: Composition>() -> Result<Vec<Policies>, PoliciesError> {
 }
 
 /// Every module's baseline rules and no grant (ADR 0040), for the context every
-/// service and `Caller` plans with: the server fills it from the stored grants
+/// service plans with: the server fills it from the stored grants
 /// ([`rules`]) before it serves, and the worker, acting as `System`, needs no more.
 pub fn authorizer<C: Composition>() -> Result<Authorizer, Box<dyn std::error::Error>> {
     Ok(Authorizer::baseline(&policies::<C>()?)?)

@@ -26,10 +26,6 @@ export function labelsOf(resources: CatalogResourceResponse[]): Labels {
   };
 }
 
-export function isGate(resource: string) {
-  return resource.startsWith("module:");
-}
-
 /** The catalog's resources, grouped by module in the catalog's order. */
 export function byModule(resources: CatalogResourceResponse[]) {
   const modules: { module: string; label: string; resources: CatalogResourceResponse[] }[] = [];

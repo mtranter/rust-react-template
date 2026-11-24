@@ -5,6 +5,7 @@ mod assignments;
 mod catalog;
 mod error;
 mod events;
+mod gates;
 mod repository;
 mod roles;
 mod rules;

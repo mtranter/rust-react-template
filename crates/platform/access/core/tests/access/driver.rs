@@ -185,6 +185,76 @@ impl Access {
         self.ctx.pool().close().await;
     }
 
+    /// The database as a build before ADR 0047 left it: `migrate` has not retired the gates, and
+    /// each `(role, module)` of `holders` is granted that Module's gate, `module:<module>` / `use`,
+    /// the role created if it doesn't exist. Written as rows, since `access` now refuses gates.
+    pub async fn had_gates(&self, holders: &[(&str, &str)]) {
+        let pool = self.ctx.pool();
+        sqlx::query("DELETE FROM access.gates_retired")
+            .execute(&pool)
+            .await
+            .expect("forget the gates' retirement");
+        for (role, module) in holders {
+            sqlx::query(
+                "INSERT INTO access.role (name, description, created_at) VALUES ($1, '', now())
+                 ON CONFLICT (name) DO NOTHING",
+            )
+            .bind(role)
+            .execute(&pool)
+            .await
+            .expect("create the role");
+            sqlx::query(
+                "INSERT INTO access.grant (id, role, resource, action, scope, granted_at)
+                 VALUES (gen_random_uuid(), $1, 'module:' || $2, 'use', 'any', now())",
+            )
+            .bind(role)
+            .bind(module)
+            .execute(&pool)
+            .await
+            .expect("grant the gate");
+        }
+    }
+
+    /// Whether `migrate` has retired the Modules' gates.
+    pub async fn gates_retired(&self) -> bool {
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM access.gates_retired)")
+            .fetch_one(&self.ctx.pool())
+            .await
+            .expect("read the gates' retirement")
+    }
+
+    /// Every grant stored, gates included, as `(role, resource, action, scope)`, sorted.
+    pub async fn stored_grants(&self) -> Vec<(String, String, String, String)> {
+        let mut rows: Vec<(String, String, String, String)> =
+            sqlx::query_as("SELECT role, resource, action, scope FROM access.grant")
+                .fetch_all(&self.ctx.pool())
+                .await
+                .expect("read the grants");
+        rows.sort();
+        rows
+    }
+
+    /// How the rule set in force plans `action` on every `resource` for a user holding `role`
+    /// beside `user`, as every signed-in user does.
+    pub fn plan(&self, role: &str, resource: &str, action: &str) -> Plan {
+        self.ctx.authorizer().current().plan_named(
+            &Principal::user("someone", [app_authz::USER, role]),
+            resource,
+            action,
+        )
+    }
+
+    /// Every `E` announced since the database was made, the template's included.
+    pub async fn announced_ever<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
+        self.worker
+            .published_after::<E>(0)
+            .await
+            .expect("read the outbox")
+            .into_iter()
+            .map(|event| (Version::from_i64(event.entity_version), event.data))
+            .collect()
+    }
+
     /// Whether the rule set in force lets a holder of `role` do `action` to every `resource`.
     pub fn allows(&self, role: &str, resource: &str, action: &str) -> bool {
         self.ctx.authorizer().current().plan_named(

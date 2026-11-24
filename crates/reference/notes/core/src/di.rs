@@ -40,7 +40,7 @@ fn service(ctx: &Context, users: Arc<dyn UserDirectory>) -> NoteService {
     )
 }
 
-/// The notes module's gate, its `note` resource and the `author` scope, and
+/// The notes module's `note` resource and the `author` scope, and
 /// what `user` and `admin` are granted by default (ADR 0040).
 pub fn policies() -> PoliciesBuilder {
     Policies::builder("notes")

@@ -49,8 +49,8 @@ impl Context {
         self.draining.clone()
     }
 
-    /// The rule set every service plans its actions with and every `Caller`
-    /// passes its gate by (ADR 0040), compiled from the modules' policies.
+    /// The rule set every service plans its actions with (ADR 0040),
+    /// compiled from the modules' policies.
     pub fn with_authorizer(self, authorizer: Arc<Authorizer>) -> Self {
         Self { authorizer, ..self }
     }
@@ -167,7 +167,7 @@ impl Module {
         }
     }
 
-    /// The module's gate, resources, scopes and default grants (ADR 0040),
+    /// The module's resources, scopes and default grants (ADR 0040),
     /// built when the server, worker or `migrate` starts.
     pub fn with_policies(
         self,

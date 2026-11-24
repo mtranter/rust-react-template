@@ -1,9 +1,8 @@
-use super::Caller;
 use super::models::{AddItemRequest, CreateNoteRequest, EditNoteRequest, NoteResponse, NoteSort};
 use crate::application::{NoteService, Versioned};
 use crate::domain::{EditNote, ItemId, Note, NoteId};
 use app_error::AppError;
-use app_web::{ApiResult, ListResult, WithETag, if_match_version, paged, sorts};
+use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use chrono::{DateTime, Utc};
 use poem::web::Data;
 use poem_openapi::{

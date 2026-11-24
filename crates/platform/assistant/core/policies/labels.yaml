@@ -2,10 +2,6 @@ apiVersion: auth.flagrante.io/v1
 labels:
   module: Assistant
   resources:
-    - resource: "module:assistant"
-      label: Assistant area
-      actions:
-        use: Open
     - resource: assistant
       label: Assistant
       actions:

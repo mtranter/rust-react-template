@@ -59,7 +59,7 @@ async fn a_grant_the_catalog_lacks_is_refused_naming_the_field_and_changes_nothi
         (("support", "gizmo", "make", "any"), "resource"),
         (("support", "gadget", "fly", "any"), "action"),
         (("support", "gadget", "make", "owner"), "scope"),
-        (("support", "module:workshop", "use", "maker"), "scope"),
+        (("support", "module:workshop", "use", "any"), "resource"),
         (("  ", "gadget", "make", "any"), "role"),
         (("nobody", "gadget", "make", "any"), "role"),
     ] {

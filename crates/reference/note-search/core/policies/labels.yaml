@@ -2,10 +2,6 @@ apiVersion: auth.flagrante.io/v1
 labels:
   module: Note search
   resources:
-    - resource: "module:note-search"
-      label: Note search area
-      actions:
-        use: Open
     - resource: noteSummary
       label: Note search
       actions:
