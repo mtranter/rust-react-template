@@ -1,7 +1,7 @@
 ---
 id: 0077
 name: Modules live in Capability folders, and admins grant from a Catalog grouped by Capability
-status: in-progress
+status: needs-info
 priority: P1
 size: M
 blocked_by: [0074]
@@ -74,3 +74,7 @@ It changes no permissions.
 ## Notes
 
 Areas' `needs` and `get_my_permissions` are 0078.
+
+## Needs Human Input (factory)
+
+The factory stopped on this Ticket: implementor did not complete the Ticket: session ended with error_during_execution: [ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use (session 89f048e0-3aac-4c90-be72-87559ef5234a)
