@@ -83,6 +83,25 @@ impl CatalogJson {
     }
 }
 
+json_newtype!(pub PermissionsJson);
+
+impl PermissionsJson {
+    /// `(resource, action)`, in the order answered.
+    pub fn pairs(&self) -> Vec<(String, String)> {
+        self["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p["resource"].as_str().unwrap().to_owned(),
+                    p["action"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    }
+}
+
 json_newtype!(pub RoleJson);
 
 json_newtype!(pub AssignmentJson);
@@ -534,6 +553,14 @@ impl Access {
             Principal::User { roles, .. } => roles,
             Principal::System => unreachable!("a subject resolves to a user"),
         }
+    }
+
+    /// What the signed-in caller may do, as `(resource, action)`.
+    pub async fn my_permissions(&self) -> Outcome<Vec<(String, String)>> {
+        self.signed(self.api.get("/api/access/me/permissions"))
+            .send()
+            .await
+            .map(|p: PermissionsJson| p.pairs())
     }
 
     pub async fn catalog(&self) -> Outcome<CatalogJson> {

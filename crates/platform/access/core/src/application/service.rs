@@ -30,6 +30,13 @@ pub struct Modules {
     pub operations: Vec<Operation>,
 }
 
+/// An action on a resource a principal may perform on some row.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Permission {
+    pub resource: String,
+    pub action: String,
+}
+
 /// A grant as an admin lists it: stale when its module's policies no longer have its resource,
 /// action or scope, so the rule set skips it.
 #[derive(Debug, Clone)]
@@ -220,6 +227,29 @@ impl AccessService {
             }
         }
         Ok(capabilities)
+    }
+
+    /// Every resource and action the rule set in force lets the principal perform on some row:
+    /// the plan the server enforces, so built-in rules count as grants do. Asks no action of its
+    /// own, as it answers only for the caller.
+    pub fn permissions(&self, principal: &Principal) -> Vec<Permission> {
+        let rule_set = self.authorizer.current();
+        let mut permissions: Vec<Permission> = self
+            .modules
+            .policies
+            .iter()
+            .flat_map(|policies| policies.catalog(&rule_set).resources)
+            .flat_map(|resource| {
+                resource.actions.into_iter().map(move |action| Permission {
+                    resource: resource.kind.clone(),
+                    action: action.name,
+                })
+            })
+            .filter(|p| rule_set.plan_named(principal, &p.resource, &p.action) != Plan::Denied)
+            .collect();
+        permissions.sort();
+        permissions.dedup();
+        permissions
     }
 
     /// Grants, as `System`, every module's default grant not applied before, in one unit of

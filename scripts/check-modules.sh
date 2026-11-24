@@ -22,7 +22,11 @@
 # policies. Each Capability folder holds a Module, and each live Capability (the
 # reference's only while its Modules are registered) has an entry in the SPA's
 # registry, frontend/src/shell/capabilities.ts, as a literal `id: "<id>"`, but
-# `assistant`, which has no app; each entry there names a live Capability.
+# `assistant`, which has no app; each entry there names a live Capability. Each
+# of its Areas' `needs: { resource: "<r>", action: "<a>" }`, a literal on one
+# line, names an action a registered Module's policies declare: compared with
+# what `dump-spec --actions` lists, as the generated client's types hold the
+# catalog's shape but not its resources' names.
 #
 # It also checks that a module with a seed declares the number its seed ids are
 # built from (`pub const MODULE: u32 = N;` in its `-api` crate's `src/seed.rs` if
@@ -143,6 +147,21 @@ for id in $ids; do
   printf '%s\n' "${live[@]}" | grep -qxF "$id" || fail "$spa: \`id: \"$id\"\` names no Capability with a registered Module"
 done
 for id in $(sort <<<"$ids" | uniq -d); do fail "$spa: \`id: \"$id\"\` is given twice"; done
+
+areas=$(grep -c 'to: "' "$spa" 2>/dev/null || true)
+needs=$(sed -nE 's/.*needs: \{ resource: "([^"]+)", action: "([^"]+)" \}.*/\1 \2/p' "$spa" 2>/dev/null || true)
+[ "$areas" = "$(grep -c . <<<"$needs" || true)" ] ||
+  fail "$spa: every Area needs \`needs: { resource: \"<resource>\", action: \"<action>\" }\`, on one line"
+if [ -n "$needs" ]; then
+  if declared=$(SQLX_OFFLINE=true cargo run --quiet --bin dump-spec -- --actions); then
+    while read -r resource action; do
+      grep -qxF "$resource $action" <<<"$declared" ||
+        fail "$spa: an Area needs \`$resource\` / \`$action\`, which no registered Module's policies declare"
+    done <<<"$needs"
+  else
+    fail "dump-spec --actions failed, so the Areas' needs aren't checked"
+  fi
+fi
 
 duplicates=$(printf '%s\n' "${numbers[@]}" | sort -n | awk '$1 == prev { print $1 } { prev = $1 }' | sort -u)
 for number in $duplicates; do

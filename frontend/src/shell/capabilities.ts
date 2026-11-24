@@ -1,4 +1,4 @@
-import { useManagesAccess } from "@/features/access";
+import { useMyPermissions } from "@/features/access";
 import type { LinkProps } from "@tanstack/react-router";
 import {
   KeyRoundIcon,
@@ -14,7 +14,17 @@ import {
 /** Names the whole suite where no one app is open: the launcher's heading, the switcher. */
 export const productName = "rust-vite-template";
 
-export type Area = { label: string; to: NonNullable<LinkProps["to"]>; icon: LucideIcon };
+/**
+ * One page of an app. It is shown only to a caller who holds `needs`, an action named as its
+ * Module's policies name it (`make check-modules` fails on one no Module declares). Hiding is a
+ * convenience: the server still refuses the operations themselves.
+ */
+export type Area = {
+  label: string;
+  to: NonNullable<LinkProps["to"]>;
+  icon: LucideIcon;
+  needs: { resource: string; action: string };
+};
 
 /**
  * One Capability of the suite (ADR 0047) and its app: every route under `path` is one of its
@@ -38,8 +48,18 @@ const notes: Capability = {
   icon: NotebookPenIcon,
   path: "/notes",
   areas: [
-    { label: "All notes", to: "/notes", icon: ListIcon },
-    { label: "Search", to: "/notes/search", icon: SearchIcon },
+    {
+      label: "All notes",
+      to: "/notes",
+      icon: ListIcon,
+      needs: { resource: "note", action: "list" },
+    },
+    {
+      label: "Search",
+      to: "/notes/search",
+      icon: SearchIcon,
+      needs: { resource: "noteSummary", action: "search" },
+    },
   ],
 };
 
@@ -50,20 +70,47 @@ const access: Capability = {
   icon: ShieldIcon,
   path: "/access",
   areas: [
-    { label: "Users", to: "/access/subjects", icon: UsersIcon },
-    { label: "Roles", to: "/access/roles", icon: KeyRoundIcon },
-    { label: "Permissions", to: "/access/permissions", icon: ListChecksIcon },
+    {
+      label: "Users",
+      to: "/access/subjects",
+      icon: UsersIcon,
+      needs: { resource: "subject", action: "list" },
+    },
+    {
+      label: "Roles",
+      to: "/access/roles",
+      icon: KeyRoundIcon,
+      needs: { resource: "role", action: "list" },
+    },
+    {
+      label: "Permissions",
+      to: "/access/permissions",
+      icon: ListChecksIcon,
+      needs: { resource: "grant", action: "list" },
+    },
   ],
 };
 
+/** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
+export const registry: { apps: Capability[]; platform: Capability[] } = {
+  apps: [notes],
+  platform: [access],
+};
+
 /**
- * The apps the caller may open, in the switcher's order, and the platform's tools, kept apart in
- * the sidebar's footer. An app the caller may not use is left out, as `access` is from a caller
- * who may not manage access.
+ * The apps the caller may open, each with only the areas whose `needs` they hold, leaving out an
+ * app with none; nothing until the server has answered.
  */
 export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
-  const managesAccess = useManagesAccess();
-  return { apps: [notes], platform: managesAccess ? [access] : [] };
+  const permissions = useMyPermissions() ?? [];
+  const held = (area: Area) =>
+    permissions.some((p) => p.resource === area.needs.resource && p.action === area.needs.action);
+  const usable = (capabilities: Capability[]) =>
+    capabilities.flatMap((capability) => {
+      const [first, ...rest] = capability.areas.filter(held);
+      return first ? [{ ...capability, areas: [first, ...rest] as Capability["areas"] }] : [];
+    });
+  return { apps: usable(registry.apps), platform: usable(registry.platform) };
 }
 
 /** The app whose `path` holds `pathname`, and its area: the one whose `to` holds it most closely. */

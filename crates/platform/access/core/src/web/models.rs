@@ -2,7 +2,7 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogCapability, CatalogResource, GrantSortKey, HeldRole, Listing,
+    CatalogAction, CatalogCapability, CatalogResource, GrantSortKey, HeldRole, Listing, Permission,
     RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
 };
 use crate::domain::{Assignment, Grant, Role, Scope};
@@ -181,6 +181,34 @@ impl From<CatalogAction> for CatalogActionResponse {
             label: a.label,
             operations: a.operations.into_iter().map(str::to_owned).collect(),
             reachable: a.reachable,
+        }
+    }
+}
+
+/// What the caller may do: each action they may perform on some row of its resource.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PermissionsResponse {
+    pub permissions: Vec<PermissionResponse>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PermissionResponse {
+    pub resource: String,
+    pub action: String,
+}
+
+impl From<Vec<Permission>> for PermissionsResponse {
+    fn from(permissions: Vec<Permission>) -> Self {
+        Self {
+            permissions: permissions
+                .into_iter()
+                .map(|p| PermissionResponse {
+                    resource: p.resource,
+                    action: p.action,
+                })
+                .collect(),
         }
     }
 }

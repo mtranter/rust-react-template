@@ -162,7 +162,7 @@ perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\
 dev_subject=00000001-0001-0000-0000-000000000001
 perl -i -pe 's{^APP_BOOTSTRAP_ADMINS=.*$}{APP_BOOTSTRAP_ADMINS='"$dev_subject"'}' .env.example
 perl -0 -i -pe 's{^(dev: )}{# No seed assigns the dev sign-in (frontend/vite.config.ts) `admin`.\n${1}export APP_BOOTSTRAP_ADMINS ?= '"$dev_subject"'\n$1}m' Makefile
-perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/public.rs
+perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/exempt.rs
 
 # 5. The UI down to the shell (src/shell/: the sidebar and a launcher with no
 # apps yet) and the platform's access and assistant screens.
@@ -171,14 +171,24 @@ git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/test/fixtures.ts frontend/src/test/notes-list.test.tsx \
   frontend/src/test/note-editing.test.tsx frontend/src/test/note-search.test.tsx
 cat >frontend/src/shell/capabilities.ts <<EOF
-import { useManagesAccess } from "@/features/access";
+import { useMyPermissions } from "@/features/access";
 import type { LinkProps } from "@tanstack/react-router";
 import { KeyRoundIcon, ListChecksIcon, type LucideIcon, ShieldIcon, UsersIcon } from "lucide-react";
 
 /** Names the whole suite where no one app is open: the launcher's heading, the switcher. */
 export const productName = "$title";
 
-export type Area = { label: string; to: NonNullable<LinkProps["to"]>; icon: LucideIcon };
+/**
+ * One page of an app. It is shown only to a caller who holds \`needs\`, an action named as its
+ * Module's policies name it (\`make check-modules\` fails on one no Module declares). Hiding is a
+ * convenience: the server still refuses the operations themselves.
+ */
+export type Area = {
+  label: string;
+  to: NonNullable<LinkProps["to"]>;
+  icon: LucideIcon;
+  needs: { resource: string; action: string };
+};
 
 /**
  * One Capability of the suite (ADR 0047) and its app: every route under \`path\` is one of its
@@ -202,20 +212,47 @@ const access: Capability = {
   icon: ShieldIcon,
   path: "/access",
   areas: [
-    { label: "Users", to: "/access/subjects", icon: UsersIcon },
-    { label: "Roles", to: "/access/roles", icon: KeyRoundIcon },
-    { label: "Permissions", to: "/access/permissions", icon: ListChecksIcon },
+    {
+      label: "Users",
+      to: "/access/subjects",
+      icon: UsersIcon,
+      needs: { resource: "subject", action: "list" },
+    },
+    {
+      label: "Roles",
+      to: "/access/roles",
+      icon: KeyRoundIcon,
+      needs: { resource: "role", action: "list" },
+    },
+    {
+      label: "Permissions",
+      to: "/access/permissions",
+      icon: ListChecksIcon,
+      needs: { resource: "grant", action: "list" },
+    },
   ],
 };
 
+/** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
+export const registry: { apps: Capability[]; platform: Capability[] } = {
+  apps: [],
+  platform: [access],
+};
+
 /**
- * The apps the caller may open, in the switcher's order, and the platform's tools, kept apart in
- * the sidebar's footer. An app the caller may not use is left out, as \`access\` is from a caller
- * who may not manage access.
+ * The apps the caller may open, each with only the areas whose \`needs\` they hold, leaving out an
+ * app with none; nothing until the server has answered.
  */
 export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
-  const managesAccess = useManagesAccess();
-  return { apps: [], platform: managesAccess ? [access] : [] };
+  const permissions = useMyPermissions() ?? [];
+  const held = (area: Area) =>
+    permissions.some((p) => p.resource === area.needs.resource && p.action === area.needs.action);
+  const usable = (capabilities: Capability[]) =>
+    capabilities.flatMap((capability) => {
+      const [first, ...rest] = capability.areas.filter(held);
+      return first ? [{ ...capability, areas: [first, ...rest] as Capability["areas"] }] : [];
+    });
+  return { apps: usable(registry.apps), platform: usable(registry.platform) };
 }
 
 /** The app whose \`path\` holds \`pathname\`, and its area: the one whose \`to\` holds it most closely. */

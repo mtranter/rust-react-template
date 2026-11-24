@@ -634,6 +634,122 @@
         "operationId": "get_access_catalog"
       }
     },
+    "/access/me/permissions": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "What the caller may do: every resource and action, by name, that the rules in force let\nthe caller perform on at least one row, built-in rules included, sorted by resource then\naction. An action scoped to some rows (a note's author) is listed; one refused outright\nisn't. Any signed-in caller may ask, and it answers only for them. The server still\nrefuses each operation the caller may not perform.",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "get_my_permissions"
+      }
+    },
     "/access/roles": {
       "get": {
         "tags": [
@@ -5834,6 +5950,38 @@
           "createdAt",
           "-createdAt"
         ]
+      },
+      "PermissionResponse": {
+        "type": "object",
+        "title": "PermissionResponse",
+        "required": [
+          "resource",
+          "action"
+        ],
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          }
+        }
+      },
+      "PermissionsResponse": {
+        "type": "object",
+        "title": "PermissionsResponse",
+        "description": "What the caller may do: each action they may perform on some row of its resource.",
+        "required": [
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionResponse"
+            }
+          }
+        }
       },
       "ProposalFieldResponse": {
         "type": "object",

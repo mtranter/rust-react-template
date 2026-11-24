@@ -67,6 +67,11 @@ try {
     .getByText("admin")
     .waitFor();
   await page.getByRole("banner").getByText(subject.name).waitFor();
+  // A bootstrap admin holds every Area of Access by its built-in rules, with no grant of them.
+  const areas = page.getByRole("navigation", { name: "Access" });
+  for (const area of ["Users", "Roles", "Permissions"]) {
+    await areas.getByRole("link", { name: area }).waitFor();
+  }
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
   await page.getByRole("button", { name: `Account: ${subject.name}` }).click();

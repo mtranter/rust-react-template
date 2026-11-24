@@ -171,9 +171,9 @@ EOF
     s{(appRoute\.addChildren\(\[\n\s*indexRoute,\n)}{$1    $ENV{ROUTE},\n} or die "no indexRoute among appRoute'"'"'s children\n";
   ' "$router"
   CONST=$capability_const ID=$capability LABEL=$capability_label AREA=$area_label \
-    PATH_TO="/$capability" TO="/$capability/$name" perl -0 -i -pe '
+    PATH_TO="/$capability" TO="/$capability/$name" ENTITY=$entity_ident perl -0 -i -pe '
     s{\A}{import { BoxIcon, ListIcon } from "lucide-react";\n};
-    s{(\n/\*\*\n \* The apps the caller may open)}{\nconst $ENV{CONST}: Capability = {\n  id: "$ENV{ID}",\n  label: "$ENV{LABEL}",\n  description: "What $ENV{LABEL} is for, in one line.",\n  icon: BoxIcon,\n  path: "$ENV{PATH_TO}",\n  areas: [{ label: "$ENV{AREA}", to: "$ENV{TO}", icon: ListIcon }],\n};\n$1} or die "no `useCapabilities` doc comment\n";
+    s{(\n/\*\* Every app, and the platform)}{\nconst $ENV{CONST}: Capability = {\n  id: "$ENV{ID}",\n  label: "$ENV{LABEL}",\n  description: "What $ENV{LABEL} is for, in one line.",\n  icon: BoxIcon,\n  path: "$ENV{PATH_TO}",\n  areas: [\n    {\n      label: "$ENV{AREA}",\n      to: "$ENV{TO}",\n      icon: ListIcon,\n      needs: { resource: "$ENV{ENTITY}", action: "list" },\n    },\n  ],\n};\n$1} or die "no `registry` doc comment\n";
     s{(apps: \[)\]}{$1$ENV{CONST}]} or s{(apps: \[[^\]]+)\]}{$1, $ENV{CONST}]} or die "no `apps: [..]`\n";
   ' "$registry"
   # Biome sorts and merges the imports added above; without node_modules, `make lint-frontend` says how.

@@ -1,7 +1,9 @@
-import { accessApi } from "@/test/access-fixtures";
+import { accessApi, adminPermissions } from "@/test/access-fixtures";
+import { holding } from "@/test/may-use-everything";
 import { renderAt } from "@/test/render-app";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http } from "msw";
 import { expect, test } from "vitest";
 import { server } from "../../vitest.setup";
 
@@ -20,11 +22,42 @@ test("the launcher lists the platform's tools apart, opening one at its first ar
 });
 
 test("the launcher lists no tool the caller may not use", async () => {
+  server.use(holding([{ resource: "role", action: "list" }]));
+  const { queryClient } = renderAt("/");
+
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  expect(screen.queryByRole("region", { name: "Apps" })).not.toBeInTheDocument();
+  const platform = await screen.findByRole("region", { name: "Platform" });
+  expect(within(platform).getByRole("link", { name: /Access/ })).toHaveAttribute(
+    "href",
+    "/access/roles",
+  );
+});
+
+test("shows no app until the server says what the caller may do", async () => {
+  server.use(http.get("*/api/access/me/permissions", () => new Promise<never>(() => {})));
   renderAt("/");
 
   await screen.findByRole("heading", { level: 1 });
+  expect(screen.queryByRole("region", { name: "Apps" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Platform" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: /Access/ })).not.toBeInTheDocument();
+});
+
+test("the sidebar and Go to list only the areas the caller may use", async () => {
+  server.use(
+    holding(adminPermissions.filter((p) => p.resource !== "subject")),
+    ...accessApi([]).handlers,
+  );
+  const user = userEvent.setup();
+  renderAt("/access/roles");
+
+  const areas = await screen.findByRole("navigation", { name: "Access" });
+  expect(within(areas).queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+
+  await user.keyboard("{Control>}k{/Control}");
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("option", { name: "Permissions" })).toBeInTheDocument();
+  expect(within(dialog).queryByRole("option", { name: "Users" })).not.toBeInTheDocument();
 });
 
 test("the sidebar lists the open app's areas, marking the current one, under its breadcrumb", async () => {
