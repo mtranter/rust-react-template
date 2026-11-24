@@ -1,7 +1,7 @@
 ---
 id: 0077
 name: Modules live in Capability folders, and admins grant from a Catalog grouped by Capability
-status: ready-for-agent
+status: in-progress
 priority: P1
 size: M
 blocked_by: [0074]
