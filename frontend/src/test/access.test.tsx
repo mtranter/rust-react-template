@@ -54,7 +54,7 @@ test("shows the server's refusal on an access page linked to directly by a calle
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
-test("shows Access with Roles and Permissions but no Users to a caller who may not list users", async () => {
+test("shows Access with Roles and Permissions but no Users to a caller who may not list subjects", async () => {
   server.use(
     holding(adminPermissions.filter((p) => p.resource !== "subject")),
     ...accessApi([]).handlers,

@@ -131,5 +131,5 @@ pub fn eq(attr: &str, value: impl Into<Value>) -> Filter {
 
 /// The Capability the `notebook` Module sits in.
 pub fn capability() -> PolicyFile {
-    PolicyFile::new("capability.yaml", "id: notes\nlabel: Notes\n")
+    PolicyFile::new("capability.yaml", "id: journal\nlabel: Journal\n")
 }
