@@ -1,7 +1,7 @@
 ---
 id: 0077
 name: Modules live in Capability folders, and admins grant from a Catalog grouped by Capability
-status: needs-info
+status: done
 priority: P1
 size: M
 blocked_by: [0074]
@@ -78,3 +78,7 @@ Areas' `needs` and `get_my_permissions` are 0078.
 ## Needs Human Input (factory)
 
 The factory stopped on this Ticket: implementor did not complete the Ticket: session ended with error_during_execution: [ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use (session 89f048e0-3aac-4c90-be72-87559ef5234a)
+
+## Resolution
+
+The factory's error above was not about the work: both Implementor sessions were cut off while polling a background check with a sleep loop, before committing. The staged work was checked against every step and acceptance criterion, `make check-modules` and `make check-changed` (e2e included) passed in the worktree, and it was committed and merged by hand. `make check-init` was not run to the end (the worktree's Postgres clashed with the main checkout's on `:5432`).
