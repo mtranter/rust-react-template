@@ -268,7 +268,7 @@ fn random_token() -> String {
 /// each given a fresh `sub`, in `FORCE_CHANGE_PASSWORD`; served at `/cognito`.
 #[derive(Default)]
 pub struct UserPool {
-    users: Mutex<HashMap<String, PoolUser>>,
+    accounts: Mutex<HashMap<String, PoolUser>>,
 }
 
 #[derive(Clone)]
@@ -334,7 +334,7 @@ fn cognito(pool: Data<&Arc<UserPool>>, req: &poem::Request, body: String) -> Res
         return cognito_error("InvalidParameterException", "the body isn't JSON");
     };
     let username = input["Username"].as_str().unwrap_or_default().to_owned();
-    let mut users = pool.users.lock().expect("not poisoned");
+    let mut accounts = pool.accounts.lock().expect("not poisoned");
     match operation.as_str() {
         "DescribeUserPool" => cognito_ok(json!({ "UserPool": {
             "Id": input["UserPoolId"],
@@ -342,7 +342,7 @@ fn cognito(pool: Data<&Arc<UserPool>>, req: &poem::Request, body: String) -> Res
         }})),
         "AdminCreateUser" => {
             let resend = input["MessageAction"].as_str() == Some("RESEND");
-            match (users.get(&username), resend) {
+            match (accounts.get(&username), resend) {
                 (Some(user), true) => {
                     cognito_ok(json!({ "User": pool_user_json(user, "Attributes") }))
                 }
@@ -366,16 +366,16 @@ fn cognito(pool: Data<&Arc<UserPool>>, req: &poem::Request, body: String) -> Res
                         name: attribute("name"),
                     };
                     let answer = cognito_ok(json!({ "User": pool_user_json(&user, "Attributes") }));
-                    users.insert(username, user);
+                    accounts.insert(username, user);
                     answer
                 }
             }
         }
-        "AdminGetUser" => match users.get(&username) {
+        "AdminGetUser" => match accounts.get(&username) {
             Some(user) => cognito_ok(pool_user_json(user, "UserAttributes")),
             None => cognito_error("UserNotFoundException", "User does not exist."),
         },
-        "AdminDeleteUser" => match users.remove(&username) {
+        "AdminDeleteUser" => match accounts.remove(&username) {
             Some(_) => cognito_ok(json!({})),
             None => cognito_error("UserNotFoundException", "User does not exist."),
         },

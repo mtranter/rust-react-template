@@ -3,7 +3,7 @@ resourcePolicy:
   resource: invitation
   version: default
   rules:
-    - name: admins always invite users and manage invitations, whatever is granted or revoked
+    - name: admins always invite people and manage invitations, whatever is granted or revoked
       actions: ["*"]
       effect: EFFECT_ALLOW
       roles: [admin]

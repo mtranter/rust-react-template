@@ -173,7 +173,14 @@ git rm -rq frontend/src/features/notes frontend/src/features/note-search \
 cat >frontend/src/shell/capabilities.ts <<EOF
 import { useMyPermissions } from "@/features/access";
 import type { LinkProps } from "@tanstack/react-router";
-import { KeyRoundIcon, ListChecksIcon, type LucideIcon, ShieldIcon, UsersIcon } from "lucide-react";
+import {
+  KeyRoundIcon,
+  ListChecksIcon,
+  type LucideIcon,
+  MailIcon,
+  ShieldIcon,
+  UsersIcon,
+} from "lucide-react";
 
 /** Names the whole suite where no one app is open: the launcher's heading, the switcher. */
 export const productName = "$title";
@@ -225,6 +232,12 @@ const access: Capability = {
       needs: { resource: "role", action: "list" },
     },
     {
+      label: "Invitations",
+      to: "/access/invitations",
+      icon: MailIcon,
+      needs: { resource: "invitation", action: "list" },
+    },
+    {
       label: "Permissions",
       to: "/access/permissions",
       icon: ListChecksIcon,
@@ -268,8 +281,13 @@ EOF
 cat >frontend/src/router.tsx <<'EOF'
 import type { GrantSort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
-import { type GrantFilter, grantSortKeys } from "@/features/access";
-import { AccessPermissionsPage, AccessRolesPage, AccessUsersPage } from "@/pages/access-page";
+import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
+import {
+  AccessInvitationsPage,
+  AccessPermissionsPage,
+  AccessRolesPage,
+  AccessUsersPage,
+} from "@/pages/access-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { RolePage } from "@/pages/role-page";
@@ -322,7 +340,9 @@ const accessRoute = createRoute({
           ? "/access/roles"
           : tab === "grants"
             ? "/access/permissions"
-            : "/access/subjects",
+            : tab === "invitations"
+              ? "/access/invitations"
+              : "/access/subjects",
       search: rest,
     });
   },
@@ -339,6 +359,16 @@ const accessRolesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/access/roles",
   component: AccessRolesPage,
+});
+const accessInvitationsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/invitations",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { status?: (typeof invitationStatuses)[number] } => ({
+    status: invitationStatuses.find((s) => s === search.status),
+  }),
+  component: AccessInvitationsPage,
 });
 const accessPermissionsRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -374,6 +404,7 @@ const routeTree = rootRoute.addChildren([
     accessRoute,
     accessUsersRoute,
     accessRolesRoute,
+    accessInvitationsRoute,
     accessPermissionsRoute,
     roleRoute,
     assistantRoute,

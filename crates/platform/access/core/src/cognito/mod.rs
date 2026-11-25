@@ -1,5 +1,5 @@
 //! The `IdentityDirectory` adapter the server uses: Amazon Cognito user pools, the only code that
-//! knows how users are created there (Spec 0012).
+//! knows how invitees are created there (Spec 0012).
 
 use crate::application::{Created, DirectoryStatus, DirectoryUser, IdentityDirectory};
 use crate::domain::Email;

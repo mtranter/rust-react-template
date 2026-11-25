@@ -1,5 +1,5 @@
 //! The platform's `access` module (ADR 0040): it stores roles, grants and who is assigned which
-//! role, invites users through the identity provider, records who signs in, applies every module's default grants once, lets admins grant, revoke, assign and
+//! role, invites people through the identity provider, records who signs in, applies every module's default grants once, lets admins grant, revoke, assign and
 //! unassign at runtime, and keeps each server instance's rule set (and so each Principal's
 //! roles) in step with them. Platform, not the app's: it stays registered after `make init`.
 

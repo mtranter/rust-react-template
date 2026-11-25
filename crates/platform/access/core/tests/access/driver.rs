@@ -165,11 +165,11 @@ struct DirectoryEntry {
     status: DirectoryStatus,
 }
 
-/// Stands in for Cognito, which tests can't run: keeps its users by email, counts the invitation
+/// Stands in for Cognito, which tests can't run: keeps its accounts by email, counts the invitation
 /// mails it would send, and refuses everything while it's down.
 #[derive(Default)]
 pub struct FakeDirectory {
-    users: Mutex<HashMap<String, DirectoryEntry>>,
+    accounts: Mutex<HashMap<String, DirectoryEntry>>,
     mailed: Mutex<Vec<String>>,
     down: std::sync::atomic::AtomicBool,
     next: std::sync::atomic::AtomicU32,
@@ -186,7 +186,7 @@ impl FakeDirectory {
     }
 
     fn found(&self, email: &Email) -> DirectoryUser {
-        match self.users.lock().unwrap().get(email.as_str()) {
+        match self.accounts.lock().unwrap().get(email.as_str()) {
             Some(entry) => DirectoryUser {
                 subject: entry.subject.clone(),
                 status: entry.status,
@@ -209,8 +209,8 @@ impl IdentityDirectory for FakeDirectory {
                 "the identity provider refused it",
             ));
         }
-        let mut users = self.users.lock().unwrap();
-        if let Some(entry) = users.get(email.as_str()) {
+        let mut accounts = self.accounts.lock().unwrap();
+        if let Some(entry) = accounts.get(email.as_str()) {
             return Ok(Created::Exists(DirectoryUser {
                 subject: entry.subject.clone(),
                 status: entry.status,
@@ -222,7 +222,7 @@ impl IdentityDirectory for FakeDirectory {
             name: name.to_owned(),
             status: DirectoryStatus::Pending,
         };
-        users.insert(email.as_str().to_owned(), entry.clone());
+        accounts.insert(email.as_str().to_owned(), entry.clone());
         self.mailed.lock().unwrap().push(email.as_str().to_owned());
         Ok(Created::Created(DirectoryUser {
             subject: entry.subject,
@@ -232,7 +232,7 @@ impl IdentityDirectory for FakeDirectory {
 
     async fn resend(&self, email: &Email) -> AppResult<()> {
         self.up()?;
-        if let Some(entry) = self.users.lock().unwrap().get_mut(email.as_str()) {
+        if let Some(entry) = self.accounts.lock().unwrap().get_mut(email.as_str()) {
             entry.status = DirectoryStatus::Pending;
         }
         self.mailed.lock().unwrap().push(email.as_str().to_owned());
@@ -246,7 +246,7 @@ impl IdentityDirectory for FakeDirectory {
 
     async fn delete(&self, email: &Email) -> AppResult<()> {
         self.up()?;
-        self.users.lock().unwrap().remove(email.as_str());
+        self.accounts.lock().unwrap().remove(email.as_str());
         Ok(())
     }
 }
@@ -753,7 +753,7 @@ impl Access {
     /// The identity provider, as an admin would see it in its console.
     pub fn directory_has(&self, email: &str) -> Option<DirectoryStatus> {
         self.directory
-            .users
+            .accounts
             .lock()
             .unwrap()
             .get(email)
@@ -762,7 +762,7 @@ impl Access {
 
     pub fn directory_name_of(&self, email: &str) -> Option<String> {
         self.directory
-            .users
+            .accounts
             .lock()
             .unwrap()
             .get(email)
@@ -776,7 +776,7 @@ impl Access {
 
     /// Someone the identity provider has, created outside the app, in `status`.
     pub fn directory_holds(&self, email: &str, subject: &str, status: DirectoryStatus) {
-        self.directory.users.lock().unwrap().insert(
+        self.directory.accounts.lock().unwrap().insert(
             email.to_owned(),
             DirectoryEntry {
                 subject: subject.to_owned(),
@@ -789,15 +789,15 @@ impl Access {
     /// The invitee's account changes at the identity provider: they set a password, their
     /// temporary one lapses, or an admin deletes them in its console.
     pub fn directory_sets(&self, email: &str, status: Option<DirectoryStatus>) {
-        let mut users = self.directory.users.lock().unwrap();
+        let mut accounts = self.directory.accounts.lock().unwrap();
         match status {
             Some(status) => {
-                if let Some(entry) = users.get_mut(email) {
+                if let Some(entry) = accounts.get_mut(email) {
                     entry.status = status;
                 }
             }
             None => {
-                users.remove(email);
+                accounts.remove(email);
             }
         }
     }
