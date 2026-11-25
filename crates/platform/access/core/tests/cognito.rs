@@ -3,29 +3,15 @@
 
 use access::{CognitoDirectory, Created, DirectoryStatus, Email, IdentityDirectory};
 use app_fake_oidc::UserPool;
-use poem::{
-    Server,
-    listener::{Acceptor, Listener, TcpListener},
-};
-use std::sync::Arc;
 
 async fn directory() -> CognitoDirectory {
-    let acceptor = TcpListener::bind("127.0.0.1:0")
-        .into_acceptor()
-        .await
-        .expect("binds");
-    let addr = acceptor.local_addr()[0]
-        .as_socket_addr()
-        .copied()
-        .expect("a socket address");
-    tokio::spawn(Server::new_with_acceptor(acceptor).run(Arc::new(UserPool::default()).endpoint()));
+    let endpoint = UserPool::serve();
     // SAFETY: set before any thread of this test reads the environment's credentials.
     unsafe {
         std::env::set_var("AWS_ACCESS_KEY_ID", "test");
         std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
     }
-    CognitoDirectory::new("ap-southeast-2_test", Some(&format!("http://{addr}")))
-        .expect("a pool id")
+    CognitoDirectory::new("ap-southeast-2_test", Some(&endpoint)).expect("a pool id")
 }
 
 fn email(raw: &str) -> Email {

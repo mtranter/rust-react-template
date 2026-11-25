@@ -12,10 +12,6 @@ use app_web::mcp::Discovery;
 use app_web::testing::{Call, McpSession, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
 use chrono::{DateTime, TimeDelta, Utc};
-use poem::{
-    Server,
-    listener::{Acceptor, Listener, TcpListener},
-};
 use reference_journeys::Reference;
 use serde_json::json;
 use server::Composition;
@@ -303,33 +299,11 @@ impl App {
 fn user_pool() {
     static SERVED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     SERVED.get_or_init(|| {
-        let (bound, addr) = std::sync::mpsc::channel();
-        // Its own runtime, bound there too: each test's ends with the test, and a listener
-        // registered with an ended runtime spins.
-        std::thread::spawn(move || {
-            tokio::runtime::Runtime::new()
-                .expect("a runtime")
-                .block_on(async move {
-                    let acceptor = TcpListener::bind("127.0.0.1:0")
-                        .into_acceptor()
-                        .await
-                        .expect("binds");
-                    let addr = acceptor.local_addr()[0]
-                        .as_socket_addr()
-                        .copied()
-                        .expect("a socket address");
-                    bound.send(addr).expect("the journey waits for it");
-                    let pool = Arc::new(app_fake_oidc::UserPool::default());
-                    Server::new_with_acceptor(acceptor)
-                        .run(pool.endpoint())
-                        .await
-                })
-        });
-        let addr = addr.recv().expect("the user pool binds");
+        let endpoint = app_fake_oidc::UserPool::serve();
         // SAFETY: set once, before any instance reads them, and never changed.
         unsafe {
             std::env::set_var("COGNITO_USER_POOL_ID", "ap-southeast-2_journeys");
-            std::env::set_var("COGNITO_ENDPOINT", format!("http://{addr}"));
+            std::env::set_var("COGNITO_ENDPOINT", endpoint);
             std::env::set_var("AWS_ACCESS_KEY_ID", "journeys");
             std::env::set_var("AWS_SECRET_ACCESS_KEY", "journeys");
         }

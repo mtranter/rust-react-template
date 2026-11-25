@@ -3865,12 +3865,10 @@ dependencies = [
  "note-search",
  "notes",
  "notes-api",
- "poem",
  "serde",
  "serde_json",
  "server",
  "sqlx",
- "tokio",
  "users",
  "users-api",
 ]

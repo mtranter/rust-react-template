@@ -385,3 +385,32 @@ fn cognito(pool: Data<&Arc<UserPool>>, req: &poem::Request, body: String) -> Res
         ),
     }
 }
+
+impl UserPool {
+    /// A fresh pool served on 127.0.0.1 on a thread of its own, with its own runtime, so it
+    /// outlives any one test's: its endpoint URL, for `COGNITO_ENDPOINT`.
+    pub fn serve() -> String {
+        let (bound, addr) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            tokio::runtime::Runtime::new()
+                .expect("a runtime")
+                .block_on(async move {
+                    use poem::listener::{Acceptor, Listener, TcpListener};
+                    let acceptor = TcpListener::bind("127.0.0.1:0")
+                        .into_acceptor()
+                        .await
+                        .expect("binds");
+                    let addr = acceptor
+                        .local_addr()
+                        .into_iter()
+                        .find_map(|addr| addr.as_socket_addr().copied())
+                        .expect("a socket address");
+                    bound.send(addr).expect("the caller waits for it");
+                    poem::Server::new_with_acceptor(acceptor)
+                        .run(Arc::new(UserPool::default()).endpoint())
+                        .await
+                })
+        });
+        format!("http://{}", addr.recv().expect("the user pool binds"))
+    }
+}
