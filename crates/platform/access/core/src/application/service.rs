@@ -2,8 +2,8 @@ use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
     AssignmentRepository, CatalogAction, CatalogCapability, CatalogResource, EventPublisher,
-    GrantFilter, GrantRepository, GrantSortKey, IdentityDirectory, InvitationRepository,
-    ListQuery, Listed, RoleRepository, SubjectRepository, Transactions, Version, Versioned,
+    GrantFilter, GrantRepository, GrantSortKey, IdentityDirectory, InvitationRepository, ListQuery,
+    Listed, RoleRepository, SubjectRepository, Transactions, Version, Versioned,
 };
 use crate::domain::{
     CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
