@@ -647,3 +647,60 @@ pub const TEMPLATE: Template = Template::new("journeys", |pool| {
         .expect("relay the seeds' events");
     })
 });
+
+/// The scope `/mcp` asks of a token in the journeys served over the network:
+/// a Cognito resource server's custom scope (`APP_MCP_SCOPE`).
+pub const MCP_SCOPE: &str = "https://api.example.com/mcp";
+
+/// The composed app served over TCP as `server` is in an environment with an
+/// issuer: verifying `fake-oidc`'s tokens through its JWKS, with `APP_MCP_SCOPE`
+/// set, for a client that discovers how to sign in as a real one would.
+pub struct Served {
+    /// Where the server is reached, without a trailing `/`.
+    pub url: String,
+    pub provider: Arc<app_fake_oidc::Provider>,
+}
+
+impl App {
+    /// Serves this instance's database behind `fake-oidc`, signing in as `user`.
+    pub async fn served_behind_an_issuer(&self, user: impl Display) -> Served {
+        let (acceptor, issuer) = bind().await;
+        let subject = app_fake_oidc::Subject {
+            sub: user.to_string(),
+            name: "Agent".into(),
+            email: "agent@example.com".into(),
+        };
+        let provider = Arc::new(app_fake_oidc::Provider::new(issuer, "spa", subject));
+        tokio::spawn(poem::Server::new_with_acceptor(acceptor).run(provider.clone().endpoint()));
+        let verifier = JwtVerifier::from_discovery(provider.issuer(), None)
+            .await
+            .expect("the issuer's JWKS is read");
+        let (acceptor, url) = bind().await;
+        let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
+        let ctx = Context::new(self.pool.clone(), self.clock.clone())
+            .with_authorizer(Arc::new(authorizer));
+        let discovery = Discovery::new(
+            app_web::PublicUrl::new(Some(url.clone())),
+            Some(provider.issuer().to_owned()),
+        )
+        .with_scope(Some(MCP_SCOPE.to_owned()));
+        let app =
+            server::build_app::<Reference>(&ctx, verifier, discovery, None, "http://localhost");
+        tokio::spawn(poem::Server::new_with_acceptor(acceptor).run(app));
+        Served { url, provider }
+    }
+}
+
+/// A listener on a free loopback port, and its URL.
+pub async fn bind() -> (poem::listener::TcpAcceptor, String) {
+    use poem::listener::{Acceptor, Listener, TcpListener};
+    let acceptor = TcpListener::bind("127.0.0.1:0")
+        .into_acceptor()
+        .await
+        .expect("binds");
+    let addr = acceptor.local_addr()[0]
+        .as_socket_addr()
+        .copied()
+        .expect("a socket address");
+    (acceptor, format!("http://{addr}"))
+}

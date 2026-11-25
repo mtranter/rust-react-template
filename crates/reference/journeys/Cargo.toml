@@ -38,3 +38,9 @@ users = { workspace = true, features = ["seed"] }
 notes = { workspace = true, features = ["seed"] }
 users-api = { workspace = true, features = ["seed"] }
 notes-api = { workspace = true, features = ["seed"] }
+base64.workspace = true
+poem.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+url.workspace = true
