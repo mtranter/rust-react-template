@@ -182,8 +182,16 @@ A Role given to a subject (the token's `sub`), signed in yet or not, in the `acc
 _Avoid_: Membership, role binding
 
 **Subject**:
-Someone Roles can be assigned to, named by the token's `sub`: in the `access` Module, every subject seen signing in, recorded on authentication with the token's `name` and `email` claims when it carries them and when it was last seen (to within an hour, so most requests write nothing), and every subject assigned a Role or listed in `APP_BOOTSTRAP_ADMINS` before it ever has. Admins list them with their Roles (`list_subjects`) to pick whom to assign. A record of sightings, not an aggregate: upserted, unversioned, announcing nothing.
+Someone Roles can be assigned to, named by the token's `sub`: in the `access` Module, every subject seen signing in, recorded on authentication with the token's `name` and `email` claims when it carries them and when it was last seen (to within an hour, so most requests write nothing), and every subject invited, assigned a Role or listed in `APP_BOOTSTRAP_ADMINS` before it ever has (an Invitation gives its email and name, which a token carrying them replaces). Admins list them with their Roles (`list_subjects`) to pick whom to assign. A record of sightings, not an aggregate: upserted, unversioned, announcing nothing.
 _Avoid_: User (that is the reference `users` Module's account), account, member
+
+**Invitation**:
+Someone an admin had the Identity Directory create, by email, with the Roles they hold from then on, in the `access` Module (`invite_user`): `pending` until their `sub` first signs in, then `accepted`, or `revoked` before that, which deletes them at the provider and unassigns its Roles. Listing says where a pending invitee is at the provider (waiting, expired, password set, missing); resending mails a fresh temporary password (ADR 0044).
+_Avoid_: Sign-up, registration (the reference `users` Module's), invite link
+
+**Identity Directory**:
+The identity provider's user store, as `access` reaches it to invite: a port (`IdentityDirectory`) whose one adapter is Amazon Cognito, configured by `COGNITO_USER_POOL_ID`. Without one, inviting is off (`501`) (ADR 0044).
+_Avoid_: IdP (for the store; that signs people in), user pool (Cognito's own name)
 
 **Grant**:
 A Role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.

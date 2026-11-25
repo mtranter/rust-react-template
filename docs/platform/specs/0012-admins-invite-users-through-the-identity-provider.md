@@ -1,5 +1,5 @@
 ---
-status: ready-for-tickets
+status: done
 ---
 
 # Admins invite users through the identity provider
