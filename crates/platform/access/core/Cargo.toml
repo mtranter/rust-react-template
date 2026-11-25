@@ -32,8 +32,10 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+app-fake-oidc.workspace = true
 app-test-db.workspace = true
 app-test-support.workspace = true
 app-web = { workspace = true, features = ["test"] }
+poem.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

@@ -1,7 +1,8 @@
 //! An OIDC provider for end-to-end checks: discovery, JWKS, an authorize
 //! endpoint that approves straight away as one named subject, a token endpoint
 //! for the authorization code with PKCE, and end-session. Its RS256 key is made
-//! at start, so its tokens verify only against the JWKS it serves.
+//! at start, so its tokens verify only against the JWKS it serves. Beside it, a
+//! stand-in for the Cognito user pool API invitations go through ([`UserPool`]).
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::jwk::{Jwk, JwkSet, PublicKeyUse};
@@ -82,6 +83,7 @@ impl Provider {
             .at("/authorize", get(authorize))
             .at("/token", post(token))
             .at("/end-session", get(end_session))
+            .nest("/cognito", Arc::new(UserPool::default()).endpoint())
             .with(Cors::new())
             .data(self)
     }
@@ -257,4 +259,129 @@ fn refuse(message: impl ToString) -> poem::Error {
 fn random_token() -> String {
     let bytes: [u8; 16] = thread_rng().r#gen();
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// A stand-in for Cognito's user pool API (AWS JSON 1.1, `X-Amz-Target:
+/// AWSCognitoIdentityProviderService.<Operation>`), for the admin operations `access`
+/// invites through: `AdminCreateUser`, `AdminGetUser`, `AdminDeleteUser` and
+/// `DescribeUserPool`. It checks no signature. Users it creates are kept by email,
+/// each given a fresh `sub`, in `FORCE_CHANGE_PASSWORD`; served at `/cognito`.
+#[derive(Default)]
+pub struct UserPool {
+    users: Mutex<HashMap<String, PoolUser>>,
+}
+
+#[derive(Clone)]
+struct PoolUser {
+    sub: String,
+    email: String,
+    name: Option<String>,
+}
+
+impl UserPool {
+    pub fn endpoint(self: Arc<Self>) -> impl Endpoint {
+        Route::new().at("/", post(cognito)).data(self)
+    }
+}
+
+fn cognito_error(kind: &str, message: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .header("content-type", "application/x-amz-json-1.1")
+        .header("x-amzn-errortype", kind)
+        .body(json!({ "__type": kind, "message": message }).to_string())
+}
+
+fn cognito_ok(body: Value) -> Response {
+    Response::builder()
+        .header("content-type", "application/x-amz-json-1.1")
+        .body(body.to_string())
+}
+
+fn pool_user_json(user: &PoolUser, attributes_key: &str) -> Value {
+    let mut attributes = vec![
+        json!({ "Name": "sub", "Value": user.sub }),
+        json!({ "Name": "email", "Value": user.email }),
+        json!({ "Name": "email_verified", "Value": "true" }),
+    ];
+    if let Some(name) = &user.name {
+        attributes.push(json!({ "Name": "name", "Value": name }));
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs();
+    json!({
+        "Username": user.email,
+        attributes_key: attributes,
+        "UserStatus": "FORCE_CHANGE_PASSWORD",
+        "Enabled": true,
+        "UserCreateDate": now,
+        "UserLastModifiedDate": now,
+    })
+}
+
+#[handler]
+fn cognito(pool: Data<&Arc<UserPool>>, req: &poem::Request, body: String) -> Response {
+    let operation = req
+        .headers()
+        .get("x-amz-target")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit('.').next())
+        .unwrap_or_default()
+        .to_owned();
+    let Ok(input) = serde_json::from_str::<Value>(&body) else {
+        return cognito_error("InvalidParameterException", "the body isn't JSON");
+    };
+    let username = input["Username"].as_str().unwrap_or_default().to_owned();
+    let mut users = pool.users.lock().expect("not poisoned");
+    match operation.as_str() {
+        "DescribeUserPool" => cognito_ok(json!({ "UserPool": {
+            "Id": input["UserPoolId"],
+            "Policies": { "PasswordPolicy": { "TemporaryPasswordValidityDays": 7 } },
+        }})),
+        "AdminCreateUser" => {
+            let resend = input["MessageAction"].as_str() == Some("RESEND");
+            match (users.get(&username), resend) {
+                (Some(user), true) => {
+                    cognito_ok(json!({ "User": pool_user_json(user, "Attributes") }))
+                }
+                (None, true) => cognito_error("UserNotFoundException", "User does not exist."),
+                (Some(_), false) => {
+                    cognito_error("UsernameExistsException", "User account already exists.")
+                }
+                (None, false) => {
+                    let attribute = |name: &str| {
+                        input["UserAttributes"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .find(|a| a["Name"] == name)
+                            .and_then(|a| a["Value"].as_str())
+                            .map(str::to_owned)
+                    };
+                    let user = PoolUser {
+                        sub: format!("invited-{}", random_token()),
+                        email: attribute("email").unwrap_or_else(|| username.clone()),
+                        name: attribute("name"),
+                    };
+                    let answer = cognito_ok(json!({ "User": pool_user_json(&user, "Attributes") }));
+                    users.insert(username, user);
+                    answer
+                }
+            }
+        }
+        "AdminGetUser" => match users.get(&username) {
+            Some(user) => cognito_ok(pool_user_json(user, "UserAttributes")),
+            None => cognito_error("UserNotFoundException", "User does not exist."),
+        },
+        "AdminDeleteUser" => match users.remove(&username) {
+            Some(_) => cognito_ok(json!({})),
+            None => cognito_error("UserNotFoundException", "User does not exist."),
+        },
+        other => cognito_error(
+            "UnknownOperationException",
+            &format!("`{other}` isn't faked"),
+        ),
+    }
 }

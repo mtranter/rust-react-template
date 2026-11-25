@@ -12,6 +12,10 @@ use app_web::mcp::Discovery;
 use app_web::testing::{Call, McpSession, Page, Refused, TestApi};
 use app_web::{JwtVerifier, json_newtype};
 use chrono::{DateTime, TimeDelta, Utc};
+use poem::{
+    Server,
+    listener::{Acceptor, Listener, TcpListener},
+};
 use reference_journeys::Reference;
 use serde_json::json;
 use server::Composition;
@@ -58,6 +62,14 @@ pub type Outcome<T> = Result<T, Refusal>;
 json_newtype!(pub UserJson);
 
 json_newtype!(pub NoteJson);
+
+json_newtype!(pub InvitationJson);
+
+impl InvitationJson {
+    pub fn subject(&self) -> &str {
+        self["subject"].as_str().unwrap_or_default()
+    }
+}
 
 impl NoteJson {
     /// As the note reads once archived at `at`, by one more save.
@@ -135,8 +147,10 @@ impl App {
     }
 
     /// One server instance over the database, serving once it has read the
-    /// stored grants, as `server` does.
+    /// stored grants, as `server` does, inviting through `fake-oidc`'s stand-in
+    /// for Cognito.
     async fn instance(pool: PgPool, clock: Arc<FixedClock>) -> Self {
+        user_pool();
         let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
         let ctx = Context::new(pool.clone(), clock.clone()).with_authorizer(Arc::new(authorizer));
         let rules = server::rules::<Reference>(&ctx).expect("every module's policies load");
@@ -283,6 +297,45 @@ impl App {
     }
 }
 
+/// `fake-oidc`'s stand-in for the Cognito user pool API, served once for the
+/// test binary, which `access` invites through: `COGNITO_*` are read as each
+/// instance is built, and every instance of every journey sees the same.
+fn user_pool() {
+    static SERVED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    SERVED.get_or_init(|| {
+        let (bound, addr) = std::sync::mpsc::channel();
+        // Its own runtime, bound there too: each test's ends with the test, and a listener
+        // registered with an ended runtime spins.
+        std::thread::spawn(move || {
+            tokio::runtime::Runtime::new()
+                .expect("a runtime")
+                .block_on(async move {
+                    let acceptor = TcpListener::bind("127.0.0.1:0")
+                        .into_acceptor()
+                        .await
+                        .expect("binds");
+                    let addr = acceptor.local_addr()[0]
+                        .as_socket_addr()
+                        .copied()
+                        .expect("a socket address");
+                    bound.send(addr).expect("the journey waits for it");
+                    let pool = Arc::new(app_fake_oidc::UserPool::default());
+                    Server::new_with_acceptor(acceptor)
+                        .run(pool.endpoint())
+                        .await
+                })
+        });
+        let addr = addr.recv().expect("the user pool binds");
+        // SAFETY: set once, before any instance reads them, and never changed.
+        unsafe {
+            std::env::set_var("COGNITO_USER_POOL_ID", "ap-southeast-2_journeys");
+            std::env::set_var("COGNITO_ENDPOINT", format!("http://{addr}"));
+            std::env::set_var("AWS_ACCESS_KEY_ID", "journeys");
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", "journeys");
+        }
+    });
+}
+
 /// An AI agent's MCP session: each verb a tool call.
 pub struct Agent<'a> {
     session: McpSession<'a>,
@@ -421,6 +474,27 @@ impl Admin<'_> {
             .api
             .get("/api/access/catalog")
             .bearer(&self.token)
+            .send()
+            .await
+    }
+
+    /// Invites `email`, who holds `roles` from then on.
+    pub async fn invite(&self, email: &str, roles: &[&str]) -> Outcome<InvitationJson> {
+        self.app
+            .api
+            .post("/api/access/invitations")
+            .bearer(&self.token)
+            .json(&json!({ "email": email, "name": "", "roles": roles }))
+            .send()
+            .await
+    }
+
+    pub async fn invitations(&self) -> Outcome<Page<InvitationJson>> {
+        self.app
+            .api
+            .get("/api/access/invitations")
+            .bearer(&self.token)
+            .query("limit", 100)
             .send()
             .await
     }

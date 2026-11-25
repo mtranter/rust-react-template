@@ -8,4 +8,5 @@ mod compacting_history;
 mod deleting_accounts;
 mod finding_notes;
 mod granting;
+mod inviting;
 mod starting;

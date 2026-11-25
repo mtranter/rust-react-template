@@ -200,6 +200,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -339,6 +349,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -499,6 +519,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -624,6 +654,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -733,6 +773,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -893,6 +943,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1032,6 +1092,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1184,6 +1254,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1364,6 +1444,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1505,6 +1595,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1673,6 +1773,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -1690,6 +1800,685 @@
           }
         ],
         "operationId": "unassign_role"
+      }
+    },
+    "/access/invitations": {
+      "post": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Invite someone by email: the identity provider (Cognito) creates their account and\nmails them a temporary password, and they hold `roles` (each must exist: `list_roles`;\nnever `user`) beside `user` on every server instance within 5 seconds, from before they\nfirst sign in. The answer's `subject` is their `sub`, as `list_subjects` lists them.\nRefused with `400` naming `email`, `name` or `roles` for one at fault; `409` when an\ninvitation to that email is pending already (`resend_invitation` it) or the identity\nprovider has a user with that email who has set a password (`assign_role` to them\ninstead); `501` when no identity provider is configured; `503` when it can't be reached\nor is throttling: retry later. `403` unless the caller is an `admin`, or holds a role\ngranted it.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "invite_user"
+      },
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "List invitations, newest first unless `sort` says otherwise (`email` or `invitedAt`,\n`-` prefix for descending), filtered by `status` (`pending`: not signed in yet,\n`accepted`: signed in, `revoked`). Each pending one says where its invitee is in the\nidentity provider (`directoryStatus`): `waiting`, `expired` (resend it), `passwordSet`,\nor `missing` (deleted there: revoke it). Paginated. `403` unless the caller is an\n`admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "status",
+            "schema": {
+              "$ref": "#/components/schemas/InvitationStatusParam"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/InvitationSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_InvitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "list_invitations"
+      }
+    },
+    "/access/invitations/{id}/resend": {
+      "post": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Have the identity provider mail a pending invitee a fresh temporary password, as when\ntheirs has expired. Requires `If-Match` with the version listed; a stale value is\nrefused with `412`. `409` once the invitation is accepted or revoked, or when the\ninvitee has set a password or was deleted from the identity provider; `404` when no\ninvitation has that id; `501` when no identity provider is configured; `503` when it\ncan't be reached. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "resend_invitation"
+      }
+    },
+    "/access/invitations/{id}": {
+      "delete": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Revoke a pending invitation: the identity provider deletes the invitee's account, and\nthe roles it assigned are unassigned on every server instance within 5 seconds.\nRequires `If-Match` with the version listed; a stale value is refused with `412`. `409`\nonce the invitation is accepted or revoked, or when the invitee has set a password\n(`unassign_role` instead); `404` when no invitation has that id; `501` when no identity\nprovider is configured; `503` when it can't be reached. `403` unless the caller is an\n`admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "revoke_invitation"
       }
     },
     "/assistant/status": {
@@ -1791,6 +2580,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -1929,6 +2728,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -2097,6 +2906,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2227,6 +3046,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -2367,6 +3196,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -2548,6 +3387,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -2721,6 +3570,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -2871,6 +3730,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -3034,6 +3903,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3153,6 +4032,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -3317,6 +4206,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -3449,6 +4348,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -3603,6 +4512,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3744,6 +4663,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -3912,6 +4841,16 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4042,6 +4981,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -4216,6 +5165,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -4358,6 +5317,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -4544,6 +5513,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -4722,6 +5701,16 @@
               }
             }
           },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Not ready to answer yet: retry later.",
             "content": {
@@ -4887,6 +5876,16 @@
           },
           "503": {
             "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
@@ -5307,6 +6306,16 @@
           "reject"
         ]
       },
+      "DirectoryStatusResponse": {
+        "type": "string",
+        "description": "Where a pending invitee is in the identity provider.",
+        "enum": [
+          "waiting",
+          "expired",
+          "passwordSet",
+          "missing"
+        ]
+      },
       "EditNoteRequest": {
         "type": "object",
         "title": "EditNoteRequest",
@@ -5382,6 +6391,7 @@
           "idempotency_key_reused",
           "idempotency_key_in_flight",
           "unavailable",
+          "not_configured",
           "internal_error"
         ]
       },
@@ -5509,6 +6519,110 @@
           "-grantedAt"
         ]
       },
+      "InvitationRequest": {
+        "type": "object",
+        "title": "InvitationRequest",
+        "description": "Someone to invite: the identity provider creates them and mails them a temporary password.",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Where the invitation is sent, and what they sign in with."
+          },
+          "name": {
+            "type": "string",
+            "description": "Shown to admins until their token carries one.",
+            "default": ""
+          },
+          "roles": {
+            "type": "array",
+            "description": "Roles they hold beside `user` from now on: each must exist (`list_roles`), never `user`.",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "InvitationResponse": {
+        "type": "object",
+        "title": "InvitationResponse",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "subject",
+          "roles",
+          "status",
+          "invitedAt",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string",
+            "description": "The identity provider's `sub` for the invitee: the subject the roles are assigned to."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvitationStatusParam"
+          },
+          "directoryStatus": {
+            "description": "For a pending invitation, where the invitee is in the identity provider; absent\notherwise, or when it couldn't say.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DirectoryStatusResponse"
+              },
+              {
+                "description": "For a pending invitation, where the invitee is in the identity provider; absent\notherwise, or when it couldn't say."
+              }
+            ]
+          },
+          "invitedBy": {
+            "type": "string",
+            "description": "Who invited them; absent for one made as `System`."
+          },
+          "invitedAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Echo it back in `If-Match` to resend or revoke this invitation."
+          }
+        }
+      },
+      "InvitationSort": {
+        "type": "string",
+        "enum": [
+          "email",
+          "-email",
+          "invitedAt",
+          "-invitedAt"
+        ]
+      },
+      "InvitationStatusParam": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "revoked"
+        ]
+      },
       "ItemResponse": {
         "type": "object",
         "title": "ItemResponse",
@@ -5567,6 +6681,36 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/GrantResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ListResult_InvitationResponse": {
+        "type": "object",
+        "title": "ListResult_InvitationResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
             }
           },
           "total": {
@@ -6146,11 +7290,11 @@
           },
           "name": {
             "type": "string",
-            "description": "From the token's `name` claim, when it carried one."
+            "description": "From the token's `name` claim, when it carried one, else from the invitation."
           },
           "email": {
             "type": "string",
-            "description": "From the token's `email` claim, when it carried one."
+            "description": "From the token's `email` claim, when it carried one, else from the invitation."
           },
           "firstSeen": {
             "type": "string",
