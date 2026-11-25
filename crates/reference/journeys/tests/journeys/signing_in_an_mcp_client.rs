@@ -1,5 +1,5 @@
 //! An MCP client finding out how to sign in and doing so, over plain HTTP as
-//! a real one would (ADR 0045): the server's challenge, its Protected Resource
+//! a real one would (ADR 0049): the server's challenge, its Protected Resource
 //! Metadata, the issuer's metadata, then a client ID metadata document or a
 //! dynamic registration, and the authorization code with PKCE.
 

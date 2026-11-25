@@ -186,11 +186,11 @@ Someone Roles can be assigned to, named by the token's `sub`: in the `access` Mo
 _Avoid_: User (that is the reference `users` Module's account), account, member
 
 **Invitation**:
-Someone an admin had the Identity Directory create, by email, with the Roles they hold from then on, in the `access` Module (`invite_user`): `pending` until their `sub` first signs in, then `accepted`, or `revoked` before that, which deletes them at the provider and unassigns its Roles. Listing says where a pending invitee is at the provider (waiting, expired, password set, missing); resending mails a fresh temporary password (ADR 0044).
+Someone an admin had the Identity Directory create, by email, with the Roles they hold from then on, in the `access` Module (`invite_user`): `pending` until their `sub` first signs in, then `accepted`, or `revoked` before that, which deletes them at the provider and unassigns its Roles. Listing says where a pending invitee is at the provider (waiting, expired, password set, missing); resending mails a fresh temporary password (ADR 0048).
 _Avoid_: Sign-up, registration (the reference `users` Module's), invite link
 
 **Identity Directory**:
-The identity provider's user store, as `access` reaches it to invite: a port (`IdentityDirectory`) whose one adapter is Amazon Cognito, configured by `COGNITO_USER_POOL_ID`. Without one, inviting is off (`501`) (ADR 0044).
+The identity provider's user store, as `access` reaches it to invite: a port (`IdentityDirectory`) whose one adapter is Amazon Cognito, configured by `COGNITO_USER_POOL_ID`. Without one, inviting is off (`501`) (ADR 0048).
 _Avoid_: IdP (for the store; that signs people in), user pool (Cognito's own name)
 
 **Grant**:

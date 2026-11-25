@@ -14,7 +14,7 @@
 ## Considered options
 
 - **Our own DCR shim (API Gateway and Lambda over `CreateUserPoolClient`).** Needed before November 2026, now redundant, and one more thing to secure.
-- **Keycloak instead of `fake-oidc`.** Keycloak supports RFC 8414 and DCR, and CIMD only as an experimental feature (`--features=cimd`) needing client policies. It would make `make e2e` slower and heavier, still couldn't stand in for Cognito's user pool API (ADR 0044), and would test Keycloak's behaviour rather than Cognito's.
+- **Keycloak instead of `fake-oidc`.** Keycloak supports RFC 8414 and DCR, and CIMD only as an experimental feature (`--features=cimd`) needing client policies. It would make `make e2e` slower and heavier, still couldn't stand in for Cognito's user pool API (ADR 0048), and would test Keycloak's behaviour rather than Cognito's.
 - **Pre-registered app clients only.** Many MCP clients can't take a `client_id`, and each new assistant would need an admin.
 
 ## Consequences
