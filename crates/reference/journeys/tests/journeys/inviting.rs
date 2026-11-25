@@ -8,10 +8,6 @@ async fn an_invitee_reaches_what_their_role_allows_from_their_first_sign_in(pool
     let app = App::seeded(pool).await;
     let admin = app.as_admin(ADMIN_ID).await;
     admin.create_role("support").await.unwrap();
-    admin
-        .grant("support", "module:access", "use", "any")
-        .await
-        .unwrap();
     admin.grant("support", "role", "list", "any").await.unwrap();
 
     let invited = admin
