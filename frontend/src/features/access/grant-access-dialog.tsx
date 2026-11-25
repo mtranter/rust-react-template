@@ -2,6 +2,7 @@ import {
   getAccessGrantsQueryKey,
   postAccessGrantsBulkMutation,
 } from "@/api/@tanstack/react-query.gen";
+import type { BulkGrantResponse } from "@/api/types.gen";
 import { MultiSelect } from "@/components/multi-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,21 +65,17 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: getAccessGrantsQueryKey() }),
   });
 
-  /** The actions and scopes the chosen resources offer between them, each named once. */
+  /**
+   * The actions the chosen resources have, grouped by resource, each option `resource/action`
+   * so the same action can be chosen on one resource and not another; and the scopes they offer
+   * between them, each named once.
+   */
   const offered = (kinds: string[]) => {
     const chosen = resources.filter((r) => kinds.includes(r.resource));
-    const actions = new Map<string, { label: string; unreachable: boolean }>();
     const scopes = new Map<string, { label: string; on: string[] }>([
       ["any", { label: "Any", on: [] }],
     ]);
     for (const resource of chosen) {
-      for (const a of resource.actions) {
-        const seen = actions.get(a.name);
-        actions.set(a.name, {
-          label: seen?.label ?? a.label,
-          unreachable: (seen?.unreachable ?? false) || !a.reachable,
-        });
-      }
       for (const s of resource.scopes) {
         if (s.name === "any") continue;
         const seen = scopes.get(s.name) ?? { label: s.label, on: [] };
@@ -87,9 +84,12 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
       }
     }
     return {
-      actions: [...actions].map(([value, a]) => ({
-        value,
-        label: a.unreachable ? `${a.label} (no one can yet)` : a.label,
+      actionGroups: chosen.map((r) => ({
+        label: r.label,
+        options: r.actions.map((a) => ({
+          value: `${r.resource}/${a.name}`,
+          label: a.reachable ? a.label : `${a.label} (no one can yet)`,
+        })),
       })),
       // A scope is named per resource (`owner` on notes and on conversations), so say on which.
       scopes: [...scopes].map(([value, s]) => ({
@@ -97,6 +97,45 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         label: s.on.length > 0 ? `${s.label} (${s.on.join(", ")})` : s.label,
       })),
     };
+  };
+
+  /**
+   * Each `resource/action` chosen, sent as one bulk grant per set of actions: resources given
+   * the same actions go together, and the server makes only what each resource has.
+   */
+  const grantChosen = async (value: {
+    role: string;
+    actions: string[];
+    scopes: string[];
+  }) => {
+    const byResource = new Map<string, string[]>();
+    for (const chosen of value.actions) {
+      const [resource, action] = chosen.split("/");
+      byResource.set(resource, [...(byResource.get(resource) ?? []), action]);
+    }
+    const byActions = new Map<string, { resources: string[]; actions: string[] }>();
+    for (const [resource, actions] of byResource) {
+      const key = [...actions].sort().join(",");
+      const group = byActions.get(key) ?? { resources: [], actions };
+      group.resources.push(resource);
+      byActions.set(key, group);
+    }
+    // Each group asks only for the scopes one of its resources offers, which the server requires.
+    const offers = (kind: string, scope: string) =>
+      scope === "any" ||
+      (resources.find((r) => r.resource === kind)?.scopes.some((s) => s.name === scope) ?? false);
+    const granted: BulkGrantResponse["granted"] = [];
+    const skipped: BulkGrantResponse["skipped"] = [];
+    for (const group of byActions.values()) {
+      const scopes = value.scopes.filter((s) => group.resources.some((r) => offers(r, s)));
+      if (scopes.length === 0) continue;
+      const result = await grant.mutateAsync({
+        body: { role: value.role, scopes, ...group },
+      });
+      granted.push(...result.granted);
+      skipped.push(...result.skipped);
+    }
+    return { granted, skipped };
   };
 
   const form = useForm({
@@ -109,7 +148,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
     validators: {
       onSubmitAsync: async ({ value }) => {
         try {
-          const result = await grant.mutateAsync({ body: value });
+          const result = await grantChosen(value);
           const skipped = result.skipped.length;
           toast.add({
             type: "success",
@@ -162,7 +201,12 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
             const still = offered(value);
             const keep = (chosen: string[], options: { value: string }[]) =>
               chosen.filter((c) => options.some((o) => o.value === c));
-            fieldApi.form.setFieldValue("actions", (a) => keep(a, still.actions));
+            fieldApi.form.setFieldValue("actions", (a) =>
+              keep(
+                a,
+                still.actionGroups.flatMap((g) => g.options),
+              ),
+            );
             fieldApi.form.setFieldValue("scopes", (s) => keep(s, still.scopes));
           },
         }}
@@ -188,7 +232,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
       </form.Field>
       <form.Subscribe selector={(state) => state.values.resources}>
         {(kinds) => {
-          const { actions, scopes } = offered(kinds);
+          const { actionGroups, scopes } = offered(kinds);
           return (
             <>
               <form.Field name="actions">
@@ -199,7 +243,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
                       id="grant-actions"
                       placeholder="Choose actions"
                       disabled={kinds.length === 0}
-                      groups={[{ options: actions }]}
+                      groups={actionGroups}
                       value={field.state.value}
                       onChange={field.handleChange}
                       aria-invalid={field.state.meta.errors.length > 0}

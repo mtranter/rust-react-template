@@ -185,7 +185,7 @@ test("grants a role several actions on several resources in several scopes at on
   expect(await within(table).findAllByText("Gadgets they made")).toHaveLength(2);
 });
 
-test("offers the actions and scopes of every resource chosen, once each, and drops the rest", async () => {
+test("offers each chosen resource's actions under its name, and drops the rest", async () => {
   server.use(...accessApi([]).handlers);
   renderAt("/access/permissions");
   const user = userEvent.setup();
@@ -200,6 +200,8 @@ test("offers the actions and scopes of every resource chosen, once each, and dro
       .getAllByRole("checkbox")
       .map((c) => c.closest("label")?.textContent),
   ).toEqual(["Select all", "Build", "Make", "View", "Scrap (no one can yet)"]);
+  expect(within(actions).getByText("Widgets")).toBeInTheDocument();
+  expect(within(actions).getByText("Gadgets")).toBeInTheDocument();
   const all = within(actions).getByRole("checkbox", { name: "Select all" });
   await user.click(within(actions).getByRole("checkbox", { name: "Build" }));
   expect(all).toHaveAttribute("aria-checked", "mixed");
@@ -217,6 +219,24 @@ test("offers the actions and scopes of every resource chosen, once each, and dro
     "aria-checked",
     "true",
   );
+});
+
+test("grants each resource only the actions chosen under it", async () => {
+  const api = accessApi([]);
+  server.use(...api.handlers);
+  renderAt("/access/permissions");
+  const user = userEvent.setup();
+  const dialog = await grantDialog(user);
+
+  await choose(user, dialog, "On", ["Widgets", "Gadgets"]);
+  await choose(user, dialog, "Can", ["Build", "View"]);
+  await user.click(within(dialog).getByRole("button", { name: "Grant" }));
+
+  await waitFor(() => expect(api.bulkGrants).toHaveLength(2));
+  expect(api.bulkGrants).toEqual([
+    { role: "support", resources: ["widget"], actions: ["build"], scopes: ["any"] },
+    { role: "support", resources: ["gadget"], actions: ["view"], scopes: ["any"] },
+  ]);
 });
 
 test("says how many of a bulk grant were made already", async () => {
