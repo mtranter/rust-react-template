@@ -169,7 +169,7 @@ test("grants a role several actions on several resources in several scopes at on
   await waitFor(() => expect(within(dialog).getByLabelText("On")).toBeEnabled());
   await choose(user, dialog, "On", ["Gadgets"]);
   await choose(user, dialog, "Can", ["Make", "View"]);
-  await choose(user, dialog, "Which", ["Gadgets they made"]);
+  await choose(user, dialog, "Which", ["Gadgets they made (Gadgets)"]);
   expect(within(dialog).getByLabelText("Can")).toHaveTextContent("2 selected");
   expect(within(dialog).getByLabelText("Which")).toHaveTextContent("2 selected");
   await user.click(within(dialog).getByRole("button", { name: "Grant" }));

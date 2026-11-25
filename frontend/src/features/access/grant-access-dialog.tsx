@@ -68,7 +68,9 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const offered = (kinds: string[]) => {
     const chosen = resources.filter((r) => kinds.includes(r.resource));
     const actions = new Map<string, { label: string; unreachable: boolean }>();
-    const scopes = new Map<string, string>([["any", "Any"]]);
+    const scopes = new Map<string, { label: string; on: string[] }>([
+      ["any", { label: "Any", on: [] }],
+    ]);
     for (const resource of chosen) {
       for (const a of resource.actions) {
         const seen = actions.get(a.name);
@@ -78,7 +80,10 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         });
       }
       for (const s of resource.scopes) {
-        if (s.name !== "any" && !scopes.has(s.name)) scopes.set(s.name, s.label);
+        if (s.name === "any") continue;
+        const seen = scopes.get(s.name) ?? { label: s.label, on: [] };
+        seen.on.push(resource.label);
+        scopes.set(s.name, seen);
       }
     }
     return {
@@ -86,7 +91,11 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         value,
         label: a.unreachable ? `${a.label} (no one can yet)` : a.label,
       })),
-      scopes: [...scopes].map(([value, label]) => ({ value, label })),
+      // A scope is named per resource (`owner` on notes and on conversations), so say on which.
+      scopes: [...scopes].map(([value, s]) => ({
+        value,
+        label: s.on.length > 0 ? `${s.label} (${s.on.join(", ")})` : s.label,
+      })),
     };
   };
 
