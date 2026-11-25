@@ -51,6 +51,10 @@ pub struct AppConfig {
     /// clients start with. Unset, each request's `Host` and `X-Forwarded-*`
     /// headers say.
     pub public_url: Option<String>,
+    /// The scope a token must grant for `/mcp` (a Cognito resource server's
+    /// custom scope, `https://api.example.com/mcp`), unless its `aud` is the
+    /// MCP resource's URL. Unset, any valid token is taken.
+    pub mcp_scope: Option<String>,
     /// How long the `worker` bin waits between polls once nothing is due.
     pub worker_poll_ms: u64,
     /// How often, in seconds, each `worker` compacts the outbox (ADR 0033),
@@ -104,6 +108,7 @@ impl Default for AppConfig {
             jwt_issuer: None,
             jwt_audience: None,
             public_url: None,
+            mcp_scope: None,
             worker_poll_ms: 1000,
             outbox_compact_every: app_db::Worker::COMPACT_EVERY.num_seconds() as u64,
             redis_url: None,

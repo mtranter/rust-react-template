@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::testing::{McpSession, Refused, TestApi};
-use crate::{ApiResult, JwtAuth, JwtVerifier, PublicUrl, render_error};
+use crate::{ApiResult, Claims, JwtAuth, JwtVerifier, PublicUrl, render_error};
 use app_error::AppError;
 use poem::endpoint::BoxEndpoint;
 use poem::test::TestClient;
@@ -600,4 +600,88 @@ fn an_agent_tool_says_its_path_where_each_argument_goes_and_its_fields_in_order(
         fields,
         vec!["id", "tag", "expected_version", "x_trace_tag", "body.name"]
     );
+}
+
+const SCOPE: &str = "https://api.example/mcp";
+
+fn scoped() -> Discovery {
+    with_issuer().with_scope(Some(SCOPE.into()))
+}
+
+fn bearer(claims: Claims) -> String {
+    format!(
+        "Bearer {}",
+        JwtVerifier::new("secret").sign(&claims).unwrap()
+    )
+}
+
+fn ada() -> Claims {
+    Claims::lasting("ada", 60).unwrap()
+}
+
+#[tokio::test]
+async fn with_a_scope_a_token_without_it_is_refused_to_step_up() {
+    let response = client(scoped())
+        .post(PATH)
+        .header("authorization", bearer(ada().with_scope("openid email")))
+        .send()
+        .await;
+
+    response.assert_status(StatusCode::FORBIDDEN);
+    response.assert_header(
+        "www-authenticate",
+        r#"Bearer error="insufficient_scope", scope="https://api.example/mcp", resource_metadata="https://app.example/.well-known/oauth-protected-resource/mcp""#,
+    );
+    let body = response.json().await;
+    body.value().object().get("code").assert_string("forbidden");
+}
+
+#[tokio::test]
+async fn with_a_scope_a_tokenless_request_is_challenged_for_it() {
+    let response = client(scoped()).post(PATH).send().await;
+
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    response.assert_header(
+        "www-authenticate",
+        r#"Bearer scope="https://api.example/mcp", resource_metadata="https://app.example/.well-known/oauth-protected-resource/mcp""#,
+    );
+}
+
+/// A request past the token check: `poem-mcpserver` refuses a bodiless POST
+/// with 4xx of its own, never 401 or 403.
+async fn admitted(claims: Claims) -> bool {
+    let status = client(scoped())
+        .post(PATH)
+        .header("authorization", bearer(claims))
+        .send()
+        .await
+        .0
+        .status();
+    status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN
+}
+
+#[tokio::test]
+async fn with_a_scope_a_token_granting_it_is_taken() {
+    assert!(admitted(ada().with_scope(format!("openid {SCOPE}"))).await);
+}
+
+#[tokio::test]
+async fn with_a_scope_a_token_for_the_mcp_resource_is_taken() {
+    assert!(admitted(ada().for_audience("https://app.example/mcp")).await);
+    assert!(!admitted(ada().for_audience("https://elsewhere.example/mcp")).await);
+}
+
+#[tokio::test]
+async fn with_a_scope_the_protected_resource_metadata_lists_it() {
+    client(scoped())
+        .get(format!("{METADATA_PATH}{PATH}"))
+        .send()
+        .await
+        .assert_json(json!({
+            "resource": "https://app.example/mcp",
+            "authorization_servers": [ISSUER],
+            "bearer_methods_supported": ["header"],
+            "scopes_supported": [SCOPE],
+        }))
+        .await;
 }

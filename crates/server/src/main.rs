@@ -37,7 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let discovery = Discovery::new(
         PublicUrl::new(config.public_url.clone()),
         config.jwt_issuer.clone(),
-    );
+    )
+    .with_scope(config.mcp_scope.clone());
     let app = build_app::<Registered>(
         &ctx,
         verifier,

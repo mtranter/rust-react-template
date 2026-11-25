@@ -135,6 +135,11 @@ impl<E: Endpoint> Endpoint for SubjectSessionsEndpoint<E> {
                 None => refused,
             });
         };
+        if !self.discovery.admits(&req, &claims) {
+            return Ok(refusal(AppError::Forbidden)
+                .with_header(WWW_AUTHENTICATE, self.discovery.insufficient_scope(&req))
+                .into_response());
+        }
         let session = req
             .headers()
             .get(SESSION_HEADER)

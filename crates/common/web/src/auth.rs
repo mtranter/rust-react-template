@@ -36,6 +36,13 @@ pub struct Claims {
     pub client_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub azp: Option<String>,
+    /// The scopes granted, space separated (RFC 9068), as Cognito puts in its
+    /// access tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Whom the token is for (RFC 7519): one audience or several.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aud: Option<Audience>,
 }
 
 /// An `act` claim: the acting party, and in its own `act` the one it acts for in turn.
@@ -65,6 +72,24 @@ impl Act {
     }
 }
 
+/// A token's `aud` claim, which may be one string or an array of them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Audience {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Audience {
+    /// Whether `audience` is among them.
+    pub fn contains(&self, audience: &str) -> bool {
+        match self {
+            Self::One(one) => one == audience,
+            Self::Many(many) => many.iter().any(|one| one == audience),
+        }
+    }
+}
+
 impl Claims {
     /// Of `subject`, issued now and expiring in `ttl_secs`, with no profile.
     pub fn lasting(subject: impl Into<String>, ttl_secs: u64) -> AppResult<Self> {
@@ -81,6 +106,8 @@ impl Claims {
             act: None,
             client_id: None,
             azp: None,
+            scope: None,
+            aud: None,
         })
     }
 
@@ -120,6 +147,22 @@ impl Claims {
         }
     }
 
+    /// Granted `scope`, space separated.
+    pub fn with_scope(self, scope: impl Into<String>) -> Self {
+        Self {
+            scope: Some(scope.into()),
+            ..self
+        }
+    }
+
+    /// For `audience` alone.
+    pub fn for_audience(self, audience: impl Into<String>) -> Self {
+        Self {
+            aud: Some(Audience::One(audience.into())),
+            ..self
+        }
+    }
+
     /// The agent acting: the outermost `act`, else the token's client when it isn't one of the
     /// app's own (`is_first_party`). A client-credentials token's client is its subject, so an
     /// agent acting for no one is its own actor.
@@ -132,6 +175,13 @@ impl Claims {
             .or(self.azp.as_deref())
             .filter(|client| !is_first_party(client))
             .map(Actor::new)
+    }
+
+    /// Whether `scope` is one of the scopes granted.
+    pub fn grants(&self, scope: &str) -> bool {
+        self.scope
+            .as_deref()
+            .is_some_and(|granted| granted.split_whitespace().any(|one| one == scope))
     }
 }
 
