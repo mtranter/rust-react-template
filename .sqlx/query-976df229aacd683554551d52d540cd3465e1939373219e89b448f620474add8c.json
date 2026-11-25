@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO access.subject AS s (subject, name, email) VALUES ($1, $2, $3)\n            ON CONFLICT (subject) DO UPDATE SET\n                name = COALESCE(s.name, EXCLUDED.name),\n                email = COALESCE(s.email, EXCLUDED.email)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "976df229aacd683554551d52d540cd3465e1939373219e89b448f620474add8c"
+}

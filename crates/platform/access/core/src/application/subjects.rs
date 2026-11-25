@@ -1,9 +1,13 @@
-use super::{AccessService, ListQuery, Listed, SubjectFilter, SubjectRepository, SubjectSortKey};
+use super::{
+    AccessService, EventPublisher, InvitationRepository, ListQuery, Listed, SubjectFilter,
+    SubjectRepository, SubjectSortKey, Transactions, events,
+};
 use super::{Version, Versioned};
 use crate::domain::{Assignment, SEEN_WITHIN, Sighting, Subject, SubjectAction};
 use app_authz::{ADMIN, Principal};
 use app_domain::Clock;
 use app_error::AppResult;
+use app_persistence::Expected;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -84,19 +88,32 @@ fn held_role(assignment: &Assignment, version: Version) -> HeldRole {
 /// or every one if none was.
 const REMEMBERED: usize = 10_000;
 
-/// Records each subject that authenticates. Remembers what it last recorded of each, so a
-/// subject's requests within `SEEN_WITHIN` of that, saying nothing new, reach no store; another
-/// instance recording it meanwhile is caught by the store's own check.
+/// Records each subject that authenticates, and accepts the pending invitation of one seen for
+/// the first time since it was invited, in the same unit of work. Remembers what it last recorded
+/// of each, so a subject's requests within `SEEN_WITHIN` of that, saying nothing new, reach no
+/// store; another instance recording it meanwhile is caught by the store's own check.
 pub struct SignIns {
     subjects: Arc<dyn SubjectRepository>,
+    invitations: Arc<dyn InvitationRepository>,
+    publisher: Arc<dyn EventPublisher>,
+    transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
     recorded: Mutex<HashMap<String, Sighting>>,
 }
 
 impl SignIns {
-    pub fn new(subjects: Arc<dyn SubjectRepository>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        subjects: Arc<dyn SubjectRepository>,
+        invitations: Arc<dyn InvitationRepository>,
+        publisher: Arc<dyn EventPublisher>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
             subjects,
+            invitations,
+            publisher,
+            transactions,
             clock,
             recorded: Mutex::new(HashMap::new()),
         }
@@ -119,9 +136,30 @@ impl SignIns {
         {
             return Ok(());
         }
-        self.subjects
-            .record(&sighting, sighting.at - SEEN_WITHIN)
+        let mut tx = self.transactions.begin().await?;
+        let wrote = self
+            .subjects
+            .record(&mut tx, &sighting, sighting.at - SEEN_WITHIN)
             .await?;
+        if wrote
+            && let Some(Versioned {
+                entity: mut invitation,
+                version,
+            }) = self.invitations.pending_of(&mut tx, subject).await?
+            && let Some(event) = invitation.accept()
+        {
+            let version = self
+                .invitations
+                .save(&mut tx, &invitation, Expected::Version(version))
+                .await?;
+            self.publisher
+                .publish(
+                    &mut tx,
+                    events::invitation_pending(&invitation, version, event),
+                )
+                .await?;
+        }
+        tx.commit().await?;
         let mut recorded = self.recorded.lock().unwrap_or_else(|e| e.into_inner());
         if recorded.len() >= REMEMBERED {
             recorded.retain(|_, last| sighting.at - last.at < SEEN_WITHIN);

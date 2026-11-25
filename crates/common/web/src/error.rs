@@ -29,6 +29,8 @@ pub enum ErrorCode {
     IdempotencyKeyInFlight,
     /// Not ready to answer yet, such as a read model still being built: retry later.
     Unavailable,
+    /// The deployment lacks what the operation needs: retrying won't help.
+    NotConfigured,
     InternalError,
 }
 
@@ -94,6 +96,9 @@ pub enum ApiError {
     /// Not ready to answer yet: retry later.
     #[oai(status = 503)]
     Unavailable(Json<ErrorBody>),
+    /// The deployment lacks what the operation needs.
+    #[oai(status = 501)]
+    NotConfigured(Json<ErrorBody>),
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -111,7 +116,8 @@ impl ApiError {
             | ApiError::PreconditionFailed(Json(body))
             | ApiError::PreconditionRequired(Json(body))
             | ApiError::Internal(Json(body))
-            | ApiError::Unavailable(Json(body)) => body,
+            | ApiError::Unavailable(Json(body))
+            | ApiError::NotConfigured(Json(body)) => body,
         }
     }
 }
@@ -157,6 +163,9 @@ impl From<AppError> for ApiError {
             AppError::Unavailable(_) => {
                 ApiError::Unavailable(Json(ErrorBody::new(ErrorCode::Unavailable, message)))
             }
+            AppError::NotConfigured(_) => {
+                ApiError::NotConfigured(Json(ErrorBody::new(ErrorCode::NotConfigured, message)))
+            }
             AppError::Internal(source) => {
                 tracing::error!(error = %source, "internal server error");
                 ApiError::Internal(Json(ErrorBody::new(ErrorCode::InternalError, message)))
@@ -183,6 +192,7 @@ pub async fn render_error(err: poem::Error) -> Response {
         StatusCode::PRECONDITION_REQUIRED => ErrorCode::PreconditionRequired,
         StatusCode::PRECONDITION_FAILED => ErrorCode::PreconditionFailed,
         StatusCode::SERVICE_UNAVAILABLE => ErrorCode::Unavailable,
+        StatusCode::NOT_IMPLEMENTED => ErrorCode::NotConfigured,
         s if s.is_client_error() => ErrorCode::MalformedRequest,
         _ => ErrorCode::InternalError,
     };

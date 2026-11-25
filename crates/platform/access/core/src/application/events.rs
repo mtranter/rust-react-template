@@ -1,6 +1,9 @@
 use super::{PendingEvent, Version};
-use crate::domain::{Assignment, AssignmentEvent, Grant, GrantEvent, Role, RoleEvent, Scope};
-use access_api::events::v1::{self, AssignmentTopic, GrantTopic, RoleTopic};
+use crate::domain::{
+    Assignment, AssignmentEvent, Grant, GrantEvent, Invitation, InvitationEvent, Role, RoleEvent,
+    Scope,
+};
+use access_api::events::v1::{self, AssignmentTopic, GrantTopic, InvitationTopic, RoleTopic};
 
 /// Where the domain's events meet the published contract.
 pub(crate) fn pending(grant: &Grant, version: Version, event: GrantEvent) -> PendingEvent {
@@ -67,4 +70,33 @@ pub(crate) fn scope_name(scope: &Scope) -> &str {
         Scope::Any => "any",
         Scope::Named(name) => name,
     }
+}
+
+pub(crate) fn invitation_pending(
+    invitation: &Invitation,
+    version: Version,
+    event: InvitationEvent,
+) -> PendingEvent {
+    let event = match event {
+        InvitationEvent::Created => v1::InvitationEvent::Created,
+        InvitationEvent::Resent { by } => v1::InvitationEvent::Resent(v1::ResentBy {
+            resent_by: by.subject().map(str::to_owned),
+        }),
+        InvitationEvent::Accepted => v1::InvitationEvent::Accepted,
+        InvitationEvent::Revoked { by } => v1::InvitationEvent::Revoked(v1::RevokedInvitationBy {
+            revoked_by: by.subject().map(str::to_owned),
+        }),
+    };
+    let status: &'static str = invitation.status().into();
+    let state = v1::Invitation {
+        id: invitation.id().as_uuid(),
+        email: invitation.email().as_str().to_owned(),
+        name: invitation.name().to_owned(),
+        subject: invitation.subject().to_owned(),
+        roles: invitation.roles().to_vec(),
+        invited_by: invitation.invited_by().subject().map(str::to_owned),
+        invited_at: invitation.invited_at(),
+        status: status.to_owned(),
+    };
+    PendingEvent::on::<InvitationTopic>(version, &state, event)
 }

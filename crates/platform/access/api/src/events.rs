@@ -1,5 +1,5 @@
-//! What `access` announces (ADR 0012): a topic per root, grants', roles' and assignments', each
-//! event carrying the grant, role or assignment.
+//! What `access` announces (ADR 0012): a topic per root, grants', roles', assignments' and
+//! invitations', each event carrying the grant, role, assignment or invitation.
 
 pub mod v1 {
     use chrono::{DateTime, Utc};
@@ -112,9 +112,78 @@ pub mod v1 {
         }
     }
 
+    /// What every invitation event carries. Only gains fields, each `#[serde(default)]`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Invitation {
+        pub id: Uuid,
+        pub email: String,
+        pub name: String,
+        /// The identity provider's `sub` for the invitee, which the roles are assigned to.
+        pub subject: String,
+        /// The roles the invitee holds beside `user` once invited.
+        pub roles: Vec<String>,
+        /// The subject who invited them; absent for `System`.
+        pub invited_by: Option<String>,
+        pub invited_at: DateTime<Utc>,
+        /// `pending`, `accepted` or `revoked`.
+        pub status: String,
+    }
+
+    /// Who revoked the invitation: its state can't say.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct RevokedInvitationBy {
+        pub revoked_by: Option<String>,
+    }
+
+    /// Who had the invitation sent again.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ResentBy {
+        pub resent_by: Option<String>,
+    }
+
+    app_events::topic! {
+        /// Every invitation made, sent again, accepted and revoked, keyed by its id.
+        pub topic InvitationTopic("access.invitation.v1") {
+            source: "/access",
+            retention: app_events::TimeDelta::days(7),
+            entity: Invitation,
+            key: |invitation| invitation.id.to_string(),
+            events: InvitationEvent, InvitationEventKind;
+            InvitationCreated => Created: "access.invitation_created",
+            InvitationResent => Resent(ResentBy): "access.invitation_resent",
+            InvitationAccepted => Accepted: "access.invitation_accepted",
+            InvitationRevoked => Revoked(RevokedInvitationBy): "access.invitation_revoked",
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn every_invitation_event_round_trips() {
+            let events = [
+                InvitationEvent::Created,
+                InvitationEvent::Resent(ResentBy {
+                    resent_by: Some("someone".into()),
+                }),
+                InvitationEvent::Accepted,
+                InvitationEvent::Revoked(RevokedInvitationBy {
+                    revoked_by: Some("someone".into()),
+                }),
+            ];
+            for event in &events {
+                let (event_type, context) = event.encode().unwrap();
+                assert_eq!(
+                    &InvitationEvent::decode(event_type, context).unwrap(),
+                    event
+                );
+            }
+            assert_eq!(events.len(), InvitationEventKind::ALL.len());
+        }
 
         #[test]
         fn every_event_round_trips() {

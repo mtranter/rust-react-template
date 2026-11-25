@@ -2,10 +2,11 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogCapability, CatalogResource, GrantSortKey, HeldRole, Listing, Permission,
-    RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
+    CatalogAction, CatalogCapability, CatalogResource, DirectoryStatus, GrantSortKey, HeldRole,
+    InvitationListing, InvitationSortKey, Listing, Permission, RoleSortKey, SubjectListing,
+    SubjectSortKey, Versioned, scope_name,
 };
-use crate::domain::{Assignment, Grant, Role, Scope};
+use crate::domain::{Assignment, Grant, Invitation, InvitationStatus, Role, Scope};
 use app_persistence::{Direction, Sort};
 use app_web::SortParam;
 use poem_openapi::{Enum, Object};
@@ -359,10 +360,10 @@ impl SortParam for RoleSort {
 pub struct SubjectResponse {
     /// The token's `sub`: what `assign_role` and `unassign_role` take.
     pub subject: String,
-    /// From the token's `name` claim, when it carried one.
+    /// From the token's `name` claim, when it carried one, else from the invitation.
     #[oai(skip_serializing_if_is_none)]
     pub name: Option<String>,
-    /// From the token's `email` claim, when it carried one.
+    /// From the token's `email` claim, when it carried one, else from the invitation.
     #[oai(skip_serializing_if_is_none)]
     pub email: Option<String>,
     /// When it first signed in; absent if it never has.
@@ -445,6 +446,153 @@ impl SortParam for SubjectSort {
             Self::EmailDesc => (SubjectSortKey::Email, Direction::Desc),
             Self::LastSeenAsc => (SubjectSortKey::LastSeen, Direction::Asc),
             Self::LastSeenDesc => (SubjectSortKey::LastSeen, Direction::Desc),
+        };
+        Sort { key, direction }
+    }
+}
+
+/// Someone to invite: the identity provider creates them and mails them a temporary password.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct InvitationRequest {
+    /// Where the invitation is sent, and what they sign in with.
+    pub email: String,
+    /// Shown to admins until their token carries one.
+    #[oai(default)]
+    pub name: String,
+    /// Roles they hold beside `user` from now on: each must exist (`list_roles`), never `user`.
+    #[oai(default)]
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[oai(rename_all = "lowercase")]
+pub enum InvitationStatusParam {
+    /// The invitee hasn't signed in yet.
+    Pending,
+    /// The invitee has signed in.
+    Accepted,
+    Revoked,
+}
+
+impl From<InvitationStatusParam> for InvitationStatus {
+    fn from(status: InvitationStatusParam) -> Self {
+        match status {
+            InvitationStatusParam::Pending => Self::Pending,
+            InvitationStatusParam::Accepted => Self::Accepted,
+            InvitationStatusParam::Revoked => Self::Revoked,
+        }
+    }
+}
+
+impl From<InvitationStatus> for InvitationStatusParam {
+    fn from(status: InvitationStatus) -> Self {
+        match status {
+            InvitationStatus::Pending => Self::Pending,
+            InvitationStatus::Accepted => Self::Accepted,
+            InvitationStatus::Revoked => Self::Revoked,
+        }
+    }
+}
+
+/// Where a pending invitee is in the identity provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+#[oai(rename_all = "camelCase")]
+pub enum DirectoryStatusResponse {
+    /// Waiting for them to sign in with the temporary password mailed to them.
+    Waiting,
+    /// The temporary password lapsed: resend the invitation.
+    Expired,
+    /// They have set a password but not reached the app yet.
+    PasswordSet,
+    /// Deleted from the identity provider outside the app: revoke the invitation.
+    Missing,
+}
+
+impl From<DirectoryStatus> for DirectoryStatusResponse {
+    fn from(status: DirectoryStatus) -> Self {
+        match status {
+            DirectoryStatus::Pending => Self::Waiting,
+            DirectoryStatus::Expired => Self::Expired,
+            DirectoryStatus::Active => Self::PasswordSet,
+            DirectoryStatus::Missing => Self::Missing,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct InvitationResponse {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    /// The identity provider's `sub` for the invitee: the subject the roles are assigned to.
+    pub subject: String,
+    pub roles: Vec<String>,
+    pub status: InvitationStatusParam,
+    /// For a pending invitation, where the invitee is in the identity provider; absent
+    /// otherwise, or when it couldn't say.
+    #[oai(skip_serializing_if_is_none)]
+    pub directory_status: Option<DirectoryStatusResponse>,
+    /// Who invited them; absent for one made as `System`.
+    #[oai(skip_serializing_if_is_none)]
+    pub invited_by: Option<String>,
+    pub invited_at: String,
+    /// Echo it back in `If-Match` to resend or revoke this invitation.
+    pub version: String,
+}
+
+impl InvitationResponse {
+    fn of(versioned: Versioned<Invitation>, directory: Option<DirectoryStatus>) -> Self {
+        let Versioned { entity: i, version } = versioned;
+        Self {
+            id: i.id().to_string(),
+            email: i.email().as_str().to_owned(),
+            name: i.name().to_owned(),
+            subject: i.subject().to_owned(),
+            roles: i.roles().to_vec(),
+            status: i.status().into(),
+            directory_status: directory.map(Into::into),
+            invited_by: i.invited_by().subject().map(str::to_owned),
+            invited_at: i.invited_at().to_rfc3339(),
+            version: version.as_i64().to_string(),
+        }
+    }
+}
+
+impl From<InvitationListing> for InvitationResponse {
+    fn from(listing: InvitationListing) -> Self {
+        Self::of(listing.invitation, listing.directory)
+    }
+}
+
+impl From<Versioned<Invitation>> for InvitationResponse {
+    fn from(invitation: Versioned<Invitation>) -> Self {
+        Self::of(invitation, None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Enum)]
+pub enum InvitationSort {
+    #[oai(rename = "email")]
+    EmailAsc,
+    #[oai(rename = "-email")]
+    EmailDesc,
+    #[oai(rename = "invitedAt")]
+    InvitedAtAsc,
+    #[oai(rename = "-invitedAt")]
+    InvitedAtDesc,
+}
+
+impl SortParam for InvitationSort {
+    type Key = InvitationSortKey;
+
+    fn sort(self) -> Sort<InvitationSortKey> {
+        let (key, direction) = match self {
+            Self::EmailAsc => (InvitationSortKey::Email, Direction::Asc),
+            Self::EmailDesc => (InvitationSortKey::Email, Direction::Desc),
+            Self::InvitedAtAsc => (InvitationSortKey::InvitedAt, Direction::Asc),
+            Self::InvitedAtDesc => (InvitationSortKey::InvitedAt, Direction::Desc),
         };
         Sort { key, direction }
     }

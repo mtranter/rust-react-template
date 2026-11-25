@@ -2,8 +2,8 @@ use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
     AssignmentRepository, CatalogAction, CatalogCapability, CatalogResource, EventPublisher,
-    GrantFilter, GrantRepository, GrantSortKey, ListQuery, Listed, RoleRepository,
-    SubjectRepository, Transactions, Version, Versioned,
+    GrantFilter, GrantRepository, GrantSortKey, IdentityDirectory, InvitationRepository,
+    ListQuery, Listed, RoleRepository, SubjectRepository, Transactions, Version, Versioned,
 };
 use crate::domain::{
     CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
@@ -51,6 +51,9 @@ pub struct AccessService {
     pub(super) roles: Arc<dyn RoleRepository>,
     pub(super) assignments: Arc<dyn AssignmentRepository>,
     pub(super) subjects: Arc<dyn SubjectRepository>,
+    pub(super) invitations: Arc<dyn InvitationRepository>,
+    /// `None` when no identity provider is configured: inviting is off.
+    pub(super) directory: Option<Arc<dyn IdentityDirectory>>,
     pub(super) publisher: Arc<dyn EventPublisher>,
     pub(super) transactions: Arc<dyn Transactions>,
     pub(super) clock: Arc<dyn Clock>,
@@ -73,6 +76,8 @@ impl AccessService {
         roles: Arc<dyn RoleRepository>,
         assignments: Arc<dyn AssignmentRepository>,
         subjects: Arc<dyn SubjectRepository>,
+        invitations: Arc<dyn InvitationRepository>,
+        directory: Option<Arc<dyn IdentityDirectory>>,
         publisher: Arc<dyn EventPublisher>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
@@ -84,6 +89,8 @@ impl AccessService {
             roles,
             assignments,
             subjects,
+            invitations,
+            directory,
             publisher,
             transactions,
             clock,

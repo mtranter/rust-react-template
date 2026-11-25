@@ -3,9 +3,11 @@
 
 mod assignments;
 mod catalog;
+mod directory;
 mod error;
 mod events;
 mod gates;
+mod invitations;
 mod repository;
 mod roles;
 mod rules;
@@ -16,10 +18,13 @@ pub use app_persistence::{
     EventPublisher, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
 pub use catalog::{CatalogAction, CatalogCapability, CatalogResource};
+pub use directory::{Created, DirectoryStatus, DirectoryUser, IdentityDirectory};
 pub(crate) use events::scope_name;
+pub use invitations::InvitationListing;
 pub use repository::{
-    AssignmentRepository, GrantFilter, GrantRepository, GrantSortKey, RoleRepository, RoleSortKey,
-    SubjectFilter, SubjectRepository, SubjectSortKey,
+    AssignmentRepository, GrantFilter, GrantRepository, GrantSortKey, InvitationFilter,
+    InvitationRepository, InvitationSortKey, RoleRepository, RoleSortKey, SubjectFilter,
+    SubjectRepository, SubjectSortKey,
 };
 pub use rules::{POLL_EVERY, Rules};
 pub use service::{AccessService, Listing, Modules, Operation, Permission};

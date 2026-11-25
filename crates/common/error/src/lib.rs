@@ -38,6 +38,10 @@ pub enum AppError {
     #[error("unavailable: {0}")]
     Unavailable(String),
 
+    /// The deployment lacks what the operation needs (an unset integration); retrying won't help.
+    #[error("not configured: {0}")]
+    NotConfigured(String),
+
     /// The source is logged but never sent to clients.
     #[error("internal error")]
     Internal(#[source] Box<dyn StdError + Send + Sync + 'static>),
@@ -89,6 +93,10 @@ impl AppError {
 
     pub fn unavailable(msg: impl Into<String>) -> Self {
         AppError::Unavailable(msg.into())
+    }
+
+    pub fn not_configured(msg: impl Into<String>) -> Self {
+        AppError::NotConfigured(msg.into())
     }
 }
 

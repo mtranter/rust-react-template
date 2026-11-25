@@ -1,9 +1,12 @@
 use super::models::{
     AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
+    InvitationRequest, InvitationResponse, InvitationSort, InvitationStatusParam,
     PermissionsResponse, RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
 };
-use crate::application::{AccessService, GrantFilter, SubjectFilter, Versioned};
-use crate::domain::{AssignRole, CreateRole, Grant, GrantAccess, GrantId};
+use crate::application::{AccessService, GrantFilter, InvitationFilter, SubjectFilter, Versioned};
+use crate::domain::{
+    AssignRole, CreateRole, Grant, GrantAccess, GrantId, InvitationId, InviteUser,
+};
 use app_error::AppError;
 use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
@@ -34,6 +37,17 @@ enum Deleted {
 enum Unassigned {
     #[oai(status = 204)]
     Unassigned,
+}
+
+#[derive(ApiResponse)]
+enum RevokedInvitation {
+    #[oai(status = 204)]
+    Revoked,
+}
+
+fn invitation_id(raw: &str) -> ApiResult<InvitationId> {
+    raw.parse()
+        .map_err(|_| AppError::validation("invalid invitation id").into())
 }
 
 fn grant_id(raw: &str) -> ApiResult<GrantId> {
@@ -292,5 +306,114 @@ impl AccessEndpoints {
             .unassign_role(&caller, &subject.0, &role.0, expected)
             .await?;
         Ok(Unassigned::Unassigned)
+    }
+
+    /// Invite someone by email: the identity provider (Cognito) creates their account and
+    /// mails them a temporary password, and they hold `roles` (each must exist: `list_roles`;
+    /// never `user`) beside `user` on every server instance within 5 seconds, from before they
+    /// first sign in. The answer's `subject` is their `sub`, as `list_subjects` lists them.
+    /// Refused with `400` naming `email`, `name` or `roles` for one at fault; `409` when an
+    /// invitation to that email is pending already (`resend_invitation` it) or the identity
+    /// provider has a user with that email who has set a password (`assign_role` to them
+    /// instead); `501` when no identity provider is configured; `503` when it can't be reached
+    /// or is throttling: retry later. `403` unless the caller is an `admin`, or holds a role
+    /// granted it.
+    #[oai(path = "/invitations", method = "post", operation_id = "invite_user")]
+    async fn invite_user(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        body: Json<InvitationRequest>,
+    ) -> ApiResult<WithETag<InvitationResponse>> {
+        let InvitationRequest { email, name, roles } = body.0;
+        let invitation = access
+            .0
+            .invite(&caller, InviteUser { email, name, roles })
+            .await?;
+        let version = invitation.version;
+        Ok(WithETag::new(invitation.into(), version))
+    }
+
+    /// List invitations, newest first unless `sort` says otherwise (`email` or `invitedAt`,
+    /// `-` prefix for descending), filtered by `status` (`pending`: not signed in yet,
+    /// `accepted`: signed in, `revoked`). Each pending one says where its invitee is in the
+    /// identity provider (`directoryStatus`): `waiting`, `expired` (resend it), `passwordSet`,
+    /// or `missing` (deleted there: revoke it). Paginated. `403` unless the caller is an
+    /// `admin`, or holds a role granted it.
+    #[oai(
+        path = "/invitations",
+        method = "get",
+        operation_id = "list_invitations"
+    )]
+    async fn list_invitations(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        status: Query<Option<InvitationStatusParam>>,
+        limit: Query<Option<i64>>,
+        offset: Query<Option<i64>>,
+        sort: Query<Option<Vec<InvitationSort>>>,
+    ) -> ApiResult<Json<ListResult<InvitationResponse>>> {
+        let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
+        let page = query.page;
+        let filter = InvitationFilter {
+            status: status.0.map(Into::into),
+        };
+        let listed = access.0.list_invitations(&caller, filter, query).await?;
+        Ok(Json(ListResult::new(listed, page)))
+    }
+
+    /// Have the identity provider mail a pending invitee a fresh temporary password, as when
+    /// theirs has expired. Requires `If-Match` with the version listed; a stale value is
+    /// refused with `412`. `409` once the invitation is accepted or revoked, or when the
+    /// invitee has set a password or was deleted from the identity provider; `404` when no
+    /// invitation has that id; `501` when no identity provider is configured; `503` when it
+    /// can't be reached. `403` unless the caller is an `admin`, or holds a role granted it.
+    #[oai(
+        path = "/invitations/:id/resend",
+        method = "post",
+        operation_id = "resend_invitation"
+    )]
+    async fn resend_invitation(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<WithETag<InvitationResponse>> {
+        let expected = if_match_version(if_match.0)?;
+        let invitation = access
+            .0
+            .resend_invitation(&caller, invitation_id(&id.0)?, expected)
+            .await?;
+        let version = invitation.version;
+        Ok(WithETag::new(invitation.into(), version))
+    }
+
+    /// Revoke a pending invitation: the identity provider deletes the invitee's account, and
+    /// the roles it assigned are unassigned on every server instance within 5 seconds.
+    /// Requires `If-Match` with the version listed; a stale value is refused with `412`. `409`
+    /// once the invitation is accepted or revoked, or when the invitee has set a password
+    /// (`unassign_role` instead); `404` when no invitation has that id; `501` when no identity
+    /// provider is configured; `503` when it can't be reached. `403` unless the caller is an
+    /// `admin`, or holds a role granted it.
+    #[oai(
+        path = "/invitations/:id",
+        method = "delete",
+        operation_id = "revoke_invitation"
+    )]
+    async fn revoke_invitation(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        id: Path<String>,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+    ) -> ApiResult<RevokedInvitation> {
+        let expected = if_match_version(if_match.0)?;
+        access
+            .0
+            .revoke_invitation(&caller, invitation_id(&id.0)?, expected)
+            .await?;
+        Ok(RevokedInvitation::Revoked)
     }
 }

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO access.subject AS s (subject, name, email, first_seen, last_seen)\n            VALUES ($1, $2, $3, $4, $4)\n            ON CONFLICT (subject) DO UPDATE SET\n                name = COALESCE(EXCLUDED.name, s.name),\n                email = COALESCE(EXCLUDED.email, s.email),\n                first_seen = COALESCE(s.first_seen, EXCLUDED.first_seen),\n                last_seen = GREATEST(s.last_seen, EXCLUDED.last_seen)\n            WHERE s.last_seen IS NULL\n               OR s.last_seen <= $5\n               OR (EXCLUDED.name IS NOT NULL AND EXCLUDED.name IS DISTINCT FROM s.name)\n               OR (EXCLUDED.email IS NOT NULL AND EXCLUDED.email IS DISTINCT FROM s.email)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "30d551a44a052bd22ab6c66e06220b80687359ec028c0a50c3918ae342755687"
+}

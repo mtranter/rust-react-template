@@ -84,6 +84,6 @@ is `unauthorized`, `403` is `forbidden`, `404` is `not_found`, `409` is `conflic
 `idempotency_key_in_flight`: retry later), `412` is `precondition_failed` (a stale \
 `expected_version`: nothing changed; read it again), `422` is `idempotency_key_reused` (the \
 key was sent with other arguments), `428` is `precondition_required` (`expected_version` \
-missing), `500` is `internal_error`, and `503` is `unavailable` (not ready to answer yet: \
-retry later).
+missing), `500` is `internal_error`, `501` is `not_configured` (the deployment lacks what it needs: \
+retrying won't help), and `503` is `unavailable` (not ready to answer yet: retry later).
 - A `204` answer is an empty result.";

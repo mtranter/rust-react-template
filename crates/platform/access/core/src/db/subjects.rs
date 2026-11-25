@@ -1,7 +1,7 @@
-use crate::application::{ListQuery, Listed, SubjectFilter, SubjectRepository, SubjectSortKey};
+use crate::application::{ListQuery, Listed, SubjectFilter, SubjectRepository, SubjectSortKey, Tx};
 use crate::domain::{Sighting, Subject};
 use app_authz::Rows;
-use app_db::{Clause, Column, Columns, push_list_clauses, push_scope};
+use app_db::{Clause, Column, Columns, conn, push_list_clauses, push_scope};
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
@@ -96,16 +96,23 @@ fn escape_like(raw: &str) -> String {
 
 #[async_trait::async_trait]
 impl SubjectRepository for PgSubjectRepository {
-    async fn record(&self, sighting: &Sighting, stale_before: DateTime<Utc>) -> AppResult<()> {
-        sqlx::query!(
+    async fn record(
+        &self,
+        tx: &mut Tx,
+        sighting: &Sighting,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<bool> {
+        let written = sqlx::query!(
             r#"
             INSERT INTO access.subject AS s (subject, name, email, first_seen, last_seen)
             VALUES ($1, $2, $3, $4, $4)
             ON CONFLICT (subject) DO UPDATE SET
                 name = COALESCE(EXCLUDED.name, s.name),
                 email = COALESCE(EXCLUDED.email, s.email),
+                first_seen = COALESCE(s.first_seen, EXCLUDED.first_seen),
                 last_seen = GREATEST(s.last_seen, EXCLUDED.last_seen)
-            WHERE s.last_seen <= $5
+            WHERE s.last_seen IS NULL
+               OR s.last_seen <= $5
                OR (EXCLUDED.name IS NOT NULL AND EXCLUDED.name IS DISTINCT FROM s.name)
                OR (EXCLUDED.email IS NOT NULL AND EXCLUDED.email IS DISTINCT FROM s.email)
             "#,
@@ -115,7 +122,31 @@ impl SubjectRepository for PgSubjectRepository {
             sighting.at,
             stale_before,
         )
-        .execute(&self.pool)
+        .execute(conn(tx))
+        .await
+        .map_err(AppError::internal)?;
+        Ok(written.rows_affected() > 0)
+    }
+
+    async fn introduce(
+        &self,
+        tx: &mut Tx,
+        subject: &str,
+        name: Option<&str>,
+        email: &str,
+    ) -> AppResult<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO access.subject AS s (subject, name, email) VALUES ($1, $2, $3)
+            ON CONFLICT (subject) DO UPDATE SET
+                name = COALESCE(s.name, EXCLUDED.name),
+                email = COALESCE(s.email, EXCLUDED.email)
+            "#,
+            subject,
+            name,
+            email,
+        )
+        .execute(conn(tx))
         .await
         .map_err(AppError::internal)?;
         Ok(())

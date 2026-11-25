@@ -1,7 +1,11 @@
 use super::{ListQuery, Listed, Tx, Version, Versioned};
-use crate::domain::{Assignment, Grant, GrantId, Role, Sighting, Subject};
+use crate::domain::{
+    Assignment, Email, Grant, GrantId, Invitation, InvitationId, InvitationStatus, Role, Sighting,
+    Subject,
+};
 use app_authz::Rows;
 use app_error::AppResult;
+use app_persistence::Expected;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,7 +136,22 @@ pub struct SubjectFilter {
 pub trait SubjectRepository: Send + Sync {
     /// Inserts the subject first seen now, else updates it when the sighting says something new
     /// or its last seen is `stale_before` or earlier: details the token didn't carry are kept.
-    async fn record(&self, sighting: &Sighting, stale_before: DateTime<Utc>) -> AppResult<()>;
+    /// Whether it wrote anything.
+    async fn record(
+        &self,
+        tx: &mut Tx,
+        sighting: &Sighting,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<bool>;
+    /// Records an invitee's name and email before their first sighting, never overwriting
+    /// details a token carried.
+    async fn introduce(
+        &self,
+        tx: &mut Tx,
+        subject: &str,
+        name: Option<&str>,
+        email: &str,
+    ) -> AppResult<()>;
     /// Every subject seen, assigned a role, or in `bootstrap_admins`, ordered by subject unless
     /// sorted otherwise.
     async fn list(
@@ -142,4 +161,42 @@ pub trait SubjectRepository: Send + Sync {
         query: &ListQuery<SubjectSortKey>,
         rows: &Rows,
     ) -> AppResult<Listed<Subject>>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvitationSortKey {
+    Email,
+    InvitedAt,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InvitationFilter {
+    pub status: Option<InvitationStatus>,
+}
+
+#[async_trait::async_trait]
+pub trait InvitationRepository: Send + Sync {
+    async fn get(&self, id: InvitationId) -> AppResult<Option<Versioned<Invitation>>>;
+    /// The pending invitation of `email`, if any: there is at most one.
+    async fn pending_for(&self, email: &Email) -> AppResult<Option<Versioned<Invitation>>>;
+    /// The pending invitation of `subject`, if any.
+    async fn pending_of(
+        &self,
+        tx: &mut Tx,
+        subject: &str,
+    ) -> AppResult<Option<Versioned<Invitation>>>;
+    /// Newest first unless sorted otherwise.
+    async fn list(
+        &self,
+        filter: &InvitationFilter,
+        query: &ListQuery<InvitationSortKey>,
+        rows: &Rows,
+    ) -> AppResult<Listed<Versioned<Invitation>>>;
+    /// `Conflict` when the email has a pending invitation already.
+    async fn save(
+        &self,
+        tx: &mut Tx,
+        invitation: &Invitation,
+        expected: Expected,
+    ) -> AppResult<Version>;
 }

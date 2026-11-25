@@ -1,20 +1,25 @@
 //! The only place in these tests that knows the transport (ADR 0004).
 
 use crate::workshop::{self, Release};
-use access::{AccessEndpoints, Rules};
+use access::{
+    AccessEndpoints, Created, DirectoryStatus, DirectoryUser, Email, IdentityDirectory, Rules,
+};
 use app_authz::{Plan, Principal};
 use app_db::Worker;
 use app_domain::{FixedClock, seed_time};
+use app_error::{AppError, AppResult};
 use app_events::{Event, PayloadOf};
 use app_module::Context;
 use app_persistence::{Handlers, Version};
 use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, Claims, JwtVerifier, json_newtype};
+use async_trait::async_trait;
 use chrono::TimeDelta;
 use poem::EndpointExt;
 use serde_json::json;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
@@ -29,6 +34,10 @@ pub enum Refusal {
     Conflict,
     PreconditionRequired,
     Stale,
+    /// The identity provider can't be reached: retry later.
+    Unavailable,
+    /// No identity provider is configured.
+    NotConfigured,
 }
 
 impl Refusal {
@@ -47,6 +56,8 @@ impl From<Refused> for Refusal {
             "conflict" => Refusal::Conflict,
             "precondition_required" => Refusal::PreconditionRequired,
             "precondition_failed" => Refusal::Stale,
+            "unavailable" => Refusal::Unavailable,
+            "not_configured" => Refusal::NotConfigured,
             other => panic!("unexpected error code {other}"),
         }
     }
@@ -136,6 +147,110 @@ pub type Subjects = Page<SubjectJson>;
 
 pub type Grants = Page<GrantJson>;
 
+json_newtype!(pub InvitationJson);
+
+impl InvitationJson {
+    pub fn subject(&self) -> &str {
+        self["subject"].as_str().unwrap_or_default()
+    }
+}
+
+pub type Invitations = Page<InvitationJson>;
+
+/// A user the fake identity provider holds.
+#[derive(Debug, Clone)]
+struct DirectoryEntry {
+    subject: String,
+    name: String,
+    status: DirectoryStatus,
+}
+
+/// Stands in for Cognito, which tests can't run: keeps its users by email, counts the invitation
+/// mails it would send, and refuses everything while it's down.
+#[derive(Default)]
+pub struct FakeDirectory {
+    users: Mutex<HashMap<String, DirectoryEntry>>,
+    mailed: Mutex<Vec<String>>,
+    down: std::sync::atomic::AtomicBool,
+    next: std::sync::atomic::AtomicU32,
+}
+
+impl FakeDirectory {
+    fn up(&self) -> AppResult<()> {
+        if self.down.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AppError::unavailable(
+                "the identity provider can't be reached",
+            ));
+        }
+        Ok(())
+    }
+
+    fn found(&self, email: &Email) -> DirectoryUser {
+        match self.users.lock().unwrap().get(email.as_str()) {
+            Some(entry) => DirectoryUser {
+                subject: entry.subject.clone(),
+                status: entry.status,
+            },
+            None => DirectoryUser {
+                subject: String::new(),
+                status: DirectoryStatus::Missing,
+            },
+        }
+    }
+}
+
+#[async_trait]
+impl IdentityDirectory for FakeDirectory {
+    async fn create(&self, email: &Email, name: &str) -> AppResult<Created> {
+        self.up()?;
+        if email.as_str().ends_with("@refused.example") {
+            return Err(AppError::invalid_field(
+                "email",
+                "the identity provider refused it",
+            ));
+        }
+        let mut users = self.users.lock().unwrap();
+        if let Some(entry) = users.get(email.as_str()) {
+            return Ok(Created::Exists(DirectoryUser {
+                subject: entry.subject.clone(),
+                status: entry.status,
+            }));
+        }
+        let n = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let entry = DirectoryEntry {
+            subject: format!("sub-{n}"),
+            name: name.to_owned(),
+            status: DirectoryStatus::Pending,
+        };
+        users.insert(email.as_str().to_owned(), entry.clone());
+        self.mailed.lock().unwrap().push(email.as_str().to_owned());
+        Ok(Created::Created(DirectoryUser {
+            subject: entry.subject,
+            status: entry.status,
+        }))
+    }
+
+    async fn resend(&self, email: &Email) -> AppResult<()> {
+        self.up()?;
+        if let Some(entry) = self.users.lock().unwrap().get_mut(email.as_str()) {
+            entry.status = DirectoryStatus::Pending;
+        }
+        self.mailed.lock().unwrap().push(email.as_str().to_owned());
+        Ok(())
+    }
+
+    async fn find(&self, email: &Email) -> AppResult<DirectoryUser> {
+        self.up()?;
+        Ok(self.found(email))
+    }
+
+    async fn delete(&self, email: &Email) -> AppResult<()> {
+        self.up()?;
+        self.users.lock().unwrap().remove(email.as_str());
+        Ok(())
+    }
+}
+
 /// Who administers the app in these tests: the template assigns them `admin`, the only subject
 /// it is assigned to.
 pub const ADMIN_ID: &str = "an-admin";
@@ -153,6 +268,7 @@ pub struct Access {
     verifier: JwtVerifier,
     /// The token later requests present, if any.
     caller: Mutex<Option<String>>,
+    directory: Arc<FakeDirectory>,
 }
 
 impl Access {
@@ -167,6 +283,15 @@ impl Access {
 
     /// With `subjects` as `APP_BOOTSTRAP_ADMINS`.
     pub async fn with_bootstrap_admins(pool: PgPool, release: Release, subjects: &[&str]) -> Self {
+        Self::built(pool, release, subjects, true).await
+    }
+
+    /// With no identity provider configured: inviting is off.
+    pub async fn without_a_directory(pool: PgPool) -> Self {
+        Self::built(pool, Release::First, &[], false).await
+    }
+
+    async fn built(pool: PgPool, release: Release, subjects: &[&str], directory: bool) -> Self {
         let clock = Arc::new(FixedClock::new(seed_time(24 * 60)));
         let modules = Arc::new(workshop::modules(release));
         let authorizer = app_authz::Authorizer::baseline(&modules.policies)
@@ -176,8 +301,10 @@ impl Access {
         let rules = access::rules(&ctx, modules.clone());
         rules.refresh().await.expect("the grants are read");
         let verifier = JwtVerifier::new("test-secret");
+        let fake = Arc::new(FakeDirectory::default());
+        let configured: Option<Arc<dyn IdentityDirectory>> = directory.then(|| fake.clone() as _);
         let api = TestApi::new(AccessEndpoints, ctx.idempotency(), |app| {
-            app.accept(access::provider(&ctx, modules))
+            app.accept(access::provider(&ctx, modules, configured))
                 .data(access::sign_ins(&ctx))
                 .data(verifier.clone())
                 .data(ctx.authorizer())
@@ -194,6 +321,7 @@ impl Access {
             seeded_through,
             verifier,
             caller: Mutex::new(None),
+            directory: fake,
         };
         access.sign_in_as(ADMIN_ID);
         access
@@ -561,6 +689,129 @@ impl Access {
             .send()
             .await
             .map(|p: PermissionsJson| p.pairs())
+    }
+
+    pub async fn invite(&self, email: &str, name: &str, roles: &[&str]) -> Outcome<InvitationJson> {
+        self.signed(self.api.post("/api/access/invitations"))
+            .json(&json!({ "email": email, "name": name, "roles": roles }))
+            .send()
+            .await
+    }
+
+    pub async fn invitations(&self) -> Outcome<Invitations> {
+        self.invitations_where(&[]).await
+    }
+
+    /// `query` as the API names its parameters: `status`, `sort`, `limit`, `offset`.
+    pub async fn invitations_where(&self, query: &[(&str, &str)]) -> Outcome<Invitations> {
+        let query: Vec<_> = query.iter().map(|(k, v)| (*k, v.to_string())).collect();
+        self.signed(self.api.get("/api/access/invitations").queries(&query))
+            .send()
+            .await
+    }
+
+    /// The invitation as an admin now lists it, which must be listed.
+    pub async fn invitation(&self, invitation: &InvitationJson) -> InvitationJson {
+        self.invitations()
+            .await
+            .expect("an admin lists the invitations")
+            .items
+            .into_iter()
+            .find(|i| i.id() == invitation.id())
+            .expect("the invitation is listed")
+    }
+
+    pub async fn resend(&self, invitation: &InvitationJson) -> Outcome<InvitationJson> {
+        self.signed(self.api.post(format!(
+            "/api/access/invitations/{}/resend",
+            invitation.id()
+        )))
+        .if_match(invitation.version())
+        .send()
+        .await
+    }
+
+    pub async fn revoke_invitation(&self, invitation: &InvitationJson) -> Outcome<()> {
+        self.revoke_invitation_at(invitation.id(), invitation.version())
+            .await
+    }
+
+    pub async fn revoke_invitation_at(&self, id: &str, version: i64) -> Outcome<()> {
+        self.signed(self.api.delete(format!("/api/access/invitations/{id}")))
+            .if_match(version)
+            .send_empty()
+            .await
+    }
+
+    /// The invitee, `subject`, makes their first request: signed in at the identity provider.
+    pub async fn invitee_signs_in(&self, subject: &str) {
+        self.sign_in_as(subject);
+        self.makes_a_request().await;
+        self.sign_in_as(ADMIN_ID);
+    }
+
+    /// The identity provider, as an admin would see it in its console.
+    pub fn directory_has(&self, email: &str) -> Option<DirectoryStatus> {
+        self.directory
+            .users
+            .lock()
+            .unwrap()
+            .get(email)
+            .map(|entry| entry.status)
+    }
+
+    pub fn directory_name_of(&self, email: &str) -> Option<String> {
+        self.directory
+            .users
+            .lock()
+            .unwrap()
+            .get(email)
+            .map(|entry| entry.name.clone())
+    }
+
+    /// The invitation mails the identity provider sent, to whom, oldest first.
+    pub fn mailed(&self) -> Vec<String> {
+        self.directory.mailed.lock().unwrap().clone()
+    }
+
+    /// Someone the identity provider has, created outside the app, in `status`.
+    pub fn directory_holds(&self, email: &str, subject: &str, status: DirectoryStatus) {
+        self.directory.users.lock().unwrap().insert(
+            email.to_owned(),
+            DirectoryEntry {
+                subject: subject.to_owned(),
+                name: String::new(),
+                status,
+            },
+        );
+    }
+
+    /// The invitee's account changes at the identity provider: they set a password, their
+    /// temporary one lapses, or an admin deletes them in its console.
+    pub fn directory_sets(&self, email: &str, status: Option<DirectoryStatus>) {
+        let mut users = self.directory.users.lock().unwrap();
+        match status {
+            Some(status) => {
+                if let Some(entry) = users.get_mut(email) {
+                    entry.status = status;
+                }
+            }
+            None => {
+                users.remove(email);
+            }
+        }
+    }
+
+    pub fn directory_goes_down(&self) {
+        self.directory
+            .down
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn directory_comes_back(&self) {
+        self.directory
+            .down
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub async fn catalog(&self) -> Outcome<CatalogJson> {

@@ -1,4 +1,4 @@
-use crate::domain::{AssignmentError, GrantError, RoleError};
+use crate::domain::{AssignmentError, GrantError, InvitationError, RoleError};
 use app_authz::{GrantRefusal, GrantRefused};
 use app_error::AppError;
 
@@ -52,4 +52,19 @@ pub(crate) fn refused(refused: GrantRefused) -> AppError {
         GrantRefusal::UnknownScope { .. } => "scope",
     };
     AppError::invalid_field(field, refused.reason.to_string())
+}
+
+impl From<InvitationError> for AppError {
+    fn from(err: InvitationError) -> Self {
+        match err {
+            InvitationError::InvalidEmail => AppError::invalid_field("email", err.to_string()),
+            InvitationError::NameTooLong { .. } => AppError::invalid_field("name", err.to_string()),
+            InvitationError::Role(role) => AppError::invalid_field("roles", role.to_string()),
+            InvitationError::AlreadyPending
+            | InvitationError::AlreadyActive
+            | InvitationError::Accepted
+            | InvitationError::Revoked
+            | InvitationError::PasswordSet => AppError::conflict(err.to_string()),
+        }
+    }
 }

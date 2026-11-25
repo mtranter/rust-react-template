@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO access.invitation\n                        (id, email, name, subject, roles, invited_by, invited_at, status, version)\n                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)\n                    RETURNING version\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "access.invitation",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "Text",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "faaa69494e0a23270b957e2910caeb15eb6cc6542bbf01c2354f17304218bfac"
+}

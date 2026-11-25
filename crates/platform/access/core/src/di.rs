@@ -1,14 +1,16 @@
 // Naming the pool to wire the repository is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{AccessService, Modules, Operation, Rules, SignIns};
+use crate::application::{AccessService, IdentityDirectory, Modules, Operation, Rules, SignIns};
+use crate::cognito::CognitoDirectory;
 use crate::db::{
-    PgAssignmentRepository, PgGrantRepository, PgRoleRepository, PgSubjectRepository, migrations,
+    PgAssignmentRepository, PgGrantRepository, PgInvitationRepository, PgRoleRepository,
+    PgSubjectRepository, migrations,
 };
-use crate::domain::{Assignment, Grant, Role, Subject};
+use crate::domain::{Assignment, Grant, Invitation, Role, Subject};
 use crate::web::{OPERATIONS, RecordingSignIns};
 use access_api::RoleAssignments;
-use access_api::events::v1::{AssignmentTopic, GrantTopic, RoleTopic};
+use access_api::events::v1::{AssignmentTopic, GrantTopic, InvitationTopic, RoleTopic};
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_error::AppResult;
 use app_module::{Context, Module, PoliciesError};
@@ -46,12 +48,31 @@ impl Modules {
     }
 }
 
-fn service(ctx: &Context, modules: Arc<Modules>) -> AccessService {
+/// The identity provider invitations go through: the Cognito user pool `COGNITO_USER_POOL_ID`
+/// names, reached at `COGNITO_ENDPOINT` when set (a stand-in's, as `make e2e`'s); `None` when it
+/// is unset or empty, and inviting is off. Read from the environment, as the AWS SDK reads its
+/// credentials and region, so an app's config needs nothing for it.
+pub fn directory() -> Result<Option<Arc<dyn IdentityDirectory>>, String> {
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+    let Some(pool_id) = var("COGNITO_USER_POOL_ID") else {
+        return Ok(None);
+    };
+    let directory = CognitoDirectory::new(pool_id.trim(), var("COGNITO_ENDPOINT").as_deref())?;
+    Ok(Some(Arc::new(directory)))
+}
+
+fn service(
+    ctx: &Context,
+    modules: Arc<Modules>,
+    directory: Option<Arc<dyn IdentityDirectory>>,
+) -> AccessService {
     AccessService::new(
         Arc::new(PgGrantRepository::new(ctx.pool())),
         Arc::new(PgRoleRepository::new(ctx.pool())),
         Arc::new(PgAssignmentRepository::new(ctx.pool())),
         Arc::new(PgSubjectRepository::new(ctx.pool())),
+        Arc::new(PgInvitationRepository::new(ctx.pool())),
+        directory,
         ctx.publisher(),
         ctx.transactions(),
         ctx.clock(),
@@ -60,20 +81,31 @@ fn service(ctx: &Context, modules: Arc<Modules>) -> AccessService {
     )
 }
 
-pub fn provider(ctx: &Context, modules: Arc<Modules>) -> AccessProvider {
-    AccessProvider(service(ctx, modules))
+/// `directory` is `None` when no identity provider is configured, and a Fake in tests.
+pub fn provider(
+    ctx: &Context,
+    modules: Arc<Modules>,
+    directory: Option<Arc<dyn IdentityDirectory>>,
+) -> AccessProvider {
+    AccessProvider(service(ctx, modules, directory))
 }
 
 /// Resolves every token's Principal from the rule set in force, as the `Authorizer` does, and
 /// records its subject as seen signing in: what `module(..)` gives every request.
 pub fn sign_ins(ctx: &Context) -> Arc<dyn PrincipalResolver> {
     Arc::new(RecordingSignIns {
-        sign_ins: SignIns::new(Arc::new(PgSubjectRepository::new(ctx.pool())), ctx.clock()),
+        sign_ins: SignIns::new(
+            Arc::new(PgSubjectRepository::new(ctx.pool())),
+            Arc::new(PgInvitationRepository::new(ctx.pool())),
+            ctx.publisher(),
+            ctx.transactions(),
+            ctx.clock(),
+        ),
         authorizer: ctx.authorizer(),
     })
 }
 
-/// `access`' `grant`, `role`, `assignment` and `subject` resources, all `admin`'s by baseline
+/// `access`' `grant`, `role`, `assignment`, `subject` and `invitation` resources, all `admin`'s by baseline
 /// rules rather than grants, so no revocation can lock admins out (ADR 0040). It has no default
 /// grants.
 pub fn policies() -> PoliciesBuilder {
@@ -83,6 +115,7 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Role>(policy_file!("policies/role.yaml"))
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
         .resource::<Subject>(policy_file!("policies/subject.yaml"))
+        .resource::<Invitation>(policy_file!("policies/invitation.yaml"))
         .labels(policy_file!("policies/labels.yaml"))
 }
 
@@ -94,7 +127,7 @@ pub fn assignments(ctx: &Context) -> Arc<dyn RoleAssignments> {
         policies: Vec::new(),
         operations: Vec::new(),
     };
-    Arc::new(service(ctx, Arc::new(modules)))
+    Arc::new(service(ctx, Arc::new(modules), None))
 }
 
 /// What keeps `ctx.authorizer()` in step with the stored grants and assignments: a server
@@ -112,7 +145,7 @@ pub fn rules(ctx: &Context, modules: Arc<Modules>) -> Rules {
 /// yet (ADR 0047), then grants each module's default grants not applied before. Returns how many
 /// it granted.
 pub async fn apply_default_grants(ctx: &Context, modules: Arc<Modules>) -> AppResult<usize> {
-    let service = service(ctx, modules);
+    let service = service(ctx, modules, None);
     let revoked = service.retire_gates().await?;
     if revoked > 0 {
         tracing::info!(revoked, "Modules' gates retired");
@@ -121,12 +154,18 @@ pub async fn apply_default_grants(ctx: &Context, modules: Arc<Modules>) -> AppRe
 }
 
 /// `composed` is every module the server registers, this one included, as the server lists
-/// them: what can be granted is what their policies have.
+/// them: what can be granted is what their policies have. Invitations go through
+/// [`directory`].
 pub fn module(composed: fn() -> Vec<Module>) -> Module {
     Module::new(move |ctx: &Context| {
         let modules = Modules::of(&composed())
             .expect("every module's policies load: the server checks them before it serves");
-        provider(ctx, Arc::new(modules))
+        let directory = directory().unwrap_or_else(|err| {
+            // A malformed id is a deploy mistake: refuse to invite, not to serve.
+            tracing::error!(error = %err, "inviting is off: COGNITO_USER_POOL_ID is malformed");
+            None
+        });
+        provider(ctx, Arc::new(modules), directory)
     })
     .providing(sign_ins)
     .with_policies(policies)
@@ -134,5 +173,6 @@ pub fn module(composed: fn() -> Vec<Module>) -> Module {
     .publishes::<GrantTopic>()
     .publishes::<RoleTopic>()
     .publishes::<AssignmentTopic>()
+    .publishes::<InvitationTopic>()
     .with_migrations(migrations())
 }

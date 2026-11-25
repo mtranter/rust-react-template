@@ -10,6 +10,7 @@ mod behaviours {
     mod catalog;
     mod defaults;
     mod granting;
+    mod inviting;
     mod listing;
     mod permissions;
     mod rebuilding;

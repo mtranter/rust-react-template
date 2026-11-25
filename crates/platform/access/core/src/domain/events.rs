@@ -22,3 +22,13 @@ pub enum AssignmentEvent {
     Assigned,
     Unassigned { by: super::GrantedBy },
 }
+
+/// What happened to an [`Invitation`](super::Invitation).
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvitationEvent {
+    Created,
+    Resent { by: super::GrantedBy },
+    Accepted,
+    Revoked { by: super::GrantedBy },
+}

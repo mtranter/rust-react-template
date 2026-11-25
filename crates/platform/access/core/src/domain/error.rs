@@ -37,3 +37,25 @@ pub enum AssignmentError {
     )]
     LastAdmin,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum InvitationError {
+    #[error("that isn't an email address")]
+    InvalidEmail,
+    #[error("a name is at most {max} characters")]
+    NameTooLong { max: usize },
+    #[error("{0}")]
+    Role(AssignmentError),
+    #[error("an invitation to that email is pending already: resend it instead")]
+    AlreadyPending,
+    #[error("that email belongs to someone who has set their password: assign them roles instead")]
+    AlreadyActive,
+    #[error("the invitation was accepted: the invitee has signed in")]
+    Accepted,
+    #[error("the invitation was revoked")]
+    Revoked,
+    #[error(
+        "the invitee has set their password, so the invitation can't be revoked: unassign their roles instead"
+    )]
+    PasswordSet,
+}
