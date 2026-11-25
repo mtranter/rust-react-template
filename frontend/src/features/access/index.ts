@@ -6,3 +6,5 @@ export { RolePermissions } from "./role-permissions";
 export { RolesTable } from "./roles-table";
 export { SubjectsTable } from "./subjects-table";
 export { useMyPermissions, usePermitted } from "./use-my-permissions";
+export { InvitationsTable, invitationStatuses } from "./invitations-table";
+export { InviteUserDialog } from "./invite-user-dialog";

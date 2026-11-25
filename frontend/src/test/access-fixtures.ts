@@ -5,7 +5,10 @@ import type {
   ErrorBody,
   GrantRequest,
   GrantResponse,
+  InvitationRequest,
+  InvitationResponse,
   ListResultGrantResponse,
+  ListResultInvitationResponse,
   ListResultRoleResponse,
   ListResultSubjectResponse,
   RoleRequest,
@@ -24,6 +27,7 @@ export const adminPermissions = [
   { resource: "grant", action: "revoke" },
   { resource: "role", action: "create" },
   { resource: "role", action: "delete" },
+  { resource: "invitation", action: "create" },
 ];
 
 export const catalog: CatalogResponse = {
@@ -330,7 +334,7 @@ export function accessApi(
   return { handlers, requests, ifMatches };
 }
 
-const accessResources = ["subject", "role", "grant", "assignment"];
+const accessResources = ["subject", "role", "grant", "assignment", "invitation"];
 
 /** `access` as the server answers a caller who isn't an admin: they hold none of its actions. */
 export const notAnAdmin = [
@@ -339,4 +343,136 @@ export const notAnAdmin = [
   http.get("*/api/access/grants", forbidden),
   http.get("*/api/access/roles", forbidden),
   http.get("*/api/access/subjects", forbidden),
+  http.get("*/api/access/invitations", forbidden),
 ];
+
+export function invitation(
+  email: string,
+  changes: Partial<InvitationResponse> = {},
+): InvitationResponse {
+  return {
+    id: `invitation-${email}`,
+    email,
+    name: "",
+    subject: `sub-${email}`,
+    roles: [],
+    status: "pending",
+    directoryStatus: "waiting",
+    invitedBy: "an-admin",
+    invitedAt: new Date(Date.UTC(2026, 0, 5)).toISOString(),
+    version: "1",
+    ...changes,
+  };
+}
+
+/** Grace, pending with `support`; Hopper, whose temporary password expired; Lin, who accepted. */
+export function someInvitations(): InvitationResponse[] {
+  return [
+    invitation("grace@example.com", { name: "Grace", roles: ["support"] }),
+    invitation("hopper@example.com", { directoryStatus: "expired" }),
+    invitation("lin@example.com", { status: "accepted", directoryStatus: undefined, version: "2" }),
+  ];
+}
+
+/**
+ * Invitations as the server answers an admin for `invitations` (changed in place): listed by
+ * `status`, made unless the email is pending already or a role doesn't exist, resent and revoked
+ * with `If-Match` while pending; with `configured` false, every call is `not_configured`.
+ * `ifMatches` records each resend's and revocation's `If-Match`.
+ */
+export function invitationsApi(
+  invitations: InvitationResponse[] = someInvitations(),
+  { configured = true, roles = someRoles() }: { configured?: boolean; roles?: RoleResponse[] } = {},
+) {
+  const ifMatches: (string | null)[] = [];
+  const off = () =>
+    HttpResponse.json(refusal("not_configured", "inviting is off: no identity provider"), {
+      status: 501,
+    });
+  const guarded = (request: Request, id: string | readonly string[] | undefined) => {
+    const found = invitations.find((i) => i.id === id);
+    if (!found) {
+      return {
+        refused: HttpResponse.json(refusal("not_found", "invitation not found"), { status: 404 }),
+      };
+    }
+    const ifMatch = request.headers.get("If-Match");
+    ifMatches.push(ifMatch);
+    if (ifMatch !== `"${found.version}"`) {
+      return {
+        refused: HttpResponse.json(refusal("precondition_failed", "the invitation changed"), {
+          status: 412,
+        }),
+      };
+    }
+    if (found.status !== "pending") {
+      return {
+        refused: HttpResponse.json(refusal("conflict", `the invitation was ${found.status}`), {
+          status: 409,
+        }),
+      };
+    }
+    return { found };
+  };
+  const handlers = [
+    http.get("*/api/access/invitations", ({ request }) => {
+      const status = new URL(request.url).searchParams.get("status");
+      const matching = invitations.filter((i) => !status || i.status === status);
+      return HttpResponse.json({
+        items: matching,
+        total: matching.length,
+        limit: 100,
+        offset: 0,
+      } satisfies ListResultInvitationResponse);
+    }),
+    http.post("*/api/access/invitations", async ({ request }) => {
+      if (!configured) return off();
+      const body = (await request.json()) as InvitationRequest;
+      const email = body.email.trim().toLowerCase();
+      if (!email.includes("@")) {
+        return HttpResponse.json(
+          refusal("validation_error", "that isn't an email address", "email"),
+          {
+            status: 400,
+          },
+        );
+      }
+      const missing = (body.roles ?? []).find((r) => !roles.some((known) => known.name === r));
+      if (missing) {
+        return HttpResponse.json(
+          refusal("validation_error", `no role is named \`${missing}\``, "roles"),
+          {
+            status: 400,
+          },
+        );
+      }
+      if (invitations.some((i) => i.email === email && i.status === "pending")) {
+        return HttpResponse.json(
+          refusal("conflict", "an invitation to that email is pending already: resend it instead"),
+          { status: 409 },
+        );
+      }
+      const made = invitation(email, { name: body.name ?? "", roles: body.roles ?? [] });
+      invitations.unshift(made);
+      return HttpResponse.json(made, { headers: { ETag: `"${made.version}"` } });
+    }),
+    http.post("*/api/access/invitations/:id/resend", ({ params, request }) => {
+      if (!configured) return off();
+      const { found, refused } = guarded(request, params.id);
+      if (!found) return refused;
+      found.version = String(Number(found.version) + 1);
+      found.directoryStatus = "waiting";
+      return HttpResponse.json(found, { headers: { ETag: `"${found.version}"` } });
+    }),
+    http.delete("*/api/access/invitations/:id", ({ params, request }) => {
+      if (!configured) return off();
+      const { found, refused } = guarded(request, params.id);
+      if (!found) return refused;
+      found.version = String(Number(found.version) + 1);
+      found.status = "revoked";
+      found.directoryStatus = undefined;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  ];
+  return { handlers, ifMatches };
+}

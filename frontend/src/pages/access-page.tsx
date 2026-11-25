@@ -5,6 +5,8 @@ import {
   CreateRoleDialog,
   GrantAccessDialog,
   GrantsTable,
+  InvitationsTable,
+  InviteUserDialog,
   RolesTable,
   SubjectsTable,
   usePermitted,
@@ -12,6 +14,7 @@ import {
 import { getRouteApi } from "@tanstack/react-router";
 
 const usersRoute = getRouteApi("/app/access/subjects");
+const invitationsRoute = getRouteApi("/app/access/invitations");
 const permissionsRoute = getRouteApi("/app/access/permissions");
 
 export function AccessUsersPage() {
@@ -43,6 +46,25 @@ export function AccessRolesPage() {
       actions={creates && <CreateRoleDialog />}
     >
       <RolesTable />
+    </Page>
+  );
+}
+
+export function AccessInvitationsPage() {
+  const { status } = invitationsRoute.useSearch();
+  const navigate = invitationsRoute.useNavigate();
+  const invites = usePermitted("invitation", "create");
+
+  return (
+    <Page
+      title="Invitations"
+      description="People invited by email, and whether they have signed in yet."
+      actions={invites && <InviteUserDialog />}
+    >
+      <InvitationsTable
+        status={status}
+        onStatus={(next) => navigate({ search: (prev) => ({ ...prev, status: next }) })}
+      />
     </Page>
   );
 }

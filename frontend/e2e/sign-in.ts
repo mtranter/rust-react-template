@@ -7,7 +7,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { chromium } from "playwright";
 
 // `make e2e`: signs in to the binary's own SPA through `fake-oidc`, as a bootstrap admin, loads
-// the access screen with that token, and signs out. `make e2e` builds both binaries (debug, the
+// the access screen with that token, invites someone through `fake-oidc`'s stand-in for Cognito,
+// and signs out. `make e2e` builds both binaries (debug, the
 // server with `embed-frontend`) into $E2E_BIN and migrates and seeds $E2E_DATABASE_URL.
 
 const bin = required("E2E_BIN");
@@ -37,6 +38,10 @@ try {
     APP_JWT_ISSUER: issuer,
     APP_OIDC_CLIENT_ID: clientId,
     APP_BOOTSTRAP_ADMINS: subject.sub,
+    COGNITO_USER_POOL_ID: "ap-southeast-2_e2e",
+    COGNITO_ENDPOINT: `${issuer}/cognito`,
+    AWS_ACCESS_KEY_ID: "e2e",
+    AWS_SECRET_ACCESS_KEY: "e2e",
   });
   await ready(`${app}/health/ready`, server);
 
@@ -69,9 +74,24 @@ try {
   await page.getByRole("banner").getByText(subject.name).waitFor();
   // A bootstrap admin holds every Area of Access by its built-in rules, with no grant of them.
   const areas = page.getByRole("navigation", { name: "Access" });
-  for (const area of ["Users", "Roles", "Permissions"]) {
+  for (const area of ["Users", "Roles", "Invitations", "Permissions"]) {
     await areas.getByRole("link", { name: area }).waitFor();
   }
+
+  // Inviting goes through the server's Cognito adapter to the stand-in, and lists them pending.
+  await areas.getByRole("link", { name: "Invitations" }).click();
+  await page.getByRole("button", { name: "Invite user" }).click();
+  const invite = page.getByRole("dialog", { name: "Invite user" });
+  await invite.getByLabel("Email").fill("grace@e2e.test");
+  await invite.getByLabel("Name").fill("Grace Invited");
+  await invite.getByRole("button", { name: "Invite" }).click();
+  const invited = page
+    .getByRole("region", { name: "Invitations" })
+    .getByRole("row")
+    .filter({ hasText: "grace@e2e.test" });
+  await invited.getByText("Pending").waitFor();
+  await areas.getByRole("link", { name: "Users" }).click();
+  await page.getByRole("row").filter({ hasText: "Grace Invited" }).waitFor();
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
   await page.getByRole("button", { name: `Account: ${subject.name}` }).click();
@@ -90,7 +110,9 @@ try {
   );
   assert.deepEqual(errors, []);
   passed = true;
-  console.log("e2e: signed in, loaded /access with the token, signed out and stayed signed out");
+  console.log(
+    "e2e: signed in, loaded /access with the token, invited someone, signed out and stayed signed out",
+  );
 } finally {
   await browser.close();
   for (const running of processes) running.stop();
@@ -147,6 +169,7 @@ function inherited(): Record<string, string> {
       (entry): entry is [string, string] =>
         entry[1] !== undefined &&
         !(entry[0].startsWith("APP_") && !entry[0].startsWith("APP_REDIS_")) &&
+        !entry[0].startsWith("COGNITO_") &&
         entry[0] !== "DATABASE_URL",
     ),
   );

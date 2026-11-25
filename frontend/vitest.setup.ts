@@ -56,12 +56,21 @@ if (!("ResizeObserver" in globalThis)) {
   });
 }
 
-// jsdom has no PointerEvent, which base-ui's checkbox dispatches when clicked.
+// jsdom has no PointerEvent, which Base UI's checkbox dispatches when clicked.
 if (!("PointerEvent" in globalThis)) {
   const { MouseEvent } = globalThis as unknown as {
     MouseEvent: new (type: string, init?: object) => object;
   };
-  Object.assign(globalThis, { PointerEvent: class extends MouseEvent {} });
+  class PointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    constructor(type: string, init: { pointerId?: number; pointerType?: string } = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "mouse";
+    }
+  }
+  Object.assign(globalThis, { PointerEvent });
 }
 
 // Node's fetch rejects the client's relative "/api" baseUrl (browsers resolve it

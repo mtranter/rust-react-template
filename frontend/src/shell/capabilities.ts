@@ -5,6 +5,7 @@ import {
   ListChecksIcon,
   ListIcon,
   type LucideIcon,
+  MailIcon,
   NotebookPenIcon,
   SearchIcon,
   ShieldIcon,
@@ -81,6 +82,12 @@ const access: Capability = {
       to: "/access/roles",
       icon: KeyRoundIcon,
       needs: { resource: "role", action: "list" },
+    },
+    {
+      label: "Invitations",
+      to: "/access/invitations",
+      icon: MailIcon,
+      needs: { resource: "invitation", action: "list" },
     },
     {
       label: "Permissions",

@@ -2,6 +2,7 @@ import type {
   CatalogResponse,
   ErrorBody,
   GrantResponse,
+  InvitationResponse,
   ListResultNoteResponse,
   ListResultNoteSummaryResponse,
   NoteResponse,
@@ -246,6 +247,44 @@ const subjects: SubjectResponse[] = [
   { subject: "ops@example.com", bootstrapAdmin: true, roles: [{ role: "admin" }] },
 ];
 
+const invitations: InvitationResponse[] = [
+  {
+    id: "inv-1",
+    email: "grace@example.com",
+    name: "Grace Hopper",
+    subject: "6f1c2a90-0d7e-4b8a-9c11-1a2b3c4d5e6f",
+    roles: ["support"],
+    status: "pending",
+    directoryStatus: "waiting",
+    invitedBy: "auth0|6650a1",
+    invitedAt: new Date(Date.UTC(2026, 0, 6, 9, 0)).toISOString(),
+    version: "1",
+  },
+  {
+    id: "inv-2",
+    email: "linus@example.com",
+    name: "",
+    subject: "8a2d3b01-1e8f-4c9b-8d22-2b3c4d5e6f70",
+    roles: [],
+    status: "pending",
+    directoryStatus: "expired",
+    invitedBy: "auth0|6650a1",
+    invitedAt: new Date(Date.UTC(2025, 11, 20, 9, 0)).toISOString(),
+    version: "1",
+  },
+  {
+    id: "inv-3",
+    email: "bob@engines.org",
+    name: "Bob Babbage",
+    subject: "auth0|6650b2",
+    roles: [],
+    status: "accepted",
+    invitedBy: "auth0|6650a1",
+    invitedAt: new Date(Date.UTC(2026, 0, 1, 9, 0)).toISOString(),
+    version: "2",
+  },
+];
+
 /** `access` as the server answers an admin. */
 const accessApi = [
   http.get("*/api/access/me/permissions", () =>
@@ -259,8 +298,23 @@ const accessApi = [
         ["grant", "list"],
         ["grant", "create"],
         ["assignment", "assign"],
+        ["invitation", "list"],
+        ["invitation", "create"],
       ].map(([resource, action]) => ({ resource, action })),
     }),
+  ),
+  http.get("*/api/access/invitations", () =>
+    HttpResponse.json({ items: invitations, total: invitations.length, limit: 100, offset: 0 }),
+  ),
+  http.post("*/api/access/invitations", () =>
+    HttpResponse.json(
+      {
+        code: "conflict",
+        message: "an invitation to that email is pending already: resend it instead",
+        requestId: "screens",
+      },
+      { status: 409 },
+    ),
   ),
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
   http.get("*/api/access/grants", ({ request }) => {
@@ -559,6 +613,25 @@ export const scenarios: Scenario[] = [
       await page.getByRole("dialog", { name: "Add user" }).getByLabel("User ID").fill("auth0|new");
     },
     shows: (page) => page.getByRole("dialog", { name: "Add user" }).getByLabel("Role"),
+  },
+  {
+    name: "access-invitations",
+    route: "/access?tab=invitations",
+    handlers: accessApi,
+    shows: (page) => page.getByText("Temporary password expired: resend it"),
+  },
+  {
+    name: "access-invite-refused",
+    route: "/access?tab=invitations",
+    handlers: accessApi,
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Invite user" }).click();
+      const dialog = page.getByRole("dialog", { name: "Invite user" });
+      await dialog.getByLabel("Email").fill("grace@example.com");
+      await dialog.getByRole("checkbox", { name: "support" }).click();
+      await dialog.getByRole("button", { name: "Invite" }).click();
+    },
+    shows: (page) => page.getByRole("dialog", { name: "Invite user" }).getByText("pending already"),
   },
   {
     name: "access-not-an-admin",

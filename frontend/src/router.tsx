@@ -1,9 +1,14 @@
 import type { GrantSort, NoteSort, NoteSummarySort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
-import { type GrantFilter, grantSortKeys } from "@/features/access";
+import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
 import { noteSummarySortKeys } from "@/features/note-search";
 import { noteSortKeys } from "@/features/notes";
-import { AccessPermissionsPage, AccessRolesPage, AccessUsersPage } from "@/pages/access-page";
+import {
+  AccessInvitationsPage,
+  AccessPermissionsPage,
+  AccessRolesPage,
+  AccessUsersPage,
+} from "@/pages/access-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { NotesPage } from "@/pages/notes-page";
@@ -96,7 +101,9 @@ const accessRoute = createRoute({
           ? "/access/roles"
           : tab === "grants"
             ? "/access/permissions"
-            : "/access/subjects",
+            : tab === "invitations"
+              ? "/access/invitations"
+              : "/access/subjects",
       search: rest,
     });
   },
@@ -113,6 +120,16 @@ const accessRolesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/access/roles",
   component: AccessRolesPage,
+});
+const accessInvitationsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/invitations",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { status?: (typeof invitationStatuses)[number] } => ({
+    status: invitationStatuses.find((s) => s === search.status),
+  }),
+  component: AccessInvitationsPage,
 });
 const accessPermissionsRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -151,6 +168,7 @@ const routeTree = rootRoute.addChildren([
     accessRoute,
     accessUsersRoute,
     accessRolesRoute,
+    accessInvitationsRoute,
     accessPermissionsRoute,
     roleRoute,
     assistantRoute,
