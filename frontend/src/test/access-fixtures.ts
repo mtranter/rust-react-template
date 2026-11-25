@@ -1,6 +1,8 @@
 import type {
   AssignmentRequest,
   AssignmentResponse,
+  BulkGrantRequest,
+  BulkGrantResponse,
   CatalogResponse,
   ErrorBody,
   GrantRequest,
@@ -17,14 +19,6 @@ import type {
 } from "@/api";
 import { everyAreasNeeds, holding } from "@/test/may-use-everything";
 import { http, HttpResponse } from "msw";
-
-/** A bulk grant's body, as `grant_access_in_bulk` takes it. */
-export type BulkGrantBody = {
-  role: string;
-  resources: string[];
-  actions: string[];
-  scopes: string[];
-};
 
 /** What an admin may do: every Area, and every change `access` offers. */
 export const adminPermissions = [
@@ -158,7 +152,7 @@ export function accessApi(
 ) {
   const requests: URLSearchParams[] = [];
   const ifMatches: (string | null)[] = [];
-  const bulkGrants: BulkGrantBody[] = [];
+  const bulkGrants: BulkGrantRequest[] = [];
   const handlers = [
     holding(adminPermissions),
     http.get("*/api/access/catalog", () => HttpResponse.json(catalog)),
@@ -216,7 +210,7 @@ export function accessApi(
       return HttpResponse.json(made, { headers: { ETag: `"${made.version}"` } });
     }),
     http.post("*/api/access/grants/bulk", async ({ request }) => {
-      const body = (await request.json()) as BulkGrantBody;
+      const body = (await request.json()) as BulkGrantRequest;
       bulkGrants.push(body);
       if (!roles.some((r) => r.name === body.role)) {
         return HttpResponse.json(refusal("validation_error", "no such role", "role"), {
@@ -225,10 +219,12 @@ export function accessApi(
       }
       const known = catalog.capabilities.flatMap((c) => c.resources);
       const granted: GrantResponse[] = [];
-      const skipped: { resource: string; action: string; scope: string }[] = [];
+      const skipped: BulkGrantResponse["skipped"] = [];
       for (const resource of known.filter((r) => body.resources.includes(r.resource))) {
         for (const action of resource.actions.filter((a) => body.actions.includes(a.name))) {
-          for (const scope of resource.scopes.filter((s) => body.scopes.includes(s.name))) {
+          for (const scope of resource.scopes.filter((s) =>
+            (body.scopes ?? ["any"]).includes(s.name),
+          )) {
             const triple = { resource: resource.resource, action: action.name, scope: scope.name };
             if (
               items.some(
@@ -252,7 +248,7 @@ export function accessApi(
           }
         }
       }
-      return HttpResponse.json({ granted, skipped });
+      return HttpResponse.json({ granted, skipped } satisfies BulkGrantResponse);
     }),
     http.delete("*/api/access/grants/:id", ({ params, request }) => {
       const index = items.findIndex((g) => g.id === params.id);

@@ -1,6 +1,7 @@
-import { getAccessGrantsQueryKey } from "@/api/@tanstack/react-query.gen";
-import { client } from "@/api/client.gen";
-import type { GrantResponse } from "@/api/types.gen";
+import {
+  getAccessGrantsQueryKey,
+  postAccessGrantsBulkMutation,
+} from "@/api/@tanstack/react-query.gen";
 import { MultiSelect } from "@/components/multi-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,28 +54,12 @@ export function GrantAccessDialog() {
   );
 }
 
-type BulkGrantRequest = { role: string; resources: string[]; actions: string[]; scopes: string[] };
-type BulkGrantResponse = {
-  granted: GrantResponse[];
-  skipped: { resource: string; action: string; scope: string }[];
-};
-
-async function grantInBulk({ body }: { body: BulkGrantRequest }) {
-  const { data } = await client.post<{ 200: BulkGrantResponse }, unknown, true>({
-    url: "/api/access/grants/bulk",
-    body,
-    headers: { "Content-Type": "application/json" },
-    throwOnError: true,
-  });
-  return data as unknown as BulkGrantResponse;
-}
-
 function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const queryClient = useQueryClient();
   const { capabilities, resources } = useCatalog();
   const roles = useRoles();
   const grant = useMutation({
-    mutationFn: grantInBulk,
+    ...postAccessGrantsBulkMutation(),
     meta: { formFields },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: getAccessGrantsQueryKey() }),
   });
