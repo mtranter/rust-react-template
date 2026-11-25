@@ -556,9 +556,14 @@ export const scenarios: Scenario[] = [
       await page.getByRole("button", { name: "Grant access" }).click();
       const dialog = page.getByRole("dialog", { name: "Grant access" });
       await dialog.getByLabel("Role").selectOption("support");
-      await dialog.getByLabel("On").selectOption("gadget");
+      await dialog.getByLabel("On").click();
+      await page.getByRole("checkbox", { name: "Select all" }).click();
+      await page.keyboard.press("Escape");
+      await dialog.getByLabel("Can").click();
+      await page.getByRole("checkbox", { name: "Make" }).click();
+      await page.getByRole("checkbox", { name: "View" }).click();
     },
-    shows: (page) => page.getByRole("dialog", { name: "Grant access" }).getByLabel("Can"),
+    shows: (page) => page.getByRole("group", { name: "Choose actions" }),
   },
   {
     name: "access-role",

@@ -1,5 +1,7 @@
-import { getAccessGrantsQueryKey, postAccessGrantsMutation } from "@/api/@tanstack/react-query.gen";
-import type { CatalogResourceResponse } from "@/api/types.gen";
+import { getAccessGrantsQueryKey } from "@/api/@tanstack/react-query.gen";
+import { client } from "@/api/client.gen";
+import type { GrantResponse } from "@/api/types.gen";
+import { MultiSelect } from "@/components/multi-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,11 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import {
-  NativeSelect,
-  NativeSelectOptGroup,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { submitErrors } from "@/lib/api-errors";
 import { useForm } from "@tanstack/react-form";
@@ -26,13 +24,13 @@ import { useState } from "react";
 import { useCatalog } from "./catalog";
 import { useRoles } from "./use-roles";
 
-const formFields = ["role", "resource", "action", "scope"] as const;
+const formFields = ["role", "resources", "actions", "scopes"] as const;
 
 function errorsOf(errors: unknown[]) {
   return errors.map((message) => ({ message: String(message) }));
 }
 
-/** Grants a role an action, chosen from the catalog, in a dialog. */
+/** Grants a role actions on resources, in scopes, all chosen from the catalog, in a dialog. */
 export function GrantAccessDialog() {
   const [open, setOpen] = useState(false);
   return (
@@ -55,35 +53,82 @@ export function GrantAccessDialog() {
   );
 }
 
+type BulkGrantRequest = { role: string; resources: string[]; actions: string[]; scopes: string[] };
+type BulkGrantResponse = {
+  granted: GrantResponse[];
+  skipped: { resource: string; action: string; scope: string }[];
+};
+
+async function grantInBulk({ body }: { body: BulkGrantRequest }) {
+  const { data } = await client.post<{ 200: BulkGrantResponse }, unknown, true>({
+    url: "/api/access/grants/bulk",
+    body,
+    headers: { "Content-Type": "application/json" },
+    throwOnError: true,
+  });
+  return data as unknown as BulkGrantResponse;
+}
+
 function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const queryClient = useQueryClient();
   const { capabilities, resources } = useCatalog();
   const roles = useRoles();
   const grant = useMutation({
-    ...postAccessGrantsMutation(),
+    mutationFn: grantInBulk,
     meta: { formFields },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: getAccessGrantsQueryKey() }),
   });
 
+  /** The actions and scopes the chosen resources offer between them, each named once. */
+  const offered = (kinds: string[]) => {
+    const chosen = resources.filter((r) => kinds.includes(r.resource));
+    const actions = new Map<string, { label: string; unreachable: boolean }>();
+    const scopes = new Map<string, string>([["any", "Any"]]);
+    for (const resource of chosen) {
+      for (const a of resource.actions) {
+        const seen = actions.get(a.name);
+        actions.set(a.name, {
+          label: seen?.label ?? a.label,
+          unreachable: (seen?.unreachable ?? false) || !a.reachable,
+        });
+      }
+      for (const s of resource.scopes) {
+        if (s.name !== "any" && !scopes.has(s.name)) scopes.set(s.name, s.label);
+      }
+    }
+    return {
+      actions: [...actions].map(([value, a]) => ({
+        value,
+        label: a.unreachable ? `${a.label} (no one can yet)` : a.label,
+      })),
+      scopes: [...scopes].map(([value, label]) => ({ value, label })),
+    };
+  };
+
   const form = useForm({
-    defaultValues: { role: "", resource: "", action: "", scope: "any" },
+    defaultValues: {
+      role: "",
+      resources: [] as string[],
+      actions: [] as string[],
+      scopes: ["any"] as string[],
+    },
     validators: {
       onSubmitAsync: async ({ value }) => {
         try {
-          await grant.mutateAsync({ body: value });
+          const result = await grant.mutateAsync({ body: value });
+          const skipped = result.skipped.length;
+          toast.add({
+            type: "success",
+            title: `Granted ${result.granted.length}`,
+            ...(skipped > 0 && { description: `${skipped} already granted` }),
+          });
         } catch (error) {
           return submitErrors(error);
         }
       },
     },
-    onSubmit: () => {
-      toast.add({ type: "success", title: "Access granted" });
-      onGranted();
-    },
+    onSubmit: () => onGranted(),
   });
-
-  const resourceOf = (kind: string): CatalogResourceResponse | undefined =>
-    resources.find((r) => r.resource === kind);
 
   return (
     <form
@@ -117,93 +162,80 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         )}
       </form.Field>
       <form.Field
-        name="resource"
+        name="resources"
         listeners={{
-          onChange: ({ fieldApi }) => {
-            fieldApi.form.setFieldValue("action", "");
-            fieldApi.form.setFieldValue("scope", "any");
+          onChange: ({ value, fieldApi }) => {
+            const still = offered(value);
+            const keep = (chosen: string[], options: { value: string }[]) =>
+              chosen.filter((c) => options.some((o) => o.value === c));
+            fieldApi.form.setFieldValue("actions", (a) => keep(a, still.actions));
+            fieldApi.form.setFieldValue("scopes", (s) => keep(s, still.scopes));
           },
         }}
       >
         {(field) => (
           <Field data-invalid={field.state.meta.errors.length > 0}>
-            <FieldLabel htmlFor="grant-resource">On</FieldLabel>
-            <NativeSelect
-              id="grant-resource"
-              className="w-full"
+            <FieldLabel htmlFor="grant-resources">On</FieldLabel>
+            <MultiSelect
+              id="grant-resources"
+              placeholder="Choose what"
+              groups={capabilities.map((c) => ({
+                label: c.label,
+                options: c.resources.map((r) => ({ value: r.resource, label: r.label })),
+              }))}
               value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
+              onChange={field.handleChange}
               aria-invalid={field.state.meta.errors.length > 0}
-              aria-describedby="grant-resource-error"
-            >
-              <NativeSelectOption value="">Choose what</NativeSelectOption>
-              {capabilities.map((c) => (
-                <NativeSelectOptGroup key={c.capability} label={c.label}>
-                  {c.resources.map((r) => (
-                    <NativeSelectOption key={r.resource} value={r.resource}>
-                      {r.label}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelectOptGroup>
-              ))}
-            </NativeSelect>
-            <FieldError id="grant-resource-error" errors={errorsOf(field.state.meta.errors)} />
+              aria-describedby="grant-resources-error"
+            />
+            <FieldError id="grant-resources-error" errors={errorsOf(field.state.meta.errors)} />
           </Field>
         )}
       </form.Field>
-      <form.Subscribe selector={(state) => state.values.resource}>
-        {(kind) => {
-          const resource = resourceOf(kind);
+      <form.Subscribe selector={(state) => state.values.resources}>
+        {(kinds) => {
+          const { actions, scopes } = offered(kinds);
           return (
             <>
-              <form.Field name="action">
+              <form.Field name="actions">
                 {(field) => (
                   <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-action">Can</FieldLabel>
-                    <NativeSelect
-                      id="grant-action"
-                      className="w-full"
-                      disabled={!resource}
+                    <FieldLabel htmlFor="grant-actions">Can</FieldLabel>
+                    <MultiSelect
+                      id="grant-actions"
+                      placeholder="Choose actions"
+                      disabled={kinds.length === 0}
+                      groups={[{ options: actions }]}
                       value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
+                      onChange={field.handleChange}
                       aria-invalid={field.state.meta.errors.length > 0}
-                      aria-describedby="grant-action-error"
-                    >
-                      <NativeSelectOption value="">Choose an action</NativeSelectOption>
-                      {resource?.actions.map((a) => (
-                        <NativeSelectOption key={a.name} value={a.name}>
-                          {a.label}
-                          {a.reachable ? "" : " (no one can yet)"}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                      aria-describedby="grant-actions-error"
+                    />
                     <FieldError
-                      id="grant-action-error"
+                      id="grant-actions-error"
                       errors={errorsOf(field.state.meta.errors)}
                     />
                   </Field>
                 )}
               </form.Field>
-              <form.Field name="scope">
+              <form.Field name="scopes">
                 {(field) => (
                   <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-scope">Which</FieldLabel>
-                    <NativeSelect
-                      id="grant-scope"
-                      className="w-full"
-                      disabled={!resource}
+                    <FieldLabel htmlFor="grant-scopes">Which</FieldLabel>
+                    <MultiSelect
+                      id="grant-scopes"
+                      placeholder="Choose which"
+                      disabled={kinds.length === 0}
+                      groups={[{ options: scopes }]}
                       value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
+                      onChange={field.handleChange}
                       aria-invalid={field.state.meta.errors.length > 0}
-                      aria-describedby="grant-scope-error"
-                    >
-                      {(resource?.scopes ?? [{ name: "any", label: "Any" }]).map((scope) => (
-                        <NativeSelectOption key={scope.name} value={scope.name}>
-                          {scope.label}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
-                    <FieldError id="grant-scope-error" errors={errorsOf(field.state.meta.errors)} />
+                      aria-describedby="grant-scopes-error"
+                    />
+                    <FieldError
+                      id="grant-scopes-error"
+                      errors={errorsOf(field.state.meta.errors)}
+                    />
                   </Field>
                 )}
               </form.Field>
@@ -215,11 +247,16 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
         <form.Subscribe
           selector={(state) =>
-            [state.isSubmitting, state.values.role, state.values.action] as const
+            [
+              state.isSubmitting,
+              state.values.role,
+              state.values.actions.length,
+              state.values.scopes.length,
+            ] as const
           }
         >
-          {([isSubmitting, role, action]) => (
-            <Button type="submit" disabled={isSubmitting || !role || !action}>
+          {([isSubmitting, role, actions, scopes]) => (
+            <Button type="submit" disabled={isSubmitting || !role || !actions || !scopes}>
               Grant
             </Button>
           )}

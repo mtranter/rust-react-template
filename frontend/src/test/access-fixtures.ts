@@ -18,6 +18,14 @@ import type {
 import { everyAreasNeeds, holding } from "@/test/may-use-everything";
 import { http, HttpResponse } from "msw";
 
+/** A bulk grant's body, as `grant_access_in_bulk` takes it. */
+export type BulkGrantBody = {
+  role: string;
+  resources: string[];
+  actions: string[];
+  scopes: string[];
+};
+
 /** What an admin may do: every Area, and every change `access` offers. */
 export const adminPermissions = [
   ...everyAreasNeeds,
@@ -140,7 +148,8 @@ const forbidden = () => HttpResponse.json(refusal("forbidden", "forbidden"), { s
  * `subjects`, searched by part of their subject, name or email, assigned roles that exist unless
  * held already (an unseen subject added), and unassigned with `If-Match` unless it's a bootstrap
  * admin's `admin`. `requests` records each grant and subject list's query and `ifMatches` each
- * revocation's, deletion's and unassignment's `If-Match`.
+ * revocation's, deletion's and unassignment's `If-Match`. A bulk grant makes every pairing the
+ * catalog has, skipping those made already, and `bulkGrants` records each body.
  */
 export function accessApi(
   items: GrantResponse[],
@@ -149,6 +158,7 @@ export function accessApi(
 ) {
   const requests: URLSearchParams[] = [];
   const ifMatches: (string | null)[] = [];
+  const bulkGrants: BulkGrantBody[] = [];
   const handlers = [
     holding(adminPermissions),
     http.get("*/api/access/catalog", () => HttpResponse.json(catalog)),
@@ -204,6 +214,45 @@ export function accessApi(
       const made = grant(items.length + 100, { ...body, scope, grantedBy: "an-admin" });
       items.push(made);
       return HttpResponse.json(made, { headers: { ETag: `"${made.version}"` } });
+    }),
+    http.post("*/api/access/grants/bulk", async ({ request }) => {
+      const body = (await request.json()) as BulkGrantBody;
+      bulkGrants.push(body);
+      if (!roles.some((r) => r.name === body.role)) {
+        return HttpResponse.json(refusal("validation_error", "no such role", "role"), {
+          status: 400,
+        });
+      }
+      const known = catalog.capabilities.flatMap((c) => c.resources);
+      const granted: GrantResponse[] = [];
+      const skipped: { resource: string; action: string; scope: string }[] = [];
+      for (const resource of known.filter((r) => body.resources.includes(r.resource))) {
+        for (const action of resource.actions.filter((a) => body.actions.includes(a.name))) {
+          for (const scope of resource.scopes.filter((s) => body.scopes.includes(s.name))) {
+            const triple = { resource: resource.resource, action: action.name, scope: scope.name };
+            if (
+              items.some(
+                (g) =>
+                  g.role === body.role &&
+                  g.resource === triple.resource &&
+                  g.action === triple.action &&
+                  g.scope === triple.scope,
+              )
+            ) {
+              skipped.push(triple);
+              continue;
+            }
+            const made = grant(items.length + 100, {
+              role: body.role,
+              ...triple,
+              grantedBy: "an-admin",
+            });
+            items.push(made);
+            granted.push(made);
+          }
+        }
+      }
+      return HttpResponse.json({ granted, skipped });
     }),
     http.delete("*/api/access/grants/:id", ({ params, request }) => {
       const index = items.findIndex((g) => g.id === params.id);
@@ -331,7 +380,7 @@ export function accessApi(
       return new HttpResponse(null, { status: 204 });
     }),
   ];
-  return { handlers, requests, ifMatches };
+  return { handlers, requests, ifMatches, bulkGrants };
 }
 
 const accessResources = ["subject", "role", "grant", "assignment", "invitation"];
