@@ -53,7 +53,7 @@ export function AccessRolesPage() {
 export function AccessInvitationsPage() {
   const { status } = invitationsRoute.useSearch();
   const navigate = invitationsRoute.useNavigate();
-  const invites = usePermitted("invitation", "create");
+  const invites = usePermitted("invitation", "invite");
 
   return (
     <Page

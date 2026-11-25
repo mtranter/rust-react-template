@@ -27,7 +27,7 @@ export const adminPermissions = [
   { resource: "grant", action: "revoke" },
   { resource: "role", action: "create" },
   { resource: "role", action: "delete" },
-  { resource: "invitation", action: "create" },
+  { resource: "invitation", action: "invite" },
 ];
 
 export const catalog: CatalogResponse = {

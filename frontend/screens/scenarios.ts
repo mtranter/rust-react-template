@@ -299,7 +299,7 @@ const accessApi = [
         ["grant", "create"],
         ["assignment", "assign"],
         ["invitation", "list"],
-        ["invitation", "create"],
+        ["invitation", "invite"],
       ].map(([resource, action]) => ({ resource, action })),
     }),
   ),

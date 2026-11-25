@@ -23,3 +23,10 @@ labels:
       label: Users
       actions:
         list: View
+    - resource: invitation
+      label: Invitations
+      actions:
+        list: View
+        invite: Invite
+        resend: Resend
+        revoke: Revoke

@@ -110,7 +110,7 @@ async fn the_catalog_groups_resources_by_capability_in_the_order_modules_are_reg
             (
                 "access",
                 "Access",
-                vec!["grant", "role", "assignment", "subject"]
+                vec!["grant", "role", "assignment", "subject", "invitation"]
             ),
             ("workshop", "Workshop", vec!["gadget"]),
         ]
