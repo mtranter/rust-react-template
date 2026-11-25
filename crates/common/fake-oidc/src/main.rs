@@ -1,6 +1,8 @@
-//! `fake-oidc --client-id <id> --subject <sub> --name <name> --email <email> [--port <port>]`:
+//! `fake-oidc --client-id <id> --subject <sub> --name <name> --email <email> [--port <port>]
+//! [--registration open|token]`:
 //! serves the provider on 127.0.0.1, port 0 picking a free one, and prints its
-//! issuer as its first line of output once it is listening.
+//! issuer as its first line of output once it is listening. `--registration token`
+//! makes `/oauth2/register` require a bearer token with `aws.cognito/dcr/register`.
 
 use app_fake_oidc::{Provider, Subject};
 use poem::{
@@ -32,6 +34,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         email: arg("email")?,
     };
     let port = arg("port").unwrap_or_else(|_| "0".to_string());
+    let require_token = match arg("registration").as_deref() {
+        Err(_) | Ok("open") => false,
+        Ok("token") => true,
+        Ok(other) => {
+            return Err(format!("--registration is `open` or `token`, not `{other}`").into());
+        }
+    };
 
     let acceptor = TcpListener::bind(format!("127.0.0.1:{port}"))
         .into_acceptor()
@@ -41,7 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .find_map(|addr| addr.as_socket_addr().copied())
         .ok_or("no local address")?;
-    let provider = Arc::new(Provider::new(format!("http://{addr}"), client_id, subject));
+    let provider = Arc::new(
+        Provider::new(format!("http://{addr}"), client_id, subject)
+            .require_registration_token(require_token),
+    );
     println!("{}", provider.issuer());
     std::io::stdout().flush()?;
     Server::new_with_acceptor(acceptor)
