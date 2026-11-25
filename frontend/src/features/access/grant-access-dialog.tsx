@@ -66,12 +66,23 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   });
 
   /**
-   * The actions the chosen resources have, grouped by resource, each option `resource/action`
-   * so the same action can be chosen on one resource and not another; and the scopes they offer
-   * between them, each named once.
+   * Every resource's actions, grouped by resource (and its capability), each option
+   * `resource/action` so the same action can be chosen on one resource and not another.
    */
-  const offered = (kinds: string[]) => {
-    const chosen = resources.filter((r) => kinds.includes(r.resource));
+  const actionGroups = capabilities.flatMap((c) =>
+    c.resources.map((r) => ({
+      label: capabilities.length > 1 ? `${c.label} · ${r.label}` : r.label,
+      options: r.actions.map((a) => ({
+        value: `${r.resource}/${a.name}`,
+        label: a.reachable ? a.label : `${a.label} (no one can yet)`,
+      })),
+    })),
+  );
+
+  /** The scopes the resources of the chosen actions offer between them, each named once. */
+  const scopesFor = (actions: string[]) => {
+    const kinds = new Set(actions.map((a) => a.split("/")[0]));
+    const chosen = resources.filter((r) => kinds.has(r.resource));
     const scopes = new Map<string, { label: string; on: string[] }>([
       ["any", { label: "Any", on: [] }],
     ]);
@@ -83,20 +94,11 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         scopes.set(s.name, seen);
       }
     }
-    return {
-      actionGroups: chosen.map((r) => ({
-        label: r.label,
-        options: r.actions.map((a) => ({
-          value: `${r.resource}/${a.name}`,
-          label: a.reachable ? a.label : `${a.label} (no one can yet)`,
-        })),
-      })),
-      // A scope is named per resource (`owner` on notes and on conversations), so say on which.
-      scopes: [...scopes].map(([value, s]) => ({
-        value,
-        label: s.on.length > 0 ? `${s.label} (${s.on.join(", ")})` : s.label,
-      })),
-    };
+    // A scope is named per resource (`owner` on notes and on conversations), so say on which.
+    return [...scopes].map(([value, s]) => ({
+      value,
+      label: s.on.length > 0 ? `${s.label} (${s.on.join(", ")})` : s.label,
+    }));
   };
 
   /**
@@ -141,7 +143,6 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
   const form = useForm({
     defaultValues: {
       role: "",
-      resources: [] as string[],
       actions: [] as string[],
       scopes: ["any"] as string[],
     },
@@ -156,7 +157,13 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
             ...(skipped > 0 && { description: `${skipped} already granted` }),
           });
         } catch (error) {
-          return submitErrors(error);
+          // Resources are chosen through their actions, so a refusal of them is shown there.
+          const { form, fields } = submitErrors(error);
+          const { resources, ...rest } = fields;
+          return {
+            form,
+            fields: resources ? { ...rest, actions: rest.actions ?? resources } : rest,
+          };
         }
       },
     },
@@ -195,91 +202,53 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         )}
       </form.Field>
       <form.Field
-        name="resources"
+        name="actions"
         listeners={{
           onChange: ({ value, fieldApi }) => {
-            const still = offered(value);
-            const keep = (chosen: string[], options: { value: string }[]) =>
-              chosen.filter((c) => options.some((o) => o.value === c));
-            fieldApi.form.setFieldValue("actions", (a) =>
-              keep(
-                a,
-                still.actionGroups.flatMap((g) => g.options),
-              ),
+            const still = scopesFor(value);
+            fieldApi.form.setFieldValue("scopes", (s) =>
+              s.filter((c) => still.some((o) => o.value === c)),
             );
-            fieldApi.form.setFieldValue("scopes", (s) => keep(s, still.scopes));
           },
         }}
       >
         {(field) => (
           <Field data-invalid={field.state.meta.errors.length > 0}>
-            <FieldLabel htmlFor="grant-resources">On</FieldLabel>
+            <FieldLabel htmlFor="grant-actions">Can</FieldLabel>
             <MultiSelect
-              id="grant-resources"
-              placeholder="Choose what"
-              groups={capabilities.map((c) => ({
-                label: c.label,
-                options: c.resources.map((r) => ({ value: r.resource, label: r.label })),
-              }))}
+              id="grant-actions"
+              placeholder="Choose actions"
+              groups={actionGroups}
               value={field.state.value}
               onChange={field.handleChange}
               aria-invalid={field.state.meta.errors.length > 0}
-              aria-describedby="grant-resources-error"
+              aria-describedby="grant-actions-error"
             />
-            <FieldError id="grant-resources-error" errors={errorsOf(field.state.meta.errors)} />
+            <FieldError id="grant-actions-error" errors={errorsOf(field.state.meta.errors)} />
           </Field>
         )}
       </form.Field>
-      <form.Subscribe selector={(state) => state.values.resources}>
-        {(kinds) => {
-          const { actionGroups, scopes } = offered(kinds);
-          return (
-            <>
-              <form.Field name="actions">
-                {(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-actions">Can</FieldLabel>
-                    <MultiSelect
-                      id="grant-actions"
-                      placeholder="Choose actions"
-                      disabled={kinds.length === 0}
-                      groups={actionGroups}
-                      value={field.state.value}
-                      onChange={field.handleChange}
-                      aria-invalid={field.state.meta.errors.length > 0}
-                      aria-describedby="grant-actions-error"
-                    />
-                    <FieldError
-                      id="grant-actions-error"
-                      errors={errorsOf(field.state.meta.errors)}
-                    />
-                  </Field>
-                )}
-              </form.Field>
-              <form.Field name="scopes">
-                {(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="grant-scopes">Which</FieldLabel>
-                    <MultiSelect
-                      id="grant-scopes"
-                      placeholder="Choose which"
-                      disabled={kinds.length === 0}
-                      groups={[{ options: scopes }]}
-                      value={field.state.value}
-                      onChange={field.handleChange}
-                      aria-invalid={field.state.meta.errors.length > 0}
-                      aria-describedby="grant-scopes-error"
-                    />
-                    <FieldError
-                      id="grant-scopes-error"
-                      errors={errorsOf(field.state.meta.errors)}
-                    />
-                  </Field>
-                )}
-              </form.Field>
-            </>
-          );
-        }}
+      <form.Subscribe selector={(state) => state.values.actions}>
+        {(actions) => (
+          <form.Field name="scopes">
+            {(field) => (
+              <Field data-invalid={field.state.meta.errors.length > 0}>
+                <FieldLabel htmlFor="grant-scopes">Which</FieldLabel>
+                <MultiSelect
+                  id="grant-scopes"
+                  placeholder="Choose which"
+                  disabled={actions.length === 0}
+                  groups={[{ options: scopesFor(actions) }]}
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  aria-invalid={field.state.meta.errors.length > 0}
+                  aria-describedby="grant-scopes-error"
+                />
+                <FieldError id="grant-scopes-error" errors={errorsOf(field.state.meta.errors)} />
+              </Field>
+            )}
+          </form.Field>
+        )}
       </form.Subscribe>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>

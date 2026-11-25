@@ -19,7 +19,7 @@ type Props = {
 
 /**
  * Chooses any number of options, as checkboxes in a popover, with a "Select all" that is
- * indeterminate while some are chosen. The trigger, labelled by the caller's `<label htmlFor={id}>`,
+ * indeterminate while some are chosen, and likewise one per labelled group. The trigger, labelled by the caller's `<label htmlFor={id}>`,
  * sums up the choice ("3 selected").
  */
 export function MultiSelect({
@@ -71,23 +71,48 @@ export function MultiSelect({
             />
             Select all
           </label>
-          {groups.map((group, index) => (
-            <div key={group.label ?? index} className="grid gap-2">
-              {group.label && (
-                <div className="pt-1 text-xs text-muted-foreground">{group.label}</div>
-              )}
-              {group.options.map((option) => (
-                // biome-ignore lint/a11y/noLabelWithoutControl: the checkbox inside is the control
-                <label key={option.value} className="flex items-center gap-2">
-                  <Checkbox
-                    checked={value.includes(option.value)}
-                    onCheckedChange={(on) => toggle(option.value, on)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </div>
-          ))}
+          {groups.map((group, index) => {
+            const inGroup = group.options.map((o) => o.value);
+            const chosenInGroup = inGroup.filter((v) => value.includes(v));
+            const allInGroup = inGroup.length > 0 && chosenInGroup.length === inGroup.length;
+            return (
+              <div key={group.label ?? index} className="grid gap-2">
+                {group.label && (
+                  // A labelled group checks or unchecks all of its own options at once.
+                  // biome-ignore lint/a11y/noLabelWithoutControl: the checkbox inside is the control
+                  <label className="flex items-center gap-2 pt-1 text-xs font-medium text-muted-foreground">
+                    <Checkbox
+                      checked={allInGroup}
+                      indeterminate={chosenInGroup.length > 0 && !allInGroup}
+                      onCheckedChange={(on) =>
+                        onChange(
+                          on
+                            ? [...value, ...inGroup.filter((v) => !value.includes(v))]
+                            : value.filter((v) => !inGroup.includes(v)),
+                        )
+                      }
+                    />
+                    {group.label}
+                  </label>
+                )}
+                {group.options.map((option) => (
+                  // biome-ignore lint/a11y/noLabelWithoutControl: the checkbox inside is the control
+                  <label
+                    key={option.value}
+                    className={
+                      group.label ? "flex items-center gap-2 pl-6" : "flex items-center gap-2"
+                    }
+                  >
+                    <Checkbox
+                      checked={value.includes(option.value)}
+                      onCheckedChange={(on) => toggle(option.value, on)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            );
+          })}
         </fieldset>
       </PopoverContent>
     </Popover>

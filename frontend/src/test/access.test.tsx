@@ -159,15 +159,15 @@ async function choose(
   await waitFor(() => expect(screen.queryByRole("group", { name: /^Choose/ })).toBeNull());
 }
 
-test("grants a role several actions on several resources in several scopes at once", async () => {
+test("grants a role several actions in several scopes at once", async () => {
   const api = accessApi([grant(1)]);
   server.use(...api.handlers);
   renderAt("/access/permissions");
   const user = userEvent.setup();
   const dialog = await grantDialog(user);
 
-  await waitFor(() => expect(within(dialog).getByLabelText("On")).toBeEnabled());
-  await choose(user, dialog, "On", ["Gadgets"]);
+  expect(within(dialog).queryByLabelText("On")).not.toBeInTheDocument();
+  expect(within(dialog).getByLabelText("Which")).toBeDisabled();
   await choose(user, dialog, "Can", ["Make", "View"]);
   await choose(user, dialog, "Which", ["Gadgets they made (Gadgets)"]);
   expect(within(dialog).getByLabelText("Can")).toHaveTextContent("2 selected");
@@ -185,40 +185,76 @@ test("grants a role several actions on several resources in several scopes at on
   expect(await within(table).findAllByText("Gadgets they made")).toHaveLength(2);
 });
 
-test("offers each chosen resource's actions under its name, and drops the rest", async () => {
+test("offers every resource's actions under its name, and only their scopes", async () => {
   server.use(...accessApi([]).handlers);
   renderAt("/access/permissions");
   const user = userEvent.setup();
   const dialog = await grantDialog(user);
 
-  expect(within(dialog).getByLabelText("Can")).toBeDisabled();
-  await choose(user, dialog, "On", ["Widgets", "Gadgets"]);
   await user.click(within(dialog).getByLabelText("Can"));
   const actions = await screen.findByRole("group", { name: "Choose actions" });
   expect(
     within(actions)
       .getAllByRole("checkbox")
       .map((c) => c.closest("label")?.textContent),
-  ).toEqual(["Select all", "Build", "Make", "View", "Scrap (no one can yet)"]);
-  expect(within(actions).getByText("Widgets")).toBeInTheDocument();
-  expect(within(actions).getByText("Gadgets")).toBeInTheDocument();
+  ).toEqual([
+    "Select all",
+    "Widgets",
+    "Build",
+    "Gadgets",
+    "Make",
+    "View",
+    "Scrap (no one can yet)",
+  ]);
   const all = within(actions).getByRole("checkbox", { name: "Select all" });
   await user.click(within(actions).getByRole("checkbox", { name: "Build" }));
   expect(all).toHaveAttribute("aria-checked", "mixed");
-  await user.click(all);
-  expect(all).toHaveAttribute("aria-checked", "true");
   await user.keyboard("{Escape}");
-  expect(within(dialog).getByLabelText("Can")).toHaveTextContent("4 selected");
 
-  await choose(user, dialog, "On", ["Gadgets"]);
-  expect(within(dialog).getByLabelText("Can")).toHaveTextContent("Build");
+  await user.click(within(dialog).getByLabelText("Which"));
+  const widgetScopes = await screen.findByRole("group", { name: "Choose which" });
+  expect(within(widgetScopes).getAllByRole("checkbox")).toHaveLength(2);
+  await user.keyboard("{Escape}");
+
+  await choose(user, dialog, "Can", ["Make"]);
   await user.click(within(dialog).getByLabelText("Which"));
   const scopes = await screen.findByRole("group", { name: "Choose which" });
-  expect(within(scopes).getAllByRole("checkbox")).toHaveLength(2);
-  expect(within(scopes).getByRole("checkbox", { name: "Any" })).toHaveAttribute(
+  expect(
+    within(scopes).getByRole("checkbox", { name: "Gadgets they made (Gadgets)" }),
+  ).toBeVisible();
+  await user.click(within(scopes).getByRole("checkbox", { name: "Gadgets they made (Gadgets)" }));
+  await user.keyboard("{Escape}");
+
+  await choose(user, dialog, "Can", ["Make"]);
+  expect(within(dialog).getByLabelText("Which")).toHaveTextContent("Any");
+});
+
+test("checks every action of one resource at once from its heading", async () => {
+  const api = accessApi([]);
+  server.use(...api.handlers);
+  renderAt("/access/permissions");
+  const user = userEvent.setup();
+  const dialog = await grantDialog(user);
+
+  await user.click(within(dialog).getByLabelText("Can"));
+  const actions = await screen.findByRole("group", { name: "Choose actions" });
+  const gadgets = within(actions).getByRole("checkbox", { name: /Gadgets/ });
+  await user.click(within(actions).getByRole("checkbox", { name: "Make" }));
+  expect(gadgets).toHaveAttribute("aria-checked", "mixed");
+  await user.click(gadgets);
+  expect(gadgets).toHaveAttribute("aria-checked", "true");
+  expect(within(actions).getByRole("checkbox", { name: "Build" })).toHaveAttribute(
     "aria-checked",
-    "true",
+    "false",
   );
+  await user.keyboard("{Escape}");
+  await user.click(within(dialog).getByRole("button", { name: "Grant" }));
+
+  await waitFor(() => expect(api.bulkGrants).toHaveLength(1));
+  expect(api.bulkGrants[0]).toMatchObject({
+    resources: ["gadget"],
+    actions: ["make", "view", "scrap"],
+  });
 });
 
 test("grants each resource only the actions chosen under it", async () => {
@@ -228,7 +264,6 @@ test("grants each resource only the actions chosen under it", async () => {
   const user = userEvent.setup();
   const dialog = await grantDialog(user);
 
-  await choose(user, dialog, "On", ["Widgets", "Gadgets"]);
   await choose(user, dialog, "Can", ["Build", "View"]);
   await user.click(within(dialog).getByRole("button", { name: "Grant" }));
 
@@ -245,7 +280,6 @@ test("says how many of a bulk grant were made already", async () => {
   const user = userEvent.setup();
   const dialog = await grantDialog(user, "admin");
 
-  await choose(user, dialog, "On", ["Select all"]);
   await choose(user, dialog, "Can", ["Make", "Build"]);
   await user.click(within(dialog).getByRole("button", { name: "Grant" }));
 
@@ -253,15 +287,15 @@ test("says how many of a bulk grant were made already", async () => {
   expect(screen.getByText("1 already granted")).toBeInTheDocument();
 });
 
-test("shows a refused bulk grant's error beside the control at fault", async () => {
-  const message = "`fly` is not an action of `gadget`";
+test("shows a refused bulk grant's error beside Can, resources' included", async () => {
+  const message = "no resource is named gadget";
   server.use(
     http.post("*/api/access/grants/bulk", () =>
       HttpResponse.json(
         {
           code: "validation_error",
           message,
-          fields: [{ path: "actions", message }],
+          fields: [{ path: "resources", message }],
           requestId: "test",
         },
         { status: 400 },
@@ -273,7 +307,6 @@ test("shows a refused bulk grant's error beside the control at fault", async () 
   const user = userEvent.setup();
   const dialog = await grantDialog(user);
 
-  await choose(user, dialog, "On", ["Gadgets"]);
   await choose(user, dialog, "Can", ["Make"]);
   await user.click(within(dialog).getByRole("button", { name: "Grant" }));
 
