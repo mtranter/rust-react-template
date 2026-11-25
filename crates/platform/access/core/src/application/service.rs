@@ -6,7 +6,7 @@ use super::{
     Listed, RoleRepository, SubjectRepository, Transactions, Version, Versioned,
 };
 use crate::domain::{
-    CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role,
+    CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role, Scope,
 };
 use app_authz::{Authorizer, Plan, Policies, Principal, check_grant};
 use app_domain::Clock;
@@ -338,5 +338,173 @@ impl AccessService {
             tx.commit().await?;
         }
         Ok(granted)
+    }
+}
+
+/// Most grants one bulk grant may make, so one request can't hold the revision's row for long.
+pub const MAX_BULK_GRANTS: usize = 500;
+
+/// A role granted, in one unit of work, every action of `actions` on every resource of
+/// `resources` that the resource has, within every scope of `scopes` it offers.
+#[derive(Debug, Clone)]
+pub struct GrantInBulk {
+    pub role: String,
+    pub resources: Vec<String>,
+    pub actions: Vec<String>,
+    pub scopes: Vec<Scope>,
+}
+
+/// What a bulk grant made, and the grants it skipped as equal to ones made before.
+#[derive(Debug, Clone)]
+pub struct GrantedInBulk {
+    pub granted: Vec<Versioned<Grant>>,
+    pub skipped: Vec<app_authz::Grant>,
+}
+
+impl AccessService {
+    /// Expands the command into one grant per resource, action it has and scope it offers
+    /// (combinations a resource lacks aren't attempted), and makes those not made before in one
+    /// transaction, announcing each and bumping the revision once. Invalid on `role` when no role
+    /// has that name, on `resources` when one isn't in the catalog or there are more than
+    /// [`MAX_BULK_GRANTS`], on `actions` or `scopes` when one is in no resource given, and on
+    /// `actions` when nothing results.
+    pub async fn grant_in_bulk(
+        &self,
+        principal: &Principal,
+        cmd: GrantInBulk,
+    ) -> AppResult<GrantedInBulk> {
+        self.authorize(principal, GrantAction::Create)?;
+        let rule_set = self.authorizer.current();
+        let catalog: Vec<_> = self
+            .modules
+            .policies
+            .iter()
+            .flat_map(|p| p.catalog(&rule_set).resources)
+            .collect();
+        if cmd.resources.is_empty() {
+            return Err(AppError::invalid_field(
+                "resources",
+                "name at least one resource",
+            ));
+        }
+        if cmd.actions.is_empty() {
+            return Err(AppError::invalid_field(
+                "actions",
+                "name at least one action",
+            ));
+        }
+        if cmd.scopes.is_empty() {
+            return Err(AppError::invalid_field("scopes", "name at least one scope"));
+        }
+        let mut seen = HashSet::new();
+        let mut resources = Vec::new();
+        for name in &cmd.resources {
+            let resource = catalog.iter().find(|r| &r.kind == name).ok_or_else(|| {
+                AppError::invalid_field("resources", format!("no resource is named {name}"))
+            })?;
+            if seen.insert(name) {
+                resources.push(resource);
+            }
+        }
+        let has_action =
+            |r: &app_authz::CatalogResource, a: &str| r.actions.iter().any(|x| x.name == a);
+        let offers = |r: &app_authz::CatalogResource, s: &Scope| {
+            r.scopes.iter().any(|x| x.name == scope_name(s))
+        };
+        if let Some(action) = cmd
+            .actions
+            .iter()
+            .find(|a| !resources.iter().any(|r| has_action(r, a)))
+        {
+            return Err(AppError::invalid_field(
+                "actions",
+                format!("no resource given has the action {action}"),
+            ));
+        }
+        if let Some(scope) = cmd
+            .scopes
+            .iter()
+            .find(|s| !resources.iter().any(|r| offers(r, s)))
+        {
+            return Err(AppError::invalid_field(
+                "scopes",
+                format!("no resource given offers the scope {}", scope_name(scope)),
+            ));
+        }
+        let now = self.clock.now();
+        let by = acting(principal);
+        let mut grants = Vec::new();
+        let mut planned = HashSet::new();
+        for resource in &resources {
+            for action in cmd.actions.iter().filter(|a| has_action(resource, a)) {
+                for scope in cmd.scopes.iter().filter(|s| offers(resource, s)) {
+                    let (grant, event) = Grant::make(
+                        GrantId::new(),
+                        GrantAccess {
+                            role: cmd.role.clone(),
+                            resource: resource.kind.clone(),
+                            action: action.clone(),
+                            scope: scope.clone(),
+                        },
+                        by.clone(),
+                        now,
+                    )?;
+                    if planned.insert(grant.rule().clone()) {
+                        grants.push((grant, event));
+                    }
+                }
+            }
+        }
+        if grants.is_empty() {
+            return Err(AppError::invalid_field(
+                "actions",
+                "no resource given has any of the actions given",
+            ));
+        }
+        if grants.len() > MAX_BULK_GRANTS {
+            return Err(AppError::invalid_field(
+                "resources",
+                format!(
+                    "that is {} grants, more than {MAX_BULK_GRANTS} at once: grant fewer",
+                    grants.len()
+                ),
+            ));
+        }
+        for (grant, _) in &grants {
+            check_grant(&self.modules.policies, grant.rule()).map_err(refused)?;
+        }
+        let mut tx = self.transactions.begin().await?;
+        // Taken first, so a bulk grant and another change to grants commit one at a time.
+        self.repo.bump_revision(&mut tx).await?;
+        let role = grants[0].0.role().to_owned();
+        if !self.roles.exists(&mut tx, &role).await? {
+            return Err(AppError::invalid_field(
+                "role",
+                "no role has that name: create it first",
+            ));
+        }
+        let mut done = GrantedInBulk {
+            granted: Vec::new(),
+            skipped: Vec::new(),
+        };
+        for (grant, event) in grants {
+            if self.repo.exists(&mut tx, grant.rule()).await? {
+                done.skipped.push(grant.rule().clone());
+                continue;
+            }
+            let version = self.repo.insert(&mut tx, &grant).await?;
+            self.publisher
+                .publish(&mut tx, events::pending(&grant, version, event))
+                .await?;
+            done.granted.push(Versioned {
+                entity: grant,
+                version,
+            });
+        }
+        // Nothing new leaves the revision where it was, so no instance rebuilds for nothing.
+        if !done.granted.is_empty() {
+            tx.commit().await?;
+        }
+        Ok(done)
     }
 }

@@ -82,7 +82,7 @@ git diff --quiet "$template" HEAD -- docs/platform || fail "\`make init\` change
 # The platform's `access` and `assistant` stay registered: their operations are
 # the only ones, and access' the only MCP tools (the assistant's are REST-only).
 # composed_app.rs, which `init`'s `make check` ran, fails on a tool not in its TOOLS.
-access_ops='["assign_role","create_role","delete_role","get_access_catalog","grant_access","invite_user","list_grants","list_invitations","list_roles","list_subjects","resend_invitation","revoke_grant","revoke_invitation","unassign_role"]'
+access_ops='["assign_role","create_role","delete_role","get_access_catalog","grant_access","grant_access_in_bulk","invite_user","list_grants","list_invitations","list_roles","list_subjects","resend_invitation","revoke_grant","revoke_invitation","unassign_role"]'
 platform_ops=$(jq -c '. + ["decide_tool_call","get_my_permissions","delete_conversation","get_assistant_status","get_conversation","list_conversations","send_message","start_conversation"] | sort' <<<"$access_ops")
 jq -e --argjson ops "$platform_ops" '[.paths[][].operationId] | sort == $ops' frontend/openapi.json >/dev/null ||
   fail "the app's spec has operations other than the platform's: $(jq -c '[.paths[][].operationId]' frontend/openapi.json)"

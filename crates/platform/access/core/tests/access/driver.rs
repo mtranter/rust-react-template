@@ -80,6 +80,31 @@ impl GrantJson {
     }
 }
 
+json_newtype!(pub BulkGrantJson);
+
+impl BulkGrantJson {
+    /// The grants made, each `(role, resource, action, scope)`.
+    pub fn granted(&self) -> Vec<(String, String, String, String)> {
+        self["granted"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| GrantJson(g.clone()).rule())
+            .collect()
+    }
+
+    /// The grants skipped, each `(resource, action, scope)`.
+    pub fn skipped(&self) -> Vec<(String, String, String)> {
+        let field = |g: &serde_json::Value, name: &str| g[name].as_str().unwrap().to_owned();
+        self["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| (field(g, "resource"), field(g, "action"), field(g, "scope")))
+            .collect()
+    }
+}
+
 json_newtype!(pub CatalogJson);
 
 impl CatalogJson {
@@ -562,6 +587,26 @@ impl Access {
     ) -> Outcome<GrantJson> {
         self.signed(self.api.post("/api/access/grants"))
             .json(&json!({ "role": role, "resource": resource, "action": action, "scope": scope }))
+            .send()
+            .await
+    }
+
+    /// `role` granted every action of `actions` each resource of `resources` has, within each
+    /// scope of `scopes` it offers.
+    pub async fn grant_in_bulk(
+        &self,
+        role: &str,
+        resources: &[&str],
+        actions: &[&str],
+        scopes: &[&str],
+    ) -> Outcome<BulkGrantJson> {
+        self.signed(self.api.post("/api/access/grants/bulk"))
+            .json(&json!({
+                "role": role,
+                "resources": resources,
+                "actions": actions,
+                "scopes": scopes,
+            }))
             .send()
             .await
     }

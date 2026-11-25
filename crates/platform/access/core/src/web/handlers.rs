@@ -1,9 +1,12 @@
 use super::models::{
-    AssignmentRequest, AssignmentResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
-    InvitationRequest, InvitationResponse, InvitationSort, InvitationStatusParam,
-    PermissionsResponse, RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
+    AssignmentRequest, AssignmentResponse, BulkGrantRequest, BulkGrantResponse, CatalogResponse,
+    GrantRequest, GrantResponse, GrantSort, InvitationRequest, InvitationResponse, InvitationSort,
+    InvitationStatusParam, PermissionsResponse, RoleRequest, RoleResponse, RoleSort,
+    SubjectResponse, SubjectSort,
 };
-use crate::application::{AccessService, GrantFilter, InvitationFilter, SubjectFilter, Versioned};
+use crate::application::{
+    AccessService, GrantFilter, GrantInBulk, InvitationFilter, SubjectFilter, Versioned,
+};
 use crate::domain::{
     AssignRole, CreateRole, Grant, GrantAccess, GrantId, InvitationId, InviteUser,
 };
@@ -127,6 +130,46 @@ impl AccessEndpoints {
             )
             .await?;
         Ok(tagged(grant))
+    }
+
+    /// Grant a role, at once, every action of `actions` on every resource of `resources` that the
+    /// resource has, within every scope of `scopes` (`["any"]` unless given) that it offers: a
+    /// combination a resource lacks isn't attempted. Grants equal to ones made before are
+    /// listed in `skipped`, the rest made in one unit of work, each announced, taking effect on
+    /// every server instance within 5 seconds. `400` names the field at fault when the role
+    /// doesn't exist, a resource isn't in the catalog, an action or scope is in no resource
+    /// given, nothing would be granted, or more than 500 grants would be. `403` unless the caller is an `admin`, or holds a role granted it.
+    #[oai(
+        path = "/grants/bulk",
+        method = "post",
+        operation_id = "grant_access_in_bulk"
+    )]
+    async fn grant_in_bulk(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        body: Json<BulkGrantRequest>,
+    ) -> ApiResult<Json<BulkGrantResponse>> {
+        let scopes = body.0.scopes();
+        let BulkGrantRequest {
+            role,
+            resources,
+            actions,
+            ..
+        } = body.0;
+        let done = access
+            .0
+            .grant_in_bulk(
+                &caller,
+                GrantInBulk {
+                    role,
+                    resources,
+                    actions,
+                    scopes,
+                },
+            )
+            .await?;
+        Ok(Json(done.into()))
     }
 
     /// Revoke a grant, taking effect on every server instance within 5 seconds. Requires

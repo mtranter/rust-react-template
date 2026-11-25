@@ -162,6 +162,7 @@ fn with_params(path: &str) -> String {
 const TOOLS: &[&str] = &[
     "list_grants",
     "grant_access",
+    "grant_access_in_bulk",
     "revoke_grant",
     "get_access_catalog",
     "list_roles",

@@ -5,6 +5,7 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("list_grants", "grant", "list"),
     Performs::new("get_access_catalog", "grant", "list"),
     Performs::new("grant_access", "grant", "create"),
+    Performs::new("grant_access_in_bulk", "grant", "create"),
     Performs::new("revoke_grant", "grant", "revoke"),
     Performs::new("list_roles", "role", "list"),
     Performs::new("create_role", "role", "create"),

@@ -27,5 +27,7 @@ pub use repository::{
     SubjectRepository, SubjectSortKey,
 };
 pub use rules::{POLL_EVERY, Rules};
-pub use service::{AccessService, Listing, Modules, Operation, Permission};
+pub use service::{
+    AccessService, GrantInBulk, GrantedInBulk, Listing, Modules, Operation, Permission,
+};
 pub use subjects::{HeldRole, SignIns, SubjectListing};

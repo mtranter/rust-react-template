@@ -10,6 +10,7 @@ mod behaviours {
     mod catalog;
     mod defaults;
     mod granting;
+    mod granting_in_bulk;
     mod inviting;
     mod listing;
     mod permissions;

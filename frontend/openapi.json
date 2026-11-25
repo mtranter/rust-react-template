@@ -386,6 +386,165 @@
         "operationId": "grant_access"
       }
     },
+    "/access/grants/bulk": {
+      "post": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Grant a role, at once, every action of `actions` on every resource of `resources` that the\nresource has, within every scope of `scopes` (`[\"any\"]` unless given) that it offers: a\ncombination a resource lacks isn't attempted. Grants equal to ones made before are\nlisted in `skipped`, the rest made in one unit of work, each announced, taking effect on\nevery server instance within 5 seconds. `400` names the field at fault when the role\ndoesn't exist, a resource isn't in the catalog, an action or scope is in no resource\ngiven, nothing would be granted, or more than 500 grants would be. `403` unless the caller is an `admin`, or holds a role granted it.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkGrantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "grant_access_in_bulk"
+      }
+    },
     "/access/grants/{id}": {
       "delete": {
         "tags": [
@@ -6033,6 +6192,89 @@
           "on": {
             "type": "boolean",
             "description": "Whether this app has a model to chat with. Off, there is no assistant to talk to."
+          }
+        }
+      },
+      "BulkGrantRequest": {
+        "type": "object",
+        "title": "BulkGrantRequest",
+        "description": "A role granted, at once, every action of `actions` on every resource of `resources` that the\nresource has, within every scope of `scopes` that it offers (`any` always is). A combination a\nresource lacks isn't attempted, so actions and scopes may be chosen across resources.",
+        "required": [
+          "role",
+          "resources",
+          "actions"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "resources": {
+            "type": "array",
+            "description": "Resources of the catalog.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "description": "Each one some resource given has.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scopes": {
+            "type": "array",
+            "description": "Each `any` or one some resource given offers; `[\"any\"]` unless given.",
+            "default": [
+              "any"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BulkGrantResponse": {
+        "type": "object",
+        "title": "BulkGrantResponse",
+        "required": [
+          "granted",
+          "skipped"
+        ],
+        "properties": {
+          "granted": {
+            "type": "array",
+            "description": "The grants made, by resource, then action, then scope, in the order given.",
+            "items": {
+              "$ref": "#/components/schemas/GrantResponse"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkGrantSkipped"
+            }
+          }
+        }
+      },
+      "BulkGrantSkipped": {
+        "type": "object",
+        "title": "BulkGrantSkipped",
+        "description": "A grant a bulk grant didn't make, as one equal to it was made before.",
+        "required": [
+          "resource",
+          "action",
+          "scope"
+        ],
+        "properties": {
+          "resource": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
           }
         }
       },

@@ -2,9 +2,9 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogCapability, CatalogResource, DirectoryStatus, GrantSortKey, HeldRole,
-    InvitationListing, InvitationSortKey, Listing, Permission, RoleSortKey, SubjectListing,
-    SubjectSortKey, Versioned, scope_name,
+    CatalogAction, CatalogCapability, CatalogResource, DirectoryStatus, GrantSortKey,
+    GrantedInBulk, HeldRole, InvitationListing, InvitationSortKey, Listing, Permission,
+    RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
 };
 use crate::domain::{Assignment, Grant, Invitation, InvitationStatus, Role, Scope};
 use app_persistence::{Direction, Sort};
@@ -31,10 +31,7 @@ fn any_scope() -> String {
 
 impl GrantRequest {
     pub fn scope(&self) -> Scope {
-        match self.scope.trim() {
-            "any" => Scope::Any,
-            named => Scope::Named(named.to_owned()),
-        }
+        scope_of(&self.scope)
     }
 }
 
@@ -84,6 +81,73 @@ impl From<Versioned<Grant>> for GrantResponse {
     /// A grant just made was checked against the policies, so it isn't stale.
     fn from(grant: Versioned<Grant>) -> Self {
         Self::of(grant, false)
+    }
+}
+
+/// A role granted, at once, every action of `actions` on every resource of `resources` that the
+/// resource has, within every scope of `scopes` that it offers (`any` always is). A combination a
+/// resource lacks isn't attempted, so actions and scopes may be chosen across resources.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct BulkGrantRequest {
+    pub role: String,
+    /// Resources of the catalog.
+    pub resources: Vec<String>,
+    /// Each one some resource given has.
+    pub actions: Vec<String>,
+    /// Each `any` or one some resource given offers; `["any"]` unless given.
+    #[oai(default = "any_scopes")]
+    pub scopes: Vec<String>,
+}
+
+fn any_scopes() -> Vec<String> {
+    vec![any_scope()]
+}
+
+fn scope_of(raw: &str) -> Scope {
+    match raw.trim() {
+        "any" => Scope::Any,
+        named => Scope::Named(named.to_owned()),
+    }
+}
+
+impl BulkGrantRequest {
+    pub fn scopes(&self) -> Vec<Scope> {
+        self.scopes.iter().map(|s| scope_of(s)).collect()
+    }
+}
+
+/// A grant a bulk grant didn't make, as one equal to it was made before.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct BulkGrantSkipped {
+    pub resource: String,
+    pub action: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct BulkGrantResponse {
+    /// The grants made, by resource, then action, then scope, in the order given.
+    pub granted: Vec<GrantResponse>,
+    pub skipped: Vec<BulkGrantSkipped>,
+}
+
+impl From<GrantedInBulk> for BulkGrantResponse {
+    fn from(done: GrantedInBulk) -> Self {
+        Self {
+            granted: done.granted.into_iter().map(Into::into).collect(),
+            skipped: done
+                .skipped
+                .into_iter()
+                .map(|rule| BulkGrantSkipped {
+                    scope: scope_name(&rule.scope).to_owned(),
+                    resource: rule.resource,
+                    action: rule.action,
+                })
+                .collect(),
+        }
     }
 }
 
