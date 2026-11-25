@@ -144,11 +144,15 @@ dev-observability: ## make dev, exporting traces and metrics to a local Grafana 
 	@echo "traces and metrics: http://localhost:3000 (Grafana, Explore: Tempo and Prometheus)"
 	$(MAKE) dev OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
+# Watch only the Rust sources: from the repo root cargo-watch first walks
+# everything, `target/` (often a million files) included, before it builds.
+WATCH_RUST := -w crates -w Cargo.toml -w Cargo.lock
+
 _dev-backend:
-	$(CARGO_BIN) cargo-watch -x 'run --bin server'
+	$(CARGO_BIN) cargo-watch $(WATCH_RUST) -x 'run --bin server'
 
 _dev-worker:
-	$(CARGO_BIN) cargo-watch -x 'run --bin worker'
+	$(CARGO_BIN) cargo-watch $(WATCH_RUST) -x 'run --bin worker'
 
 _dev-frontend:
 	cd frontend && pnpm run dev
