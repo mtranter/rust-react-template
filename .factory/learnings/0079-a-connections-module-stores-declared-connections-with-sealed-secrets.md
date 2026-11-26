@@ -32,9 +32,11 @@
 - `ring` (already in the tree) gives AES-256-GCM, SHA-256 and a system RNG: no `aes-gcm` crate is
   needed.
 - **CI's `init` job is `make check-init`, which `make check-changed` doesn't run.** Besides
-  `make init`'s own `make check`, it fails on any line outside `crates/reference/` (and a few
-  build records) naming `notes`, `users`, `note-search` and so on as a word: comments included,
-  even in a file the branch didn't touch (main's `grant-access-dialog.tsx` broke it). Check with
-  `git grep -nIwE 'notes|users|note-search|note_search|notes_api|users_api' -- frontend/src crates/platform crates/common crates/server`.
+  `make init`'s own `make check`, it fails on any line in the whole tree that names a reference
+  module as a word (the list is in `scripts/check-init.sh`'s `named=` grep) unless the line also
+  names the path `crates/reference/`: comments included, even in a file the branch didn't touch
+  (main's `grant-access-dialog.tsx` broke it), and this learnings file too, which broke it once
+  by quoting the word list. Run that script's `named=` grep before pushing; never copy its word
+  list into a file.
   To run it here, where Postgres is another worktree's compose project, set
   `COMPOSE_PROJECT_NAME` to that project (`docker ps` names it) so `docker compose exec` finds it.
