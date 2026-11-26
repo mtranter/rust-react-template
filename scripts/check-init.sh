@@ -117,7 +117,7 @@ grep -qF 'id: "crm",' frontend/src/shell/capabilities.ts ||
   fail "\`make new-module\` didn't give the new \`crm\` Capability an entry in the SPA's registry"
 make --no-print-directory check-modules
 SQLX_OFFLINE=true DATABASE_URL=postgres://app:app@localhost:5432/postgres \
-  cargo test -p contacts -p contacts-api -p server
+  cargo bin cargo-nextest run -p contacts -p contacts-api -p server
 # The new app's entry routes to a page, so the SPA still type-checks, lints and passes its tests.
 make --no-print-directory generate typecheck lint-frontend test-frontend
 echo "check-init ok"

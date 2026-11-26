@@ -167,6 +167,7 @@ assert-json-diff = "2.0"
 # a bare "0.20" as an incomplete exact version.
 [workspace.metadata.bin]
 cargo-deny = { version = "^0.20" }
+cargo-nextest = { version = "^0.9", bins = ["cargo-nextest"], locked = true }
 cargo-watch = { version = "8.5.3" }
 # Compiler cache behind scripts/rustc-wrapper.sh; shared by every checkout on a machine.
 sccache = { version = "^0.19" }
@@ -186,6 +187,15 @@ debug = false
 
 # Unoptimised, `fake-oidc` (`make e2e`) takes 5-25s to make its RSA key; optimised, well under one.
 [profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3
+
+[profile.dev.package.rand_core]
+opt-level = 3
+
+[profile.dev.package.rand_chacha]
 opt-level = 3
 
 [profile.release]

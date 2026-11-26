@@ -63,7 +63,7 @@ jobs:
       - name: test
         env:
           DATABASE_URL: postgres://app:app@localhost:5432/postgres
-        run: cargo test --workspace
+        run: cargo bin cargo-nextest run --workspace
 
   # The template compiles in the workspace; this checks the generator: renaming,
   # registration and numbering, and that a scaffolded module passes as generated.
@@ -92,7 +92,7 @@ jobs:
       - name: test
         env:
           DATABASE_URL: postgres://app:app@localhost:5432/postgres
-        run: cargo test -p gadgets -p gadgets-api -p server
+        run: cargo bin cargo-nextest run -p gadgets -p gadgets-api -p server
 
   frontend:
     runs-on: ubuntu-latest

@@ -44,13 +44,24 @@ impl Template {
         Self { name, build }
     }
 
+    /// Named for the test binary too, so every process of one build (nextest
+    /// runs each test in its own) shares it, and a rebuilt binary, whose
+    /// migrations or seeds may have changed, gets a fresh one.
     fn database(&self) -> String {
-        format!("_test_template_{}", self.name)
+        format!("_test_template_{}_{:016x}", self.name, binary_identity())
     }
 }
 
-/// Templates this process has built: rebuilt once per run, so a changed
-/// migration or seed is never stale.
+fn binary_identity() -> u64 {
+    let exe = std::env::current_exe().expect("locate the test binary");
+    let meta = std::fs::metadata(&exe).expect("stat the test binary");
+    let mut hasher = DefaultHasher::new();
+    exe.hash(&mut hasher);
+    meta.len().hash(&mut hasher);
+    meta.modified().ok().hash(&mut hasher);
+    hasher.finish()
+}
+
 static BUILT: Mutex<Vec<&'static str>> = Mutex::const_new(Vec::new());
 
 /// Runs `test` on a fresh copy of `template`, as `#[app_test_db::test]` does.
@@ -97,20 +108,60 @@ async fn ensure_built(template: &'static Template) {
         return;
     }
     let database = template.database();
-    execute(&format!(
-        "drop database if exists {database:?} with (force)"
-    ))
-    .await;
+    // Across processes: one builds the template while the others wait, then
+    // they find it built.
+    let mut lock = PgConnection::connect_with(&server())
+        .await
+        .expect("connect to DATABASE_URL");
+    let mut hasher = DefaultHasher::new();
+    template.name.hash(&mut hasher);
+    let key = hasher.finish() as i64;
+    sqlx::query("select pg_advisory_lock($1)")
+        .bind(key)
+        .execute(&mut lock)
+        .await
+        .expect("lock the template");
+    let exists: bool =
+        sqlx::query_scalar("select exists (select from pg_database where datname = $1)")
+            .bind(&database)
+            .fetch_one(&mut lock)
+            .await
+            .expect("look up the template");
+    if !exists {
+        build(template, &database).await;
+    }
+    let _ = lock.close().await;
+    built.push(template.name);
+}
+
+async fn build(template: &Template, database: &str) {
+    let stale: Vec<String> = {
+        let mut conn = PgConnection::connect_with(&server())
+            .await
+            .expect("connect to DATABASE_URL");
+        let names = sqlx::query_scalar(
+            "select datname from pg_database where datname ~ $1 and datname <> $2",
+        )
+        .bind(format!("^_test_template_{}_[0-9a-f]{{16}}$", template.name))
+        .bind(database)
+        .fetch_all(&mut conn)
+        .await
+        .expect("list stale templates");
+        let _ = conn.close().await;
+        names
+    };
+    for old in stale {
+        execute(&format!("drop database if exists {old:?} with (force)")).await;
+    }
     execute(&format!("create database {database:?}")).await;
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect_with(server().database(&database))
+        .connect_with(server().database(database))
         .await
         .expect("connect to the template database");
     (template.build)(pool.clone()).await;
     // A database can't be copied while anyone is connected to it.
     pool.close().await;
-    built.push(template.name);
 }
 
 async fn copy(template: &Template, test_path: &str) -> String {

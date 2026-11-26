@@ -14,6 +14,7 @@ So each test binary declares a template (`app_test_db::Template`, in its driver:
 ## Consequences
 
 - Copying a migrated, seeded database is much cheaper than building one; a database can't be copied while anyone is connected to it, so the template's pool is closed once built.
+- Tests run under nextest, a process per test (`make test-backend`). So the template is named for the test binary's build too (`_test_template_<name>_<hash>`), and built under a Postgres advisory lock per template name: the first process builds it, the rest wait only that long, then copy it. Another build's templates of that name are dropped when a new one is built.
 - Template names must be unique across test binaries, and two runs against one server at once (two worktrees, a watcher beside `make test`) still collide.
 - Failed or renamed tests leave databases behind: `make test-db-clean` drops them.
 - `DATABASE_URL` names the server and the database to manage the others from (`postgres`).

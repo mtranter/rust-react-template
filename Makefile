@@ -68,7 +68,7 @@ frontend/src/api: frontend/openapi.json frontend/openapi-ts.config.ts frontend/n
 # Phony targets
 # ---------------------------------------------------------------------------
 .PHONY: help setup dev dev-observability generate watch-api migrate seed prepare new-module typecheck lint-frontend check build \
-        check-backend check-frontend check-changed check-spec screens e2e \
+        check-backend check-frontend check-changed check-quick check-spec screens e2e \
         build-backend-dev build-frontend db-up redis-up db-down db-reset db-wait fmt clippy deny check-sql check-deps check-modules test test-backend \
         test-frontend test-db-clean spec clean _require-cargo-bin
 
@@ -160,6 +160,9 @@ _dev-frontend:
 fmt: ## rustfmt check
 	$(CARGO) fmt --all --check
 
+check-quick: ## Inner loop: type-check every backend target (no clippy, build or tests), seconds after an edit
+	SQLX_OFFLINE=true $(CARGO) check --workspace --all-targets --features server/seed
+
 clippy: ## clippy with per-crate disallowed-types, warnings as errors
 	$(CARGO) clippy --workspace --all-targets --features server/seed -- -D warnings
 
@@ -184,8 +187,9 @@ check-modules: ## Every module is registered with the server, cargo-deny and the
 
 test: test-backend test-frontend ## Backend + frontend tests
 
-test-backend: db-wait ## Backend tests (each a copy of its binary's migrated, seeded template DB on docker-compose Postgres)
-	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) test $(BACKEND_TESTS)
+# nextest runs every test in a process of its own, all in parallel; no doc-tests.
+test-backend: _require-cargo-bin db-wait ## Backend tests (each a copy of its binary's migrated, seeded template DB on docker-compose Postgres)
+	SQLX_OFFLINE=true DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO_BIN) cargo-nextest run $(BACKEND_TESTS)
 
 test-frontend: frontend/src/api ## Frontend Vitest (MSW-mocked network; no backend needed)
 	cd frontend && pnpm run test
