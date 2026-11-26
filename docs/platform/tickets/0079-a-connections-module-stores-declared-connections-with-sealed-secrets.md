@@ -1,7 +1,7 @@
 ---
 id: 0079
 name: A connections module stores declared Connections, with secrets sealed behind a KeyProvider
-status: in-review
+status: done
 priority: P1
 size: L
 blocked_by: []
