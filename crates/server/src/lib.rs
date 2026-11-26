@@ -118,6 +118,15 @@ pub fn declared_connections<C: Composition>() -> Vec<connections_api::Declaratio
         .collect()
 }
 
+/// The values `seed` gives each declared Connection in dev (`connections_api::DevConnection`,
+/// declared under a module's `seed` feature), pointing it at its fake.
+pub fn dev_connections<C: Composition>() -> Vec<connections_api::DevConnection> {
+    C::modules()
+        .iter()
+        .flat_map(|module| module.declared::<connections_api::DevConnection>())
+        .collect()
+}
+
 /// Records every Connection the modules declare and retires those none does any more, as
 /// `migrate` does once every module is migrated. Returns how many changed.
 pub async fn declare_connections<C: Composition>(ctx: &Context) -> AppResult<usize> {

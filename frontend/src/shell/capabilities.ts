@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   MailIcon,
   NotebookPenIcon,
+  PlugIcon,
   SearchIcon,
   ShieldIcon,
   UsersIcon,
@@ -98,10 +99,26 @@ const access: Capability = {
   ],
 };
 
+const integrations: Capability = {
+  id: "connections",
+  label: "Integrations",
+  description: "The other systems the apps call: where each is, and its credentials.",
+  icon: PlugIcon,
+  path: "/integrations",
+  areas: [
+    {
+      label: "Integrations",
+      to: "/integrations",
+      icon: PlugIcon,
+      needs: { resource: "connection", action: "list" },
+    },
+  ],
+};
+
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [notes],
-  platform: [access],
+  platform: [access, integrations],
 };
 
 /**

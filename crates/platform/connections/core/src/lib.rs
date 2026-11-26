@@ -11,8 +11,8 @@ pub use application::{
 };
 pub use db::{ConnectionColumns, MIGRATOR, SCHEMA, migrations};
 pub use di::{
-    ConnectionsProvider, clients, clients_with, declare, key_provider, module, policies, provider,
-    provider_sending,
+    ConnectionsProvider, clients, clients_with, configure_for_dev, configure_for_dev_with, declare,
+    key_provider, module, policies, provider, provider_sending,
 };
 pub use domain::{Connection, ConnectionKey, SealedSecret};
 pub use http::HttpTransport;

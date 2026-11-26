@@ -3,7 +3,9 @@
 
 mod client;
 mod declaration;
+mod dev;
 pub mod events;
 
 pub use client::{CallError, Client, Clients, HttpMethod, Request, Response};
 pub use declaration::{Auth, Declaration, Field, HealthCheck, Method};
+pub use dev::DevConnection;

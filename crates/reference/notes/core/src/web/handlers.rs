@@ -180,6 +180,20 @@ impl NotesEndpoints {
         Ok(tagged(note))
     }
 
+    /// Share a note to the noticeboard: it is pinned there, as it is then, shortly after, by
+    /// the worker through the `noticeboard` Connection an admin configures. Answers the note
+    /// unchanged; sharing again before it was pinned pins it once. Another user's note is `404`.
+    #[oai(path = "/:id/share", method = "post", operation_id = "share_note")]
+    async fn share(
+        &self,
+        notes: Data<&NoteService>,
+        caller: Caller,
+        id: Path<String>,
+    ) -> ApiResult<NoteResult> {
+        let note = notes.0.share(&caller, note_id(&id.0)?).await?;
+        Ok(tagged(note))
+    }
+
     /// List the notes the caller may see, paginated. Most-recent first unless
     /// `sort` says otherwise: repeat it to sort by several keys, `-` prefix for
     /// descending.

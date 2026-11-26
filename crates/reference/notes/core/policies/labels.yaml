@@ -13,6 +13,7 @@ labels:
         archive: Archive
         "items:add": Add items
         "items:remove": Remove items
+        share: Share to the noticeboard
       scopes:
         any: Every note
         author: Notes they wrote

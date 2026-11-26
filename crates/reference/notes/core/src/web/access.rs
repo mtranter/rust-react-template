@@ -9,4 +9,5 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("add_note_item", "note", "items:add"),
     Performs::new("remove_note_item", "note", "items:remove"),
     Performs::new("list_notes", "note", "list"),
+    Performs::new("share_note", "note", "share"),
 ];

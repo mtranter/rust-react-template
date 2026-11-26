@@ -22,7 +22,7 @@
 # policies. Each Capability folder holds a Module, and each live Capability (the
 # reference's only while its Modules are registered) has an entry in the SPA's
 # registry, frontend/src/shell/capabilities.ts, as a literal `id: "<id>"`, but
-# `assistant` and `connections`, which have no app; each entry there names a live Capability. Each
+# `assistant`, which has no app; each entry there names a live Capability. Each
 # of its Areas' `needs: { resource: "<r>", action: "<a>" }`, a literal on one
 # line, names an action a registered Module's policies declare: compared with
 # what `dump-spec --actions` lists, as the generated client's types hold the
@@ -38,8 +38,8 @@ cd "$(dirname "$0")/.."
 registry=crates/server/src/modules.rs
 server=crates/server/Cargo.toml
 spa=frontend/src/shell/capabilities.ts
-# Capabilities with no app in the SPA. `connections`' screen is to come (ticket 0081).
-appless=(assistant connections)
+# Capabilities with no app in the SPA.
+appless=(assistant)
 
 failed=0
 fail() {

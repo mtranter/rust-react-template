@@ -20,6 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for module in Registered::modules() {
         module.seed(&ctx).await?;
     }
+    let configured =
+        connections::configure_for_dev(&ctx, server::dev_connections::<Registered>()).await?;
+    tracing::info!(configured, "connections pointed at their fakes");
 
     tracing::info!("seed complete");
     telemetry.shutdown();

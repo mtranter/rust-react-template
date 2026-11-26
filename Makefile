@@ -135,8 +135,20 @@ spec: frontend/openapi.json ## Just (re)generate the OpenAPI snapshot
 watch-api: _require-cargo-bin ## Watch backend sources and regenerate the client on change
 	$(CARGO_BIN) cargo-watch -w crates -s 'make generate'
 
+# Dev's own master key, so `seed` can seal the secrets it points dev Connections at their fakes
+# with (ADR 0050); `.env` may set another. Never a deployment's.
+dev: export CONNECTIONS_MASTER_KEY ?= ZGV2LW9ubHktbWFzdGVyLWtleS0zMi1ieXRlcy0hISE=
 dev: _require-cargo-bin seed generate redis-up ## Run backend (:8080), the worker and Vite (:5173) in parallel
-	$(MAKE) -j3 _dev-backend _dev-worker _dev-frontend
+	$(MAKE) -j$(words $(DEV_PROCESSES)) $(DEV_PROCESSES)
+
+DEV_PROCESSES := _dev-backend _dev-worker _dev-frontend
+# --- reference integration: `make init` removes this block ---
+# The fake of the other system notes share to, where `seed` points the dev `noticeboard`
+# Connection (`notes::seed::dev_noticeboard`).
+DEV_PROCESSES += _dev-fake-noticeboard
+_dev-fake-noticeboard:
+	$(CARGO) run --quiet -p fake-noticeboard -- --port 9180 --token dev-noticeboard-token
+# --- end reference integration ---
 
 # Command-line variables reach the recipes' environment and override .env's.
 dev-observability: ## make dev, exporting traces and metrics to a local Grafana (:3000) from compose's `observability` profile

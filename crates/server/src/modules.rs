@@ -28,7 +28,7 @@ impl Composition for Registered {
             assistant::module(config::agent),
             connections::module(),
             users::module(access::assignments),
-            notes::module(users::directory),
+            notes::module(users::directory, connections::clients),
             note_search::module(),
         ]
     }

@@ -10,6 +10,9 @@ use app_web::testing::{Answered, Call, Page, Refused, TestApi};
 use app_web::{Accept, JwtVerifier, json_newtype};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
+use connections::{EnvKeyProvider, KeyProvider};
+use connections_api::{Clients, DevConnection};
+use fake_noticeboard::Noticeboard;
 use notes::{Note, NotesEndpoints, seed};
 use notes_api::events::v1 as notes_events;
 use poem::EndpointExt;
@@ -141,7 +144,13 @@ pub struct Notes {
     verifier: JwtVerifier,
     /// The token later requests present, if any.
     caller: Mutex<Option<String>>,
+    keys: Arc<dyn KeyProvider>,
 }
+
+/// What the tests' `connections` seals the noticeboard's token with.
+const MASTER_KEY: [u8; 32] = [7; 32];
+/// The token the tests' noticeboard answers to.
+pub const NOTICEBOARD_TOKEN: &str = "nb_live_0123456789abcdef";
 
 impl Notes {
     pub async fn seeded(pool: PgPool) -> Self {
@@ -149,7 +158,9 @@ impl Notes {
         let policies = notes::policies().build().expect("notes' policies load");
         let authorizer = Authorizer::from_policies(&[policies]).expect("notes' policies compile");
         let ctx = Context::new(pool, clock.clone()).with_authorizer(Arc::new(authorizer));
-        let handlers = notes::handlers(&ctx, Arc::new(KnownUsers));
+        let keys: Arc<dyn KeyProvider> = Arc::new(EnvKeyProvider::new(MASTER_KEY));
+        let clients: Arc<dyn Clients> = connections::clients_with(&ctx, Some(keys.clone()));
+        let handlers = notes::handlers(&ctx, Arc::new(KnownUsers), clients.clone());
         app_db::register_subscriptions(&ctx.pool(), clock.as_ref(), &handlers)
             .await
             .expect("register notes' subscriptions");
@@ -160,7 +171,7 @@ impl Notes {
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let verifier = JwtVerifier::new("test-secret");
         let api = TestApi::new(NotesEndpoints, ctx.idempotency(), |app| {
-            app.accept(notes::provider(&ctx, Arc::new(KnownUsers)))
+            app.accept(notes::provider(&ctx, Arc::new(KnownUsers), clients))
                 .data(verifier.clone())
                 .data(ctx.authorizer())
         });
@@ -172,6 +183,7 @@ impl Notes {
             seeded_through,
             verifier,
             caller: Mutex::new(None),
+            keys,
         };
         notes.sign_in_as(users_api::seed::USER_ID_ALICE, &[USER]);
         notes
@@ -359,6 +371,41 @@ impl Notes {
         self.signed(self.api.get("/api/notes").queries(query))
             .send()
             .await
+    }
+
+    /// The noticeboard notes share to, a stateful fake served in-process, connected as an admin
+    /// would: its URL and its token on the real `noticeboard` Connection.
+    pub async fn noticeboard_connected(&self) -> Arc<Noticeboard> {
+        let board = Noticeboard::new(NOTICEBOARD_TOKEN);
+        let url = board.serve();
+        self.noticeboard_at(&url, NOTICEBOARD_TOKEN).await;
+        board
+    }
+
+    /// The `noticeboard` Connection given `url` and `token`, whatever answers there.
+    pub async fn noticeboard_at(&self, url: &str, token: &str) {
+        let dev = DevConnection::new(notes::NOTICEBOARD, url).secret("token", token);
+        let configured =
+            connections::configure_for_dev_with(&self.ctx, Some(self.keys.clone()), vec![dev])
+                .await
+                .expect("the Connection is configured");
+        assert_eq!(configured, 1, "the noticeboard wasn't configured yet");
+    }
+
+    pub async fn share(&self, id: impl Display) -> Outcome<NoteJson> {
+        self.signed(self.api.post(format!("/api/notes/{id}/share")))
+            .send()
+            .await
+    }
+
+    /// Background work that ran out of attempts, or failed and waits to retry.
+    pub async fn failed_jobs(&self) -> Vec<String> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT queue FROM messaging.job WHERE last_error IS NOT NULL ORDER BY id",
+        )
+        .fetch_all(&self.ctx.pool())
+        .await
+        .expect("read the jobs")
     }
 
     /// Signed in as `author`: the author is the caller.
@@ -554,9 +601,13 @@ impl Keyed<'_> {
 /// Every test's database starts as a copy of this: migrated and seeded.
 pub const TEMPLATE: Template = Template::new("notes", |pool| {
     Box::pin(async move {
-        app_db::run_migrations(&pool, &[notes::migrations()])
+        app_db::run_migrations(&pool, &[notes::migrations(), connections::migrations()])
             .await
-            .expect("migrate notes");
+            .expect("migrate notes and the connections it calls out through");
+        let ctx = Context::new(pool.clone(), Arc::new(app_domain::SystemClock));
+        connections::declare(&ctx, vec![notes::noticeboard()])
+            .await
+            .expect("declare the noticeboard, as `migrate` does");
         seed::standard(&pool).await.expect("seed notes");
         // As in an environment seeded before this build: its subscriptions
         // receive none of the seeds' events, but an `earliest` one's backfill does.

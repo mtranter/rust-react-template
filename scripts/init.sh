@@ -183,6 +183,7 @@ import {
   ListChecksIcon,
   type LucideIcon,
   MailIcon,
+  PlugIcon,
   ShieldIcon,
   UsersIcon,
 } from "lucide-react";
@@ -251,10 +252,26 @@ const access: Capability = {
   ],
 };
 
+const integrations: Capability = {
+  id: "connections",
+  label: "Integrations",
+  description: "The other systems the apps call: where each is, and its credentials.",
+  icon: PlugIcon,
+  path: "/integrations",
+  areas: [
+    {
+      label: "Integrations",
+      to: "/integrations",
+      icon: PlugIcon,
+      needs: { resource: "connection", action: "list" },
+    },
+  ],
+};
+
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [],
-  platform: [access],
+  platform: [access, integrations],
 };
 
 /**
@@ -295,6 +312,7 @@ import {
 } from "@/pages/access-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
+import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
 import { RolePage } from "@/pages/role-page";
 import { RootLayout } from "@/pages/root-layout";
 import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
@@ -391,6 +409,17 @@ const roleRoute = createRoute({
   component: RolePage,
 });
 
+const integrationsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/integrations",
+  component: IntegrationsPage,
+});
+const integrationRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/integrations/$key",
+  component: IntegrationPage,
+});
+
 const assistantRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/assistant",
@@ -412,6 +441,8 @@ const routeTree = rootRoute.addChildren([
     accessInvitationsRoute,
     accessPermissionsRoute,
     roleRoute,
+    integrationsRoute,
+    integrationRoute,
     assistantRoute,
   ]),
   callbackRoute,
@@ -452,6 +483,7 @@ import type { SignInProvider } from "@/lib/sign-in";
 import type { RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
 import { assistantScenarios } from "./assistant-scenarios.ts";
+import { integrationsScenarios } from "./integrations-scenarios.ts";
 import { signInScenarios } from "./sign-in-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
@@ -489,6 +521,7 @@ export const scenarios: Scenario[] = [
     shows: (page) => page.locator("html.dark").getByRole("heading", { name: "$title" }),
   },
   ...assistantScenarios,
+  ...integrationsScenarios,
   ...signInScenarios,
 ];
 EOF
@@ -504,6 +537,11 @@ perl -0 -i -pe '
   s{ `/home` and `/search` are old aliases of `/notes` and `/notes/search`, keeping their search\.}{}m;
   s{\(`/home`, `/search`, `/access\?tab=`\)}{(`/access?tab=`)}m;
 ' frontend/AGENTS.md
+
+# The reference integration's fake goes with the reference modules: `make dev` runs it no more,
+# and `make e2e` connects no integration until the app declares one of its own.
+perl -0 -i -pe 's{^# --- reference integration: `make init` removes this block ---\n.*?^# --- end reference integration ---\n}{}ms' Makefile
+perl -i -pe 's{^fake=\(.*\)$}{fake=()}' scripts/e2e.sh
 
 # 6. What made this; the commit leaves no way to run it again.
 perl -0 -i -pe '

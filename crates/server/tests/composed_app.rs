@@ -193,6 +193,7 @@ const TOOLS: &[&str] = &[
     "add_note_item",
     "remove_note_item",
     "search_notes",
+    "share_note",
 ];
 
 #[derive(Debug)]

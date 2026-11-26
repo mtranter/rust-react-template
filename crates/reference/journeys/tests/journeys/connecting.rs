@@ -1,5 +1,6 @@
 use crate::driver::{App, Refusal};
 use connections_api::{Auth, Declaration};
+use notes_api::seed::ALICE_NOTE_ID_SHOPPING_LIST;
 use sqlx::PgPool;
 use users_api::seed::{USER_ID_ALICE, USER_ID_BOB};
 
@@ -34,6 +35,30 @@ async fn an_admin_sets_a_connections_url_and_secret_and_reads_back_that_it_is_se
     assert_eq!(read["secrets"][0]["set"], true);
     assert_eq!(read["secrets"][0]["setBy"], USER_ID_ALICE.to_string());
     assert!(!read.to_string().contains(TOKEN));
+}
+
+#[app_test_db::test(crate::driver::TEMPLATE)]
+async fn once_an_admin_connects_the_noticeboard_a_note_shared_is_pinned_there(pool: PgPool) {
+    let app = App::seeded(pool).await;
+    let board = fake_noticeboard::Noticeboard::new(TOKEN);
+    let url = board.serve();
+    let admin = app.as_user(USER_ID_ALICE);
+
+    let declared = admin.connection(notes::NOTICEBOARD).await.unwrap();
+    assert_eq!(declared["status"], "not_configured");
+    let configured = admin.set_connection_url(&declared, &url).await.unwrap();
+    admin
+        .set_connection_secret(&configured, "token", TOKEN)
+        .await
+        .unwrap();
+    let tested = admin.test_connection(notes::NOTICEBOARD).await.unwrap();
+    assert_eq!(tested["status"], "ok");
+
+    admin.share_note(ALICE_NOTE_ID_SHOPPING_LIST).await.unwrap();
+    app.run_pending_events().await;
+
+    let pin = &board.pins()[&ALICE_NOTE_ID_SHOPPING_LIST.to_string()];
+    assert_eq!(pin.title, "Shopping list");
 }
 
 #[app_test_db::test(crate::driver::TEMPLATE)]

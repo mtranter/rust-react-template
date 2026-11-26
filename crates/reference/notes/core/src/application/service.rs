@@ -1,7 +1,7 @@
 use super::events;
 use super::{
-    ArchiveNote, DeferredJobs, EventPublisher, Expected, ListQuery, Listed, NoteRepository,
-    NoteSortKey, Transactions, Tx, Version, Versioned,
+    ArchiveNote, DeferredJobs, EventPublisher, Expected, ListQuery, Listed, NOTICEBOARD,
+    NoteRepository, NoteSortKey, ShareNote, Transactions, Tx, Version, Versioned,
 };
 use crate::domain::{
     AuthorId, CreateNote, EditNote, ItemId, Note, NoteAction, NoteError, NoteEvent, NoteId,
@@ -10,6 +10,8 @@ use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
 use chrono::{DateTime, TimeDelta, Utc};
+use connections_api::{Clients, Request};
+use serde_json::json;
 use std::sync::Arc;
 use users_api::UserDirectory;
 
@@ -27,6 +29,7 @@ pub struct NoteService {
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
     authorizer: Arc<Authorizer>,
+    connections: Arc<dyn Clients>,
 }
 
 impl NoteService {
@@ -38,6 +41,7 @@ impl NoteService {
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
         authorizer: Arc<Authorizer>,
+        connections: Arc<dyn Clients>,
     ) -> Self {
         Self {
             repo,
@@ -47,6 +51,7 @@ impl NoteService {
             transactions,
             clock,
             authorizer,
+            connections,
         }
     }
 
@@ -320,6 +325,45 @@ impl NoteService {
             self.publisher
                 .publish(tx, events::pending(&note, version, event))
                 .await?;
+        }
+        Ok(())
+    }
+
+    /// Shares the note to the noticeboard: defers a [`ShareNote`] to run at once, so the call
+    /// out happens in the worker, retried if the noticeboard is down, never in this request.
+    /// Sharing again before it ran shares once. Changes nothing of the note.
+    pub async fn share(&self, principal: &Principal, id: NoteId) -> AppResult<Versioned<Note>> {
+        let plan = self.authorize(principal, NoteAction::Share)?;
+        let note = self.load_for(principal, &plan, id).await?;
+        let mut tx = self.transactions.begin().await?;
+        let job = ShareNote {
+            note_id: id.as_uuid(),
+        };
+        self.deferred
+            .defer(&mut tx, ShareNote::key(id), self.clock.now(), &job)
+            .await?;
+        tx.commit().await?;
+        Ok(note)
+    }
+
+    /// Pins the note as it now is to the noticeboard, through its Connection. A note gone
+    /// meanwhile is left unshared; putting the same pin again replaces it, so a retry is safe.
+    /// An unconfigured Connection or a refusal fails the job, to be retried.
+    pub async fn pin(&self, principal: &Principal, id: NoteId) -> AppResult<()> {
+        let plan = self.authorize(principal, NoteAction::Share)?;
+        let Some(Versioned { entity: note, .. }) = self.repo.get(id).await? else {
+            return Ok(());
+        };
+        self.authorizer.check(principal, &plan, &note)?;
+        let client = self.connections.client(NOTICEBOARD).await?;
+        let request = Request::put(format!("/pins/{id}"))
+            .json(&json!({ "title": note.title(), "body": note.body() }));
+        let answer = client.send(request).await?;
+        if !answer.is_success() {
+            return Err(AppError::unavailable(format!(
+                "the noticeboard answered {} to a pin",
+                answer.status
+            )));
         }
         Ok(())
     }

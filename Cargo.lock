@@ -1745,6 +1745,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fake-noticeboard"
+version = "0.1.0"
+dependencies = [
+ "poem",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2893,7 +2904,11 @@ dependencies = [
  "app-test-support",
  "app-web",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
+ "connections",
+ "connections-api",
+ "fake-noticeboard",
  "notes",
  "notes-api",
  "poem",
@@ -3911,6 +3926,7 @@ dependencies = [
  "chrono",
  "connections",
  "connections-api",
+ "fake-noticeboard",
  "note-search",
  "notes",
  "notes-api",

@@ -10,7 +10,7 @@ use crate::domain::{
 use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use connections_api::{CallError, Client, Clients, Declaration, Request};
+use connections_api::{CallError, Client, Clients, Declaration, DevConnection, Request};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -299,6 +299,48 @@ impl ConnectionService {
         }
         tx.commit().await?;
         Ok(changed)
+    }
+
+    /// What the `seed` bin runs, as `System`, outside production: gives each declared Connection
+    /// with no URL yet the values its module declares for dev, pointing it at the integration's
+    /// fake. One an admin has filled in, or no module declares, is left as it is; with no master
+    /// key its secrets are skipped. Returns how many it configured.
+    pub async fn configure_for_dev(&self, devs: Vec<DevConnection>) -> AppResult<usize> {
+        let system = Principal::System;
+        let mut configured = 0;
+        for dev in devs {
+            let key = ConnectionKey::parse(&dev.key)?;
+            let Some(stored) = self.repo.get(&key).await? else {
+                continue;
+            };
+            if !stored.entity.declared() || stored.entity.url().is_some() {
+                continue;
+            }
+            let cmd = UpdateConnection {
+                url: Some(Some(dev.url)),
+                fields: dev.fields.into_iter().collect(),
+            };
+            let mut version = self
+                .update(&system, &dev.key, cmd, stored.version)
+                .await?
+                .version;
+            for (name, value) in dev.secrets {
+                if self.keys.is_none() {
+                    tracing::warn!(
+                        connection = %key,
+                        secret = %name,
+                        "not set for dev: no CONNECTIONS_MASTER_KEY to seal it with"
+                    );
+                    continue;
+                }
+                version = self
+                    .set_secret(&system, &dev.key, &name, &value, version)
+                    .await?
+                    .version;
+            }
+            configured += 1;
+        }
+        Ok(configured)
     }
 
     async fn save(

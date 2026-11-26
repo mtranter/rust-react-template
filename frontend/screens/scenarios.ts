@@ -15,6 +15,7 @@ import type { SignInProvider } from "@/lib/sign-in";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
 import { assistantScenarios } from "./assistant-scenarios.ts";
+import { integrationsScenarios } from "./integrations-scenarios.ts";
 import { signInScenarios } from "./sign-in-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
@@ -649,5 +650,6 @@ export const scenarios: Scenario[] = [
     shows: (page) => page.getByRole("alert"),
   },
   ...assistantScenarios,
+  ...integrationsScenarios,
   ...signInScenarios,
 ];

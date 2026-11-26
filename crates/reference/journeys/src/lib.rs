@@ -31,7 +31,7 @@ impl Composition for Reference {
             assistant::module_with(Settings::default, |_| Some(Arc::new(Directed))),
             connections::module(),
             users::module(access::assignments),
-            notes::module(users::directory),
+            notes::module(users::directory, connections::clients),
             note_search::module(),
         ]
     }

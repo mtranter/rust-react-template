@@ -133,7 +133,7 @@ pub struct App {
 
 impl App {
     /// Records `declaration` as `migrate` does when a module declares it
-    /// (`Module::declaring`): no reference module declares a Connection yet.
+    /// (`Module::declaring`), beside those the modules declare.
     pub async fn declares(&self, declaration: connections_api::Declaration) {
         let ctx = Context::new(self.pool.clone(), self.clock.clone());
         connections::declare(&ctx, vec![declaration])
@@ -565,6 +565,18 @@ impl Session<'_> {
         .json(&json!({ "value": value }))
         .send()
         .await
+    }
+
+    pub async fn test_connection(&self, key: &str) -> Outcome<ConnectionJson> {
+        self.signed(self.app.api.post(format!("/api/connections/{key}/test")))
+            .send()
+            .await
+    }
+
+    pub async fn share_note(&self, id: impl Display) -> Outcome<NoteJson> {
+        self.signed(self.app.api.post(format!("/api/notes/{id}/share")))
+            .send()
+            .await
     }
 
     /// A conversation with the assistant, the user's own, empty.

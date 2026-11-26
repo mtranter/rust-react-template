@@ -25,6 +25,7 @@ note-search.workspace = true
 [dev-dependencies]
 access-api.workspace = true
 connections-api.workspace = true
+fake-noticeboard.workspace = true
 app-fake-oidc.workspace = true
 app-authz.workspace = true
 app-db.workspace = true

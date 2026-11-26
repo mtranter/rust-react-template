@@ -15,6 +15,8 @@ members = [
     "crates/module-template/*",
     # The journeys over the reference modules, whether or not the server registers them.
     "crates/reference/journeys",
+    # The reference integration's stateful fake (ADR 0050).
+    "crates/reference/notes/fake",
     "crates/server",
 ]
 
@@ -51,6 +53,7 @@ users = { path = "crates/reference/users/core" }
 notes-api = { path = "crates/reference/notes/api" }
 notes = { path = "crates/reference/notes/core" }
 note-search = { path = "crates/reference/note-search/core" }
+fake-noticeboard = { path = "crates/reference/notes/fake" }
 
 # poem 3.1.x <-> poem-openapi 5.1.x are released in lockstep; bump together.
 poem = "3.1"

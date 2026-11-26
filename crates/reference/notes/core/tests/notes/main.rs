@@ -17,4 +17,5 @@ mod behaviours {
     mod reading;
     mod retrying;
     mod scoping;
+    mod sharing;
 }

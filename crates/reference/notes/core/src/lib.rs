@@ -8,6 +8,7 @@ mod domain;
 pub mod seed;
 mod web;
 
+pub use application::{NOTICEBOARD, ShareNote, noticeboard};
 pub use db::{MIGRATOR, NoteColumns, SCHEMA, migrations};
 pub use di::{NotesProvider, handlers, module, policies, provider};
 pub use domain::{

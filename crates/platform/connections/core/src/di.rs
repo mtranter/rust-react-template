@@ -12,7 +12,7 @@ use app_error::AppResult;
 use app_module::{Context, Module};
 use app_web::Provide;
 use connections_api::events::v1::ConnectionTopic;
-use connections_api::{Clients, Declaration};
+use connections_api::{Clients, Declaration, DevConnection};
 use std::sync::Arc;
 
 pub struct ConnectionsProvider(ConnectionService);
@@ -96,6 +96,24 @@ pub fn policies() -> PoliciesBuilder {
 pub async fn declare(ctx: &Context, declarations: Vec<Declaration>) -> AppResult<usize> {
     service(ctx, None, Arc::new(HttpTransport::new()))
         .declare(declarations)
+        .await
+}
+
+/// What the `seed` bin runs after `migrate`: points each declared Connection with no URL yet at
+/// the fake its module declares for dev ([`DevConnection`]), sealing its secrets with
+/// [`key_provider`]'s key. Returns how many it configured.
+pub async fn configure_for_dev(ctx: &Context, devs: Vec<DevConnection>) -> AppResult<usize> {
+    configure_for_dev_with(ctx, env_keys(), devs).await
+}
+
+/// As [`configure_for_dev`], sealing with `keys`, for tests.
+pub async fn configure_for_dev_with(
+    ctx: &Context,
+    keys: Option<Arc<dyn KeyProvider>>,
+    devs: Vec<DevConnection>,
+) -> AppResult<usize> {
+    service(ctx, keys, Arc::new(HttpTransport::new()))
+        .configure_for_dev(devs)
         .await
 }
 

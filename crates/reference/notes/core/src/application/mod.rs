@@ -8,6 +8,7 @@ mod reactions;
 mod repository;
 mod schedules;
 mod service;
+mod sharing;
 
 pub use app_persistence::{
     DeferredJobs, EventPublisher, Expected, ListQuery, Listed, PendingEvent, Transactions, Tx,
@@ -19,3 +20,4 @@ pub use jobs::ArchiveNote;
 pub use repository::{NoteRepository, NoteSortKey};
 pub use schedules::PurgeArchivedNotes;
 pub use service::NoteService;
+pub use sharing::{NOTICEBOARD, ShareNote, noticeboard};

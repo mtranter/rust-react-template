@@ -1,0 +1,22 @@
+[package]
+name = "fake-noticeboard"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# The stateful fake of the noticeboard notes share to (ADR 0050): notes' tests, `make dev` and
+# `make e2e` point its Connection at it. Test harness, never shipped.
+[[bin]]
+name = "fake-noticeboard"
+path = "src/main.rs"
+
+[dependencies]
+poem.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true

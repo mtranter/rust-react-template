@@ -11,7 +11,7 @@ impl Composition for MisGranted {
 
     fn modules() -> Vec<Module> {
         let mut modules = reference_journeys::Reference::modules();
-        modules[2] = notes::module(users::directory).with_policies(|| {
+        modules[2] = notes::module(users::directory, connections::clients).with_policies(|| {
             notes::policies().default_grants(PolicyFile::new(
                 "policies/default_grants.yaml",
                 "apiVersion: auth.flagrante.io/v1\ndefaultGrants:\n  - { role: user, resource: note, actions: [create, publish] }\n",

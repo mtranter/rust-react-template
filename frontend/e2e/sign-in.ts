@@ -8,13 +8,21 @@ import { chromium } from "playwright";
 
 // `make e2e`: signs in to the binary's own SPA through `fake-oidc`, as a bootstrap admin, loads
 // the access screen with that token, invites someone through `fake-oidc`'s stand-in for Cognito,
-// and signs out. `make e2e` builds both binaries (debug, the
-// server with `embed-frontend`) into $E2E_BIN and migrates and seeds $E2E_DATABASE_URL.
+// connects an integration (a URL and a secret on Integrations, then Test connection, against the
+// stateful fake $E2E_FAKE serves), and signs out. `make e2e` builds the binaries (debug, the
+// server with `embed-frontend`) into $E2E_BIN and migrates and seeds $E2E_DATABASE_URL. Without
+// $E2E_FAKE (an app with no integration yet) the Integrations step only opens the list.
 
 const bin = required("E2E_BIN");
 const databaseUrl = required("E2E_DATABASE_URL");
 const clientId = "e2e-spa";
 const subject = { sub: "e2e-ada", name: "Ada Signed-In", email: "ada@e2e.test" };
+/**
+ * `<binary> <connection key> <secret name>`: a fake of another system that prints its URL first,
+ * answering its health check only to `--token <secret>`, and the Connection to point at it.
+ */
+const fake = process.env.E2E_FAKE?.split(" ");
+const fakeToken = "e2e-integration-token";
 /** How long the signed-out page must stay put to count as staying. */
 const stays = 3_000;
 
@@ -38,6 +46,8 @@ try {
     APP_JWT_ISSUER: issuer,
     APP_OIDC_CLIENT_ID: clientId,
     APP_BOOTSTRAP_ADMINS: subject.sub,
+    // 32 bytes of 7, base64: what the server seals the integration's secret with.
+    CONNECTIONS_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"),
     COGNITO_USER_POOL_ID: "ap-southeast-2_e2e",
     COGNITO_ENDPOINT: `${issuer}/cognito`,
     AWS_ACCESS_KEY_ID: "e2e",
@@ -92,6 +102,42 @@ try {
   await invited.getByText("Pending").waitFor();
   await areas.getByRole("link", { name: "Users" }).click();
   await page.getByRole("row").filter({ hasText: "Grace Invited" }).waitFor();
+
+  // Integrations: an admin gives a Connection its URL and secret, tests it and sees OK.
+  await page.goto(`${app}/integrations`);
+  const integrations = page.getByRole("region", { name: "Integrations" });
+  await integrations.getByRole("table").waitFor();
+  if (fake) {
+    const [command, key, secret] = fake;
+    const system = run("fake", command, ["--token", fakeToken]);
+    const systemUrl = await system.firstLine();
+    await page.goto(`${app}/integrations/${key}`);
+    await page.getByLabel("URL").fill(systemUrl);
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByText("Integration saved").waitFor();
+    const input = page.locator(`#connection-secret-${secret}`);
+    await input.fill(fakeToken);
+    await page.getByRole("button", { name: /^Set / }).click();
+    await page.getByRole("button", { name: /^Replace / }).waitFor();
+    assert.equal(await input.inputValue(), "", "the secret field never shows a stored value");
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await page
+      .getByRole("status", { name: "Test result" })
+      .getByText("OK", { exact: true })
+      .waitFor();
+    await page.goto(`${app}/integrations`);
+    const row = integrations.getByRole("row").filter({ hasText: systemUrl });
+    await row.getByText("OK", { exact: true }).waitFor();
+    const read = await page.evaluate(async (key) => {
+      const token = Object.entries(sessionStorage).find(([k]) => k.startsWith("oidc.user:"))?.[1];
+      const access = token ? JSON.parse(token).access_token : "";
+      const answer = await fetch(`/api/connections/${key}`, {
+        headers: { Authorization: `Bearer ${access}` },
+      });
+      return answer.text();
+    }, key);
+    assert.ok(!read.includes(fakeToken), "the API never answers a secret's value");
+  }
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
   await page.getByRole("button", { name: `Account: ${subject.name}` }).click();
@@ -111,7 +157,7 @@ try {
   assert.deepEqual(errors, []);
   passed = true;
   console.log(
-    "e2e: signed in, loaded /access with the token, invited someone, signed out and stayed signed out",
+    `e2e: signed in, loaded /access with the token, invited someone, ${fake ? "connected an integration and tested it OK, " : ""}signed out and stayed signed out`,
   );
 } finally {
   await browser.close();
@@ -170,6 +216,7 @@ function inherited(): Record<string, string> {
         entry[1] !== undefined &&
         !(entry[0].startsWith("APP_") && !entry[0].startsWith("APP_REDIS_")) &&
         !entry[0].startsWith("COGNITO_") &&
+        !entry[0].startsWith("CONNECTIONS_") &&
         entry[0] !== "DATABASE_URL",
     ),
   );

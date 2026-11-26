@@ -1,7 +1,7 @@
 ---
 id: 0081
 name: Admins manage Connections on an Integrations screen, and a reference integration with a stateful fake shows the pattern
-status: ready-for-agent
+status: done
 priority: P1
 size: L
 blocked_by: [0079, 0080]
@@ -24,6 +24,6 @@ ADR 0050, the screen and the reference. Read `frontend/AGENTS.md` first.
 
 ## Acceptance criteria
 
-- [ ] e2e: an admin opens Integrations, enters a URL and a secret, tests the Connection and sees OK against the fake.
-- [ ] The secret field never shows a stored value.
-- [ ] `make check` passes.
+- [x] e2e: an admin opens Integrations, enters a URL and a secret, tests the Connection and sees OK against the fake.
+- [x] The secret field never shows a stored value.
+- [x] `make check` passes.

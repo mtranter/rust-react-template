@@ -16,6 +16,8 @@ pub enum NoteAction {
     AddItem,
     #[strum(serialize = "items:remove")]
     RemoveItem,
+    /// Pin it to the noticeboard, through its Connection.
+    Share,
 }
 
 impl Resource for Note {

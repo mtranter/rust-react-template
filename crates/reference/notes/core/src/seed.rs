@@ -56,6 +56,16 @@ pub fn orphaned_note() -> Note {
     note(seed::orphaned_note(), "")
 }
 
+/// Where `make dev` runs `fake-noticeboard`, and the token it answers to.
+pub const DEV_NOTICEBOARD_URL: &str = "http://127.0.0.1:9180";
+pub const DEV_NOTICEBOARD_TOKEN: &str = "dev-noticeboard-token";
+
+/// The `noticeboard` Connection as `make dev` configures it: at `fake-noticeboard`.
+pub fn dev_noticeboard() -> connections_api::DevConnection {
+    connections_api::DevConnection::new(crate::application::NOTICEBOARD, DEV_NOTICEBOARD_URL)
+        .secret("token", DEV_NOTICEBOARD_TOKEN)
+}
+
 pub fn notes() -> Vec<Note> {
     vec![alices_note(), bobs_note(), orphaned_note()]
 }
