@@ -12,7 +12,7 @@ use app_web::{Accept, JwtVerifier, json_newtype};
 use connections::{
     ConnectionKey, ConnectionsEndpoints, EnvKeyProvider, KeyError, KeyProvider, SealedSecret,
 };
-use connections_api::{Auth, Declaration, HealthCheck};
+use connections_api::{Auth, Clients, Declaration, HealthCheck};
 use poem::EndpointExt;
 use serde_json::{Value, json};
 use sqlx::{PgPool, QueryBuilder};
@@ -122,6 +122,7 @@ pub struct Connections {
     seeded_through: i64,
     verifier: JwtVerifier,
     caller: Mutex<Option<String>>,
+    clients: Arc<dyn Clients>,
 }
 
 impl Connections {
@@ -152,7 +153,9 @@ impl Connections {
         });
         let worker = ctx.worker(Default::default());
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
+        let clients = connections::clients_with(&ctx, keys);
         let connections = Self {
+            clients,
             api,
             ctx,
             worker,
@@ -162,6 +165,43 @@ impl Connections {
         };
         connections.sign_in_with_roles(&[ADMIN]);
         connections
+    }
+
+    /// What another module calls out through.
+    pub fn clients(&self) -> &dyn Clients {
+        self.clients.as_ref()
+    }
+
+    pub async fn test(&self, key: &str) -> Outcome<ConnectionJson> {
+        self.signed(self.api.post(format!("/api/connections/{key}/test")))
+            .send()
+            .await
+    }
+
+    /// Gives `key` its URL, `fields` and `secrets`, as an admin would.
+    pub async fn configure(
+        &self,
+        key: &str,
+        url: &str,
+        fields: Value,
+        secrets: &[(&str, &str)],
+    ) -> ConnectionJson {
+        let version: i64 = self.get(key).await.expect("declared")["version"]
+            .as_str()
+            .and_then(|v| v.parse().ok())
+            .expect("a version");
+        let mut connection = self
+            .update(key, version, json!({ "url": url, "fields": fields }))
+            .await
+            .expect("the URL and fields are set");
+        for (name, value) in secrets {
+            let version = connection["version"].as_str().unwrap().parse().unwrap();
+            connection = self
+                .set_secret(key, name, version, value)
+                .await
+                .expect("the secret is set");
+        }
+        connection
     }
 
     pub fn authorizer(&self) -> Arc<Authorizer> {

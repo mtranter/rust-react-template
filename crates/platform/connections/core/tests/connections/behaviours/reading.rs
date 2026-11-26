@@ -35,6 +35,9 @@ async fn a_connection_reads_as_declared_with_no_values_yet(pool: PgPool) {
                 "setBy": null,
             }],
             "healthCheck": { "method": "GET", "path": "/health" },
+            "status": "not_configured",
+            "lastError": null,
+            "testedAt": null,
             "version": "1",
         })
     );

@@ -1,15 +1,15 @@
-use super::secrets;
+use super::{health, secrets};
 use crate::application::{
     ConnectionRepository, ConnectionSortKey, Expected, ListQuery, Listed, Tx, Version, Versioned,
 };
-use crate::domain::{Connection, ConnectionKey};
+use crate::domain::{Connection, ConnectionKey, Health};
 use app_authz::Rows;
 use app_db::{Clause, Column, Columns, conn, push_list_clauses, push_scope};
 use app_error::{AppError, AppResult};
 use connections_api::Declaration;
 use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub struct PgConnectionRepository {
     pool: PgPool,
@@ -211,5 +211,18 @@ impl ConnectionRepository for PgConnectionRepository {
         };
         secrets::replace(tx, connection).await?;
         Ok(version)
+    }
+
+    async fn health(&self, keys: &[String]) -> AppResult<HashMap<String, (Version, Health)>> {
+        health::of(&self.pool, keys).await
+    }
+
+    async fn record_health(
+        &self,
+        key: &ConnectionKey,
+        version: Version,
+        health: &Health,
+    ) -> AppResult<()> {
+        health::record(&self.pool, key, version, health).await
     }
 }

@@ -1,7 +1,8 @@
 use super::{Expected, ListQuery, Listed, Tx, Version, Versioned};
-use crate::domain::{Connection, ConnectionKey};
+use crate::domain::{Connection, ConnectionKey, Health};
 use app_authz::Rows;
 use app_error::AppResult;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionSortKey {
@@ -31,4 +32,14 @@ pub trait ConnectionRepository: Send + Sync {
         connection: &Connection,
         expected: Expected,
     ) -> AppResult<Version>;
+    /// What each of `keys` last tested as, for the Connection's version it tested.
+    async fn health(&self, keys: &[String]) -> AppResult<HashMap<String, (Version, Health)>>;
+    /// Replaces what `key` last tested as. Outside any unit of work: an observation of the other
+    /// system, not a change to the Connection.
+    async fn record_health(
+        &self,
+        key: &ConnectionKey,
+        version: Version,
+        health: &Health,
+    ) -> AppResult<()>;
 }

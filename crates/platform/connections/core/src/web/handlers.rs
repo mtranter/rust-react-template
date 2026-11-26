@@ -1,8 +1,9 @@
 use super::models::{
     ConnectionResponse, ConnectionSort, SetSecretRequest, UpdateConnectionRequest,
 };
-use crate::application::{ConnectionService, Versioned};
+use crate::application::{ConnectionService, Reported, Versioned};
 use crate::domain::{Connection, UpdateConnection};
+use app_error::AppResult;
 use app_web::{ApiResult, Caller, ListResult, WithETag, if_match_version, paged, sorts};
 use poem::web::Data;
 use poem_openapi::types::MaybeUndefined;
@@ -19,9 +20,16 @@ enum ApiTag {
     Connections,
 }
 
-fn tagged(connection: Versioned<Connection>) -> ConnectionResult {
-    let version = connection.version;
-    ConnectionResult::new(connection.into(), version)
+fn tagged(reported: Reported) -> ConnectionResult {
+    let version = reported.connection.version;
+    ConnectionResult::new(reported.into(), version)
+}
+
+async fn reported(
+    connections: &ConnectionService,
+    connection: AppResult<Versioned<Connection>>,
+) -> ApiResult<ConnectionResult> {
+    Ok(tagged(connections.report(connection?).await?))
 }
 
 /// Unit struct so `dump-spec` can build the spec without a database.
@@ -45,6 +53,11 @@ impl ConnectionsEndpoints {
         let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
         let page = query.page;
         let listed = connections.0.list(&caller, query).await?;
+        let items = connections.0.reported(listed.items).await?;
+        let listed = app_persistence::Listed {
+            items,
+            total: listed.total,
+        };
         Ok(Json(ListResult::new(listed, page)))
     }
 
@@ -59,7 +72,7 @@ impl ConnectionsEndpoints {
         caller: Caller,
         key: Path<String>,
     ) -> ApiResult<ConnectionResult> {
-        Ok(tagged(connections.0.get(&caller, &key.0).await?))
+        reported(connections.0, connections.0.get(&caller, &key.0).await).await
     }
 
     /// Change a Connection's URL or its declared non-secret fields. Requires `If-Match` with
@@ -84,8 +97,8 @@ impl ConnectionsEndpoints {
             url,
             fields: body.0.fields.unwrap_or_default(),
         };
-        let connection = connections.0.update(&caller, &key.0, cmd, expected).await?;
-        Ok(tagged(connection))
+        let connection = connections.0.update(&caller, &key.0, cmd, expected).await;
+        reported(connections.0, connection).await
     }
 
     /// Set one of a Connection's secrets, sealed before it is stored, replacing any it had
@@ -110,8 +123,8 @@ impl ConnectionsEndpoints {
         let connection = connections
             .0
             .set_secret(&caller, &key.0, &name.0, &body.0.value, expected)
-            .await?;
-        Ok(tagged(connection))
+            .await;
+        reported(connections.0, connection).await
     }
 
     /// Clear one of a Connection's secrets; clearing one that isn't set changes nothing.
@@ -134,7 +147,22 @@ impl ConnectionsEndpoints {
         let connection = connections
             .0
             .clear_secret(&caller, &key.0, &name.0, expected)
-            .await?;
-        Ok(tagged(connection))
+            .await;
+        reported(connections.0, connection).await
+    }
+
+    /// Test a Connection: send the health check its module declares, and record and answer
+    /// what it found, `status` `ok` or `failing` with `lastError` saying why in plain language.
+    /// Changes neither the Connection nor its version, so it takes no `If-Match`. Refused `501`
+    /// while the Connection lacks its URL or a credential, and `400` when it declares no health
+    /// check. Admins only: anyone else is refused `403`.
+    #[oai(path = "/:key/test", method = "post", operation_id = "test_connection")]
+    async fn test(
+        &self,
+        connections: Data<&ConnectionService>,
+        caller: Caller,
+        key: Path<String>,
+    ) -> ApiResult<ConnectionResult> {
+        Ok(tagged(connections.0.test(&caller, &key.0).await?))
     }
 }

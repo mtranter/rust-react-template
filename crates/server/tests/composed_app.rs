@@ -178,6 +178,7 @@ const TOOLS: &[&str] = &[
     "list_connections",
     "get_connection",
     "update_connection",
+    "test_connection",
     "register_user",
     "list_users",
     "get_me",

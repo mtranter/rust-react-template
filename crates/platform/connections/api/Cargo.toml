@@ -8,9 +8,11 @@ publish = false
 
 # Must stay pure (no poem/sqlx): other modules depend on it.
 [dependencies]
+app-error.workspace = true
 app-events.workspace = true
+async-trait.workspace = true
 chrono.workspace = true
 serde.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
+thiserror.workspace = true
+

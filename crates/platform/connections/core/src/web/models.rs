@@ -1,8 +1,8 @@
 //! Timestamps and the version are plain strings so the generated TS client stays
 //! dependency-free. No response carries a secret's value, sealed or not.
 
-use crate::application::{ConnectionSortKey, Versioned};
-use crate::domain::Connection;
+use crate::application::{ConnectionSortKey, Reported, Versioned};
+use crate::domain::Status;
 use app_persistence::{Direction, Sort};
 use app_web::SortParam;
 use connections_api::{Auth, Method};
@@ -82,6 +82,19 @@ pub struct HealthCheckResponse {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Copy, Enum)]
+#[oai(rename_all = "snake_case")]
+pub enum ConnectionStatus {
+    /// It lacks its URL, or a field or secret its auth style takes.
+    NotConfigured,
+    /// Filled in, but not tested since it last changed.
+    Untested,
+    /// Its health check last answered 2xx.
+    Ok,
+    /// Its health check last failed: `lastError` says why.
+    Failing,
+}
+
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct ConnectionResponse {
@@ -95,6 +108,12 @@ pub struct ConnectionResponse {
     /// The secrets its auth style takes.
     pub secrets: Vec<SecretResponse>,
     pub health_check: Option<HealthCheckResponse>,
+    /// What **Test connection** last found, since the Connection last changed.
+    pub status: ConnectionStatus,
+    /// Why its last test failed, in plain language, when `status` is `failing`.
+    pub last_error: Option<String>,
+    /// When it was last tested, since it last changed.
+    pub tested_at: Option<String>,
     /// Optimistic-concurrency version. Echo it back in `If-Match` to change this Connection or
     /// its secrets; a stale value is refused with `412 Precondition Failed`. Also mirrored in
     /// the `ETag` response header for single-item reads.
@@ -123,9 +142,19 @@ impl From<&Auth> for AuthResponse {
     }
 }
 
-impl From<Versioned<Connection>> for ConnectionResponse {
-    fn from(versioned: Versioned<Connection>) -> Self {
-        let Versioned { entity: c, version } = versioned;
+impl From<Reported> for ConnectionResponse {
+    fn from(reported: Reported) -> Self {
+        let Reported {
+            connection: Versioned { entity: c, version },
+            status,
+            tested_at,
+        } = reported;
+        let (status, last_error) = match status {
+            Status::NotConfigured => (ConnectionStatus::NotConfigured, None),
+            Status::Untested => (ConnectionStatus::Untested, None),
+            Status::Ok => (ConnectionStatus::Ok, None),
+            Status::Failing(error) => (ConnectionStatus::Failing, Some(error)),
+        };
         let declaration = c.declaration();
         Self {
             key: c.key().to_string(),
@@ -167,6 +196,9 @@ impl From<Versioned<Connection>> for ConnectionResponse {
                     .to_owned(),
                     path: check.path.clone(),
                 }),
+            status,
+            last_error,
+            tested_at: tested_at.map(|at| at.to_rfc3339()),
             version: version.as_i64().to_string(),
         }
     }

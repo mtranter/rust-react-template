@@ -181,6 +181,30 @@ impl Connection {
         self.secrets.get(name)
     }
 
+    /// What an admin has yet to give it before it can be called: its URL, then each field and
+    /// secret its auth style takes, by label.
+    pub fn missing(&self) -> Vec<&str> {
+        let url = self.url.is_none().then_some("URL");
+        let fields = self
+            .declaration
+            .auth
+            .fields()
+            .iter()
+            .filter(|(name, _)| !self.fields.contains_key(*name))
+            .map(|(_, label)| *label);
+        let secrets = self
+            .declaration
+            .secrets()
+            .iter()
+            .filter(|(name, _)| !self.secrets.contains_key(*name))
+            .map(|(_, label)| *label);
+        url.into_iter().chain(fields).chain(secrets).collect()
+    }
+
+    pub fn configured(&self) -> bool {
+        self.missing().is_empty()
+    }
+
     fn field_names(&self) -> impl Iterator<Item = &str> {
         self.declaration
             .all_fields()

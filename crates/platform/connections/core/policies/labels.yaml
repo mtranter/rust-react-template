@@ -10,3 +10,4 @@ labels:
         edit: Edit URL and fields
         setSecret: Set secrets
         clearSecret: Clear secrets
+        test: Test connections

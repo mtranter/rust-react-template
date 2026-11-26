@@ -1,7 +1,7 @@
 ---
 id: 0080
 name: Modules call out through a Connection's client, and admins test a Connection from its health check
-status: ready-for-agent
+status: done
 priority: P1
 size: M
 blocked_by: [0079]
@@ -23,6 +23,6 @@ ADR 0050, the calling slice. **Load the `add-telemetry` and `background-work` sk
 
 ## Acceptance criteria
 
-- [ ] Journey against a fake server: each auth style sends the right header or parameter.
-- [ ] `test_connection` reports `ok`, and after a bad secret it reports `failing` with a readable message.
-- [ ] No secret appears in captured spans or logs.
+- [x] Journey against a fake server: each auth style sends the right header or parameter.
+- [x] `test_connection` reports `ok`, and after a bad secret it reports `failing` with a readable message.
+- [x] No secret appears in captured spans or logs.

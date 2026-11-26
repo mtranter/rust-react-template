@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO connections.health (connection_key, version, ok, error, tested_at)\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (connection_key) DO UPDATE\n        SET version = $2, ok = $3, error = $4, tested_at = $5\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Bool",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "581811f0eba85c056623b1687cb1c0fd76f30858ad7d82841d80e3cecc91a4b8"
+}

@@ -7,4 +7,5 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("update_connection", "connection", "edit"),
     Performs::new("set_connection_secret", "connection", "setSecret"),
     Performs::new("clear_connection_secret", "connection", "clearSecret"),
+    Performs::new("test_connection", "connection", "test"),
 ];

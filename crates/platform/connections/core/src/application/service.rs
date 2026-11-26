@@ -1,15 +1,16 @@
+use super::calling::{ConnectionClient, Tokens, Transport, status_text};
 use super::{
     ConnectionRepository, ConnectionSortKey, EventPublisher, Expected, KeyProvider, ListQuery,
     Listed, Transactions, Version, Versioned, events, seal,
 };
 use crate::domain::{
-    Connection, ConnectionAction, ConnectionError, ConnectionEvent, ConnectionKey, Secret,
-    UpdateConnection, secret_value,
+    Connection, ConnectionAction, ConnectionError, ConnectionEvent, ConnectionKey, Health, Outcome,
+    Secret, Status, UpdateConnection, secret_value,
 };
 use app_authz::{Authorizer, Plan, Principal};
 use app_domain::Clock;
 use app_error::{AppError, AppResult};
-use connections_api::Declaration;
+use connections_api::{CallError, Client, Clients, Declaration, Request};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -22,6 +23,15 @@ pub struct ConnectionService {
     transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
     authorizer: Arc<Authorizer>,
+    transport: Arc<dyn Transport>,
+    tokens: Arc<Tokens>,
+}
+
+/// A Connection as an admin reads it: with what its last test found.
+pub struct Reported {
+    pub connection: Versioned<Connection>,
+    pub status: Status,
+    pub tested_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// What a secret is sealed with besides its key: where it belongs, so it opens nowhere else.
@@ -37,6 +47,7 @@ impl ConnectionService {
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
         authorizer: Arc<Authorizer>,
+        transport: Arc<dyn Transport>,
     ) -> Self {
         Self {
             repo,
@@ -45,7 +56,103 @@ impl ConnectionService {
             transactions,
             clock,
             authorizer,
+            transport,
+            tokens: Arc::default(),
         }
+    }
+
+    /// Each with its status: a test counts only for the version it tested.
+    pub async fn reported(
+        &self,
+        connections: Vec<Versioned<Connection>>,
+    ) -> AppResult<Vec<Reported>> {
+        let keys: Vec<String> = connections
+            .iter()
+            .map(|c| c.entity.key().to_string())
+            .collect();
+        let mut health = self.repo.health(&keys).await?;
+        Ok(connections
+            .into_iter()
+            .map(|connection| {
+                let tested = health
+                    .remove(connection.entity.key().as_str())
+                    .filter(|(version, _)| *version == connection.version)
+                    .map(|(_, health)| health);
+                Reported {
+                    status: Status::of(connection.entity.configured(), tested.as_ref()),
+                    tested_at: tested.map(|h| h.tested_at),
+                    connection,
+                }
+            })
+            .collect())
+    }
+
+    pub async fn report(&self, connection: Versioned<Connection>) -> AppResult<Reported> {
+        Ok(self
+            .reported(vec![connection])
+            .await?
+            .pop()
+            .expect("one in, one out"))
+    }
+
+    /// Sends the Connection's declared health check and records what it found: `ok` on a 2xx,
+    /// else `failing` with why, in plain language. Refused `not_configured` until it is filled
+    /// in. Changes neither the Connection nor its version.
+    pub async fn test(&self, principal: &Principal, key: &str) -> AppResult<Reported> {
+        let plan = self.authorize(principal, ConnectionAction::Test)?;
+        let loaded = self.load_for(principal, &plan, key).await?;
+        let check = loaded
+            .entity
+            .declaration()
+            .health_check
+            .clone()
+            .ok_or_else(|| {
+                AppError::validation(format!(
+                    "the Connection `{key}` declares no health check to test it with"
+                ))
+            })?;
+        let client = self.open(&loaded).await.map_err(AppError::from)?;
+        let request = Request::new(check.method.into(), check.path.clone());
+        let what = format!("{} {}", request.method.as_str(), check.path);
+        let outcome = match client.send(request).await {
+            Ok(answer) if answer.is_success() => Outcome::Ok,
+            Ok(answer) => Outcome::Failing(match answer.status {
+                401 | 403 => format!(
+                    "{what} answered {}: check the credentials",
+                    status_text(answer.status)
+                ),
+                404 => format!(
+                    "{what} answered {}: check the URL",
+                    status_text(answer.status)
+                ),
+                status => format!("{what} answered {}", status_text(status)),
+            }),
+            Err(err @ CallError::NotConfigured(_)) => return Err(err.into()),
+            Err(err) => Outcome::Failing(format!("{what} failed: {err}")),
+        };
+        let health = Health {
+            outcome,
+            tested_at: self.clock.now(),
+        };
+        self.repo
+            .record_health(loaded.entity.key(), loaded.version, &health)
+            .await?;
+        self.report(loaded).await
+    }
+
+    async fn open(
+        &self,
+        connection: &Versioned<Connection>,
+    ) -> Result<ConnectionClient, CallError> {
+        ConnectionClient::open(
+            &connection.entity,
+            connection.version.as_i64(),
+            self.keys.as_deref(),
+            self.transport.clone(),
+            self.tokens.clone(),
+            self.clock.clone(),
+        )
+        .await
     }
 
     fn authorize(&self, principal: &Principal, action: ConnectionAction) -> AppResult<Plan> {
@@ -229,6 +336,23 @@ impl ConnectionService {
             .ok_or_else(|| AppError::not_found("connection"))?;
         self.authorizer.check(principal, plan, &connection.entity)?;
         Ok(connection)
+    }
+}
+
+/// As `System`: the module that declared the Connection calls through it, whoever asked it to.
+#[async_trait::async_trait]
+impl Clients for ConnectionService {
+    async fn client(&self, key: &str) -> Result<Arc<dyn Client>, CallError> {
+        let undeclared = || CallError::Undeclared(key.to_owned());
+        let parsed = ConnectionKey::parse(key).map_err(|_| undeclared())?;
+        let connection = self
+            .repo
+            .get(&parsed)
+            .await
+            .map_err(|_| CallError::Unreachable("the Connection couldn't be read".into()))?
+            .filter(|c| c.entity.declared())
+            .ok_or_else(undeclared)?;
+        Ok(Arc::new(self.open(&connection).await?))
     }
 }
 

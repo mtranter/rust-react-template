@@ -2,6 +2,7 @@
 
 #![allow(clippy::disallowed_types)]
 
+mod health;
 mod migrations;
 mod repository;
 mod secrets;

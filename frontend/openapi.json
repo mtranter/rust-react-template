@@ -4641,6 +4641,174 @@
         "operationId": "clear_connection_secret"
       }
     },
+    "/connections/{key}/test": {
+      "post": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "Test a Connection: send the health check its module declares, and record and answer\nwhat it found, `status` `ok` or `failing` with `lastError` saying why in plain language.\nChanges neither the Connection nor its version, so it takes no `If-Match`. Refused `501`\nwhile the Connection lacks its URL or a credential, and `400` when it declares no health\ncheck. Admins only: anyone else is refused `403`.",
+        "parameters": [
+          {
+            "name": "key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "test_connection"
+      }
+    },
     "/users": {
       "post": {
         "tags": [
@@ -7349,6 +7517,7 @@
           "auth",
           "fields",
           "secrets",
+          "status",
           "version"
         ],
         "properties": {
@@ -7382,6 +7551,25 @@
           "healthCheck": {
             "$ref": "#/components/schemas/HealthCheckResponse"
           },
+          "status": {
+            "description": "What **Test connection** last found, since the Connection last changed.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionStatus"
+              },
+              {
+                "description": "What **Test connection** last found, since the Connection last changed."
+              }
+            ]
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Why its last test failed, in plain language, when `status` is `failing`."
+          },
+          "testedAt": {
+            "type": "string",
+            "description": "When it was last tested, since it last changed."
+          },
           "version": {
             "type": "string",
             "description": "Optimistic-concurrency version. Echo it back in `If-Match` to change this Connection or\nits secrets; a stale value is refused with `412 Precondition Failed`. Also mirrored in\nthe `ETag` response header for single-item reads."
@@ -7395,6 +7583,15 @@
           "-key",
           "label",
           "-label"
+        ]
+      },
+      "ConnectionStatus": {
+        "type": "string",
+        "enum": [
+          "not_configured",
+          "untested",
+          "ok",
+          "failing"
         ]
       },
       "ConversationResponse": {

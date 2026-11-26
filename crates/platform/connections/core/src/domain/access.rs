@@ -10,6 +10,7 @@ pub enum ConnectionAction {
     Edit,
     SetSecret,
     ClearSecret,
+    Test,
 }
 
 impl Resource for Connection {
