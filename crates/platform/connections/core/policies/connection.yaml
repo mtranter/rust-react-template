@@ -1,0 +1,5 @@
+apiVersion: auth.flagrante.io/v1
+resourcePolicy:
+  resource: connection
+  version: default
+  rules: []

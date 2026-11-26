@@ -1,0 +1,4 @@
+apiVersion: auth.flagrante.io/v1
+# Any admin may read and change Connections, with no role of their own (ADR 0050, 0041).
+defaultGrants:
+  - { role: admin, resource: connection, actions: ["*"] }

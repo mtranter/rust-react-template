@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM connections.secret WHERE connection_key = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4d8faff8e849050861ee8da9391ef6d362c5a4135aac47fb8cdbbccc30ef5491"
+}

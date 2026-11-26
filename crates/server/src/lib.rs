@@ -110,6 +110,20 @@ pub async fn apply_default_grants<C: Composition>(
     Ok(access::apply_default_grants(ctx, access_modules::<C>()?).await?)
 }
 
+/// Every Connection the modules declare (`Module::declaring`, ADR 0050).
+pub fn declared_connections<C: Composition>() -> Vec<connections_api::Declaration> {
+    C::modules()
+        .iter()
+        .flat_map(|module| module.declared::<connections_api::Declaration>())
+        .collect()
+}
+
+/// Records every Connection the modules declare and retires those none does any more, as
+/// `migrate` does once every module is migrated. Returns how many changed.
+pub async fn declare_connections<C: Composition>(ctx: &Context) -> AppResult<usize> {
+    connections::declare(ctx, declared_connections::<C>()).await
+}
+
 /// Every module's `OPERATIONS`: the action each guarded operation performs.
 pub fn operations<C: Composition>() -> Vec<Performs> {
     C::modules()

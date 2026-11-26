@@ -5,6 +5,7 @@ mod agents;
 mod assigning;
 mod assistant;
 mod compacting_history;
+mod connecting;
 mod deleting_accounts;
 mod finding_notes;
 mod granting;

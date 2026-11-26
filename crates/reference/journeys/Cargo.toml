@@ -13,6 +13,7 @@ publish = false
 access.workspace = true
 app-module.workspace = true
 assistant.workspace = true
+connections.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,6 +24,7 @@ note-search.workspace = true
 
 [dev-dependencies]
 access-api.workspace = true
+connections-api.workspace = true
 app-fake-oidc.workspace = true
 app-authz.workspace = true
 app-db.workspace = true

@@ -79,16 +79,18 @@ for made in TEMPLATE_VERSION GLOSSARY.md docs/adr/.gitkeep docs/tickets/0001-ret
 done
 grep -qx "commit $template" TEMPLATE_VERSION || fail "TEMPLATE_VERSION doesn't name $template"
 git diff --quiet "$template" HEAD -- docs/platform || fail "\`make init\` changed docs/platform/"
-# The platform's `access` and `assistant` stay registered: their operations are
-# the only ones, and access' the only MCP tools (the assistant's are REST-only).
+# The platform's `access`, `assistant` and `connections` stay registered: their
+# operations are the only ones, and theirs the only MCP tools (the assistant's,
+# and connections' on secrets, are REST-only).
 # composed_app.rs, which `init`'s `make check` ran, fails on a tool not in its TOOLS.
 access_ops='["assign_role","create_role","delete_role","get_access_catalog","grant_access","grant_access_in_bulk","invite_user","list_grants","list_invitations","list_roles","list_subjects","resend_invitation","revoke_grant","revoke_invitation","unassign_role"]'
-platform_ops=$(jq -c '. + ["decide_tool_call","get_my_permissions","delete_conversation","get_assistant_status","get_conversation","list_conversations","send_message","start_conversation"] | sort' <<<"$access_ops")
+platform_tools=$(jq -c '. + ["list_connections","get_connection","update_connection"] | sort' <<<"$access_ops")
+platform_ops=$(jq -c '. + ["set_connection_secret","clear_connection_secret","decide_tool_call","get_my_permissions","delete_conversation","get_assistant_status","get_conversation","list_conversations","send_message","start_conversation"] | sort' <<<"$platform_tools")
 jq -e --argjson ops "$platform_ops" '[.paths[][].operationId] | sort == $ops' frontend/openapi.json >/dev/null ||
   fail "the app's spec has operations other than the platform's: $(jq -c '[.paths[][].operationId]' frontend/openapi.json)"
 [ "$(sed -n '/^const TOOLS/,/^];/p' crates/server/tests/composed_app.rs | grep -oE '"[a-z_]+"' | tr -d '"' | sort | paste -sd, -)" = \
-  "$(jq -r --argjson ops "$access_ops" '$ops | join(",")' <<<null)" ] ||
-  fail "the app's MCP tools aren't only access'"
+  "$(jq -r --argjson ops "$platform_tools" '$ops | join(",")' <<<null)" ] ||
+  fail "the app's MCP tools aren't only the platform's"
 grep -q "<title>$title</title>" frontend/index.html || fail "frontend/index.html isn't titled $title"
 ! git grep -nE 'make init NAME|check-init|scripts/init\.sh|^init:' -- AGENTS.md Makefile .github scripts ||
   fail "the app still offers \`make init\`, which it no longer has"

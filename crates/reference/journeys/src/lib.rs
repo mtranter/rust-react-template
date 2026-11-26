@@ -1,6 +1,6 @@
 //! The reference modules served as one app, for their journeys: the template's
 //! server registers the same, and an app's server none of them. The platform's
-//! `access` and `assistant` are served beside them, as every app's server
+//! `access`, `assistant` and `connections` are served beside them, as every app's server
 //! registers them, the assistant with [`Directed`] in Bedrock's place.
 
 use app_module::Module;
@@ -19,6 +19,7 @@ impl Composition for Reference {
     type Endpoints = (
         access::AccessEndpoints,
         assistant::AssistantEndpoints,
+        connections::ConnectionsEndpoints,
         users::UsersEndpoints,
         notes::NotesEndpoints,
         note_search::NoteSearchEndpoints,
@@ -28,6 +29,7 @@ impl Composition for Reference {
         vec![
             access::module(Self::modules),
             assistant::module_with(Settings::default, |_| Some(Arc::new(Directed))),
+            connections::module(),
             users::module(access::assignments),
             notes::module(users::directory),
             note_search::module(),

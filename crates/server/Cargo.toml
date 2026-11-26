@@ -44,6 +44,8 @@ path = "tests/worker_bin.rs"
 [dependencies]
 access.workspace = true
 assistant.workspace = true
+connections.workspace = true
+connections-api.workspace = true
 app-authz.workspace = true
 app-bus.workspace = true
 app-db.workspace = true

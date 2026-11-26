@@ -193,6 +193,10 @@ _Avoid_: Sign-up, registration (the reference `users` Module's), invite link
 The identity provider's user store, as `access` reaches it to invite: a port (`IdentityDirectory`) whose one adapter is Amazon Cognito, configured by `COGNITO_USER_POOL_ID`. Without one, inviting is off (`501`) (ADR 0048).
 _Avoid_: IdP (for the store; that signs people in), user pool (Cognito's own name)
 
+**Connection**:
+Another system an app calls, in the `connections` Module (ADR 0050): a module declares it in code (`connections_api::Declaration`: a key, a label, an auth style, named fields, a health check), `migrate` records it, and an admin gives it a URL, field values and secrets. A Connection no module declares any more is retired, keeping its values. Its secrets are sealed (AES-256-GCM, envelope encryption) behind a **Key Provider** (`KeyProvider`, whose first adapter reads `CONNECTIONS_MASTER_KEY`), and read back only as whether, when and by whom each is set.
+_Avoid_: Integration (the Area that will list them), credential store, secret (for the whole Connection)
+
 **Grant**:
 A Role given an action on a resource, within a Scope or on any row. It only allows. Stored by the `access` Module, where admins make and revoke them at runtime; a Grant its Module's policies no longer have (a later release removed its action or scope) is stale, listed as such and skipped by the rule set.
 _Avoid_: Permission, entitlement

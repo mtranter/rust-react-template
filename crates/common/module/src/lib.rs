@@ -15,6 +15,7 @@ use app_persistence::{DeferredJobs, EventPublisher, Handlers, Transactions};
 use app_web::{Accept, Draining, Idempotency, Performs, Provide};
 use poem::EndpointExt;
 use poem::endpoint::BoxEndpoint;
+use std::any::Any;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -126,6 +127,7 @@ pub struct Module {
     broadcasts: bool,
     policies: Option<PoliciesFn>,
     operations: &'static [Performs],
+    declarations: Vec<Arc<dyn Any + Send + Sync>>,
 }
 
 /// A module's policy files that don't load: the server, worker and `migrate`
@@ -151,6 +153,7 @@ impl Module {
             broadcasts: false,
             policies: None,
             operations: &[],
+            declarations: Vec::new(),
         }
     }
 
@@ -226,6 +229,22 @@ impl Module {
         }
     }
 
+    /// Something the module needs of another, declared in that one's `-api` type: a Connection
+    /// to another system (`connections_api::Declaration`, ADR 0050), which `migrate` records.
+    /// Typed loosely, so this crate depends on no module.
+    pub fn declaring<T: Any + Send + Sync>(mut self, declaration: T) -> Self {
+        self.declarations.push(Arc::new(declaration));
+        self
+    }
+
+    /// What the module declares of type `T`.
+    pub fn declared<T: Any + Clone>(&self) -> Vec<T> {
+        self.declarations
+            .iter()
+            .filter_map(|declaration| declaration.downcast_ref::<T>().cloned())
+            .collect()
+    }
+
     pub fn with_migrations(self, migrations: ModuleMigrations) -> Self {
         Self {
             migrations: Some(migrations),
@@ -277,5 +296,29 @@ impl Module {
             Some(seed) => seed(ctx.clone()).await,
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoData;
+
+    impl Provide for NoData {
+        type Data = ();
+
+        fn build(self) {}
+    }
+
+    #[test]
+    fn a_module_answers_what_it_declares_of_each_type() {
+        let module = Module::new(|_| NoData)
+            .declaring("crm".to_owned())
+            .declaring(7_u32)
+            .declaring("erp".to_owned());
+        assert_eq!(module.declared::<String>(), ["crm", "erp"]);
+        assert_eq!(module.declared::<u32>(), [7]);
+        assert!(module.declared::<i64>().is_empty());
     }
 }
