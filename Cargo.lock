@@ -1197,6 +1197,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "connections"
+version = "0.1.0"
+dependencies = [
+ "app-authz",
+ "app-db",
+ "app-domain",
+ "app-error",
+ "app-events",
+ "app-module",
+ "app-persistence",
+ "app-test-db",
+ "app-test-support",
+ "app-web",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "connections-api",
+ "poem",
+ "poem-openapi",
+ "ring",
+ "serde_json",
+ "sqlx",
+ "strum",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "connections-api"
+version = "0.1.0"
+dependencies = [
+ "app-events",
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "const-hex"
 version = "1.19.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3863,6 +3903,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "connections",
+ "connections-api",
  "note-search",
  "notes",
  "notes-api",
@@ -4621,6 +4663,8 @@ dependencies = [
  "assistant",
  "async-trait",
  "chrono",
+ "connections",
+ "connections-api",
  "figment",
  "note-search",
  "notes",

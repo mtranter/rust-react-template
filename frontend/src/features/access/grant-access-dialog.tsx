@@ -94,7 +94,7 @@ function GrantAccessForm({ onGranted }: { onGranted: () => void }) {
         scopes.set(s.name, seen);
       }
     }
-    // A scope is named per resource (`owner` on notes and on conversations), so say on which.
+    // A scope is named per resource (`owner` on more than one), so say on which.
     return [...scopes].map(([value, s]) => ({
       value,
       label: s.on.length > 0 ? `${s.label} (${s.on.join(", ")})` : s.label,

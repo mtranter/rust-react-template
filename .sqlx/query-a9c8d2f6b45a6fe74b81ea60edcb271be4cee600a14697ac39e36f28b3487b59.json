@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT connection_key, name, ciphertext, wrapped_key, key_version, set_at, set_by\n        FROM connections.secret\n        WHERE connection_key = ANY($1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "connection_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "connection_key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "ciphertext",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "ciphertext"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "wrapped_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "wrapped_key"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "key_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "key_version"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "set_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "set_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "set_by",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "connections.secret",
+            "name": "set_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a9c8d2f6b45a6fe74b81ea60edcb271be4cee600a14697ac39e36f28b3487b59"
+}

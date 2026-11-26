@@ -48,6 +48,14 @@ impl<C: Composition> Surface for Tools<C> {
             reason: ASSISTANT,
         },
         RestOnly {
+            operation_id: "set_connection_secret",
+            reason: SECRETS,
+        },
+        RestOnly {
+            operation_id: "clear_connection_secret",
+            reason: SECRETS,
+        },
+        RestOnly {
             operation_id: "get_my_permissions",
             reason: "what the SPA shows the caller: an agent over MCP is listed the tools it has \
 anyway",
@@ -58,6 +66,10 @@ anyway",
 /// Why the `assistant`'s operations are REST-only (Spec 0012).
 const ASSISTANT: &str = "the assistant's own: an agent over MCP already has the app's tools \
 directly, and its turn operations stream rather than answer JSON";
+
+/// Why the operations on a Connection's secrets are REST-only (ADR 0050).
+const SECRETS: &str = "a Connection's secrets are a person's to enter: an agent never sees or \
+handles one, so none travels through a model or an approval card";
 
 /// Tool descriptions are the spec's summaries, written for REST, and a tool's
 /// refusal carries the error body but no status: this translates. A

@@ -1,0 +1,12 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Connections
+  resources:
+    - resource: connection
+      label: Connections
+      actions:
+        list: List
+        view: View
+        edit: Edit URL and fields
+        setSecret: Set secrets
+        clearSecret: Clear secrets

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    UPDATE connections.connection\n                    SET label = $2, declaration = $3, declared = $4, url = $5, fields = $6,\n                        version = version + 1\n                    WHERE key = $1 AND version = $7\n                    RETURNING version\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "connections.connection",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb",
+        "Bool",
+        "Text",
+        "Jsonb",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1b378072436e558396d7031f2b3a3663cc7145aab21604582d40ca8135e379c2"
+}

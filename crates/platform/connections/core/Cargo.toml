@@ -1,0 +1,37 @@
+[package]
+name = "connections"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+app-authz.workspace = true
+app-db.workspace = true
+app-domain.workspace = true
+app-error.workspace = true
+app-events.workspace = true
+app-module.workspace = true
+app-persistence.workspace = true
+app-web.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+chrono.workspace = true
+connections-api.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
+ring.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+app-authz = { workspace = true, features = ["testing"] }
+app-test-db.workspace = true
+app-test-support.workspace = true
+app-web = { workspace = true, features = ["test"] }
+tokio.workspace = true
