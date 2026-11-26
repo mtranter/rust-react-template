@@ -21,7 +21,7 @@ const subject = { sub: "e2e-ada", name: "Ada Signed-In", email: "ada@e2e.test" }
  * `<binary> <connection key> <secret name>`: a fake of another system that prints its URL first,
  * answering its health check only to `--token <secret>`, and the Connection to point at it.
  */
-const fake = process.env.E2E_FAKE?.split(" ");
+const fake = process.env.E2E_FAKE ? process.env.E2E_FAKE.split(" ") : undefined;
 const fakeToken = "e2e-integration-token";
 /** How long the signed-out page must stay put to count as staying. */
 const stays = 3_000;

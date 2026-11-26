@@ -541,7 +541,7 @@ perl -0 -i -pe '
 # The reference integration's fake goes with the reference modules: `make dev` runs it no more,
 # and `make e2e` connects no integration until the app declares one of its own.
 perl -0 -i -pe 's{^# --- reference integration: `make init` removes this block ---\n.*?^# --- end reference integration ---\n}{}ms' Makefile
-perl -i -pe 's{^fake=\(.*\)$}{fake=()}' scripts/e2e.sh
+perl -i -pe 's{^fake=".*"$}{fake=""}' scripts/e2e.sh
 
 # 6. What made this; the commit leaves no way to run it again.
 perl -0 -i -pe '
