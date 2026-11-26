@@ -6,14 +6,14 @@ priority: P1
 size: L
 blocked_by: [0079, 0080]
 blocks: []
-source: Conversation 2026-11-26, ADR 0079
+source: Conversation 2026-11-26, ADR 0050
 ---
 
 # Admins manage Connections on an Integrations screen, and a reference integration with a stateful fake shows the pattern
 
 ## Description
 
-ADR 0079, the screen and the reference. Read `frontend/AGENTS.md` first.
+ADR 0050, the screen and the reference. Read `frontend/AGENTS.md` first.
 
 ## Proposed approach
 

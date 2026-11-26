@@ -6,14 +6,14 @@ priority: P1
 size: M
 blocked_by: [0079]
 blocks: [0081]
-source: Conversation 2026-11-26, ADR 0079
+source: Conversation 2026-11-26, ADR 0050
 ---
 
 # Modules call out through a Connection's client, and admins test a Connection from its health check
 
 ## Description
 
-ADR 0079, the calling slice. **Load the `add-telemetry` and `background-work` skills first.**
+ADR 0050, the calling slice. **Load the `add-telemetry` and `background-work` skills first.**
 
 ## Proposed approach
 

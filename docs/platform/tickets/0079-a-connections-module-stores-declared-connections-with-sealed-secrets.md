@@ -6,14 +6,14 @@ priority: P1
 size: L
 blocked_by: []
 blocks: [0080, 0081]
-source: Conversation 2026-11-26, ADR 0079
+source: Conversation 2026-11-26, ADR 0050
 ---
 
 # A connections module stores declared Connections, with secrets sealed behind a KeyProvider
 
 ## Description
 
-ADR 0079, the storage slice. **Load the `new-module`, `endpoint-auth` and `events-and-projections` skills first.**
+ADR 0050, the storage slice. **Load the `new-module`, `endpoint-auth` and `events-and-projections` skills first.**
 
 ## Proposed approach
 
