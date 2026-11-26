@@ -77,6 +77,14 @@ impl NoteJson {
     }
 }
 
+json_newtype!(pub ConnectionJson);
+
+impl ConnectionJson {
+    pub fn key(&self) -> &str {
+        self["key"].as_str().unwrap_or_default()
+    }
+}
+
 json_newtype!(pub GrantJson);
 
 json_newtype!(pub AssignmentJson);
@@ -124,6 +132,15 @@ pub struct App {
 }
 
 impl App {
+    /// Records `declaration` as `migrate` does when a module declares it
+    /// (`Module::declaring`): no reference module declares a Connection yet.
+    pub async fn declares(&self, declaration: connections_api::Declaration) {
+        let ctx = Context::new(self.pool.clone(), self.clock.clone());
+        connections::declare(&ctx, vec![declaration])
+            .await
+            .expect("the declaration is recorded");
+    }
+
     /// Migrates, seeds and registers topics, subscriptions and schedules for every
     /// module, as `migrate` and `seed` do, then builds the app and worker as `server` does.
     pub async fn seeded(pool: PgPool) -> Self {
@@ -147,6 +164,7 @@ impl App {
     /// for Cognito.
     async fn instance(pool: PgPool, clock: Arc<FixedClock>) -> Self {
         user_pool();
+        master_key();
         let authorizer = server::authorizer::<Reference>().expect("every module's policies load");
         let ctx = Context::new(pool.clone(), clock.clone()).with_authorizer(Arc::new(authorizer));
         let rules = server::rules::<Reference>(&ctx).expect("every module's policies load");
@@ -310,12 +328,32 @@ fn user_pool() {
     });
 }
 
+/// What `connections` seals secrets with, as a deployment's `CONNECTIONS_MASTER_KEY`, read as
+/// each instance is built.
+fn master_key() {
+    static SET: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    SET.get_or_init(|| {
+        use base64::Engine;
+        let key = base64::engine::general_purpose::STANDARD.encode([42_u8; 32]);
+        // SAFETY: set once, before any instance reads it, and never changed.
+        unsafe { std::env::set_var("CONNECTIONS_MASTER_KEY", key) };
+    });
+}
+
 /// An AI agent's MCP session: each verb a tool call.
 pub struct Agent<'a> {
     session: McpSession<'a>,
 }
 
 impl Agent<'_> {
+    /// The tools the agent is offered, by name.
+    pub async fn tools(&self) -> Vec<String> {
+        self.session
+            .tool_names::<Refusal>()
+            .await
+            .expect("the agent is listed its tools")
+    }
+
     pub async fn me(&self) -> Outcome<UserJson> {
         self.session.call("get_me", json!({})).await
     }
@@ -491,6 +529,44 @@ pub struct Session<'a> {
 }
 
 impl Session<'_> {
+    pub async fn connection(&self, key: &str) -> Outcome<ConnectionJson> {
+        self.signed(self.app.api.get(format!("/api/connections/{key}")))
+            .send()
+            .await
+    }
+
+    pub async fn set_connection_url(
+        &self,
+        connection: &ConnectionJson,
+        url: &str,
+    ) -> Outcome<ConnectionJson> {
+        self.signed(
+            self.app
+                .api
+                .patch(format!("/api/connections/{}", connection.key())),
+        )
+        .if_match(connection.version())
+        .json(&json!({ "url": url }))
+        .send()
+        .await
+    }
+
+    pub async fn set_connection_secret(
+        &self,
+        connection: &ConnectionJson,
+        name: &str,
+        value: &str,
+    ) -> Outcome<ConnectionJson> {
+        self.signed(self.app.api.put(format!(
+            "/api/connections/{}/secrets/{name}",
+            connection.key()
+        )))
+        .if_match(connection.version())
+        .json(&json!({ "value": value }))
+        .send()
+        .await
+    }
+
     /// A conversation with the assistant, the user's own, empty.
     pub async fn start_conversation(&self) -> Outcome<serde_json::Value> {
         self.signed(self.app.api.post("/api/assistant/conversations"))
@@ -631,6 +707,9 @@ pub const TEMPLATE: Template = Template::new("journeys", |pool| {
         .await
         .expect("apply every module's default grants");
         let ctx = Context::new(pool.clone(), Arc::new(app_domain::SystemClock));
+        server::declare_connections::<Reference>(&ctx)
+            .await
+            .expect("record every module's Connections");
         for module in Reference::modules() {
             module.seed(&ctx).await.expect("seed every module");
         }

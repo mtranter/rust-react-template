@@ -44,6 +44,8 @@ access-api = { path = "crates/platform/access/api" }
 access = { path = "crates/platform/access/core" }
 assistant-api = { path = "crates/platform/assistant/api" }
 assistant = { path = "crates/platform/assistant/core" }
+connections-api = { path = "crates/platform/connections/api" }
+connections = { path = "crates/platform/connections/core" }
 users-api = { path = "crates/reference/users/api" }
 users = { path = "crates/reference/users/core" }
 notes-api = { path = "crates/reference/notes/api" }
@@ -142,6 +144,8 @@ rand = "0.8"
 rsa = "0.9"
 sha2 = "0.10"
 base64 = "0.22"
+# AES-256-GCM, for `connections` to seal secrets (ADR 0050): already in the tree under rustls.
+ring = "0.17"
 url = "2"
 # No default-tls: reuses the `ring` provider sqlx already brings, so no system
 # OpenSSL (ADR 0005).

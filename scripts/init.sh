@@ -2,7 +2,7 @@
 # Turns a fresh clone of the template into a greenfield app, once, in one
 # commit: its own name and domain docs, the reference modules registered with
 # no server, the UI down to a shell. The platform's modules (`crates/platform/`,
-# `access` and `assistant`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
+# `access`, `assistant` and `connections`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
 # tested, for agents to copy until the app's ticket 0001 retires it. Then it
 # removes itself, its make targets and its CI job.
 #
@@ -108,8 +108,8 @@ Once this app's own code shows the same patterns, the reference code is dead wei
 - [ ] The app's own modules cover each row of \`crates/AGENTS.md\`'s table: a write module with an aggregate root with children; a module API; a port with an adapter; calling another module; reacting to another module's events; a projection; a read module; retries with an \`Idempotency-Key\`; a cross-module journey in \`crates/server/tests/journeys/\` over the registered modules.
 - [ ] The app's first feature covers \`frontend/AGENTS.md\`'s: a server-paged list with its page and sort in the URL, a create form showing server field errors, an edit dialog sending \`If-Match\` and handling a \`412\`.
 - [ ] Both tables, \`docs/agents/domain.md\` and \`frontend/AGENTS.md\`'s links point at the app's code instead.
-- [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
-- [ ] \`crates/platform/\` stays: \`access\` and \`assistant\` are the platform's, registered in every app, not reference code.
+- [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`, \`connecting\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
+- [ ] \`crates/platform/\` stays: \`access\`, \`assistant\` and \`connections\` are the platform's, registered in every app, not reference code.
 - [ ] \`crates/reference/\`, its workspace members and dependencies in the root \`Cargo.toml\`, its packages in \`deny.toml\`, its queries in \`.sqlx\` (\`make prepare\`) and its mentions in \`scripts/\` are gone, and \`make check\` passes.
 EOF
 
@@ -125,13 +125,13 @@ perl -0 -i -pe '
 
 # 4. The reference modules off the server: compiled and tested, registered nowhere.
 # The platform's `access` stays, granting from whatever the app registers, and
-# so does its `assistant`.
+# so do its `assistant` and `connections`.
 cat >crates/server/src/modules.rs <<'EOF'
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
 //! it grants from every module's policies, so it is built from this list; its
-//! `assistant` follows.
+//! `assistant` and `connections` follow.
 
 use crate::{Composition, config};
 use app_module::Module;
@@ -142,12 +142,17 @@ pub struct Registered;
 impl Composition for Registered {
     /// Nest sub-tuples past 12 entries, where std stops deriving `Default` for
     /// tuples (poem-openapi's own cap is 16).
-    type Endpoints = (access::AccessEndpoints, assistant::AssistantEndpoints);
+    type Endpoints = (
+        access::AccessEndpoints,
+        assistant::AssistantEndpoints,
+        connections::ConnectionsEndpoints,
+    );
 
     fn modules() -> Vec<Module> {
         vec![
             access::module(Self::modules),
             assistant::module(config::agent),
+            connections::module(),
         ]
     }
 }
@@ -155,7 +160,7 @@ EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = ["assistant/seed"]}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n    "list_connections",\n    "get_connection",\n    "update_connection",\n];}s' crates/server/tests/composed_app.rs
 # No seed assigns the dev sign-in (frontend/vite.config.ts) `admin` once the
 # reference users are off the server: `make dev` makes it a bootstrap admin
 # instead, unless `.env` sets APP_BOOTSTRAP_ADMINS, and `.env.example` says so.

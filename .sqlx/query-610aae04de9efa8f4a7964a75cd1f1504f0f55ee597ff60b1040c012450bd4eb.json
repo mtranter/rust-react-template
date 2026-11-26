@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO connections.secret\n            (connection_key, name, ciphertext, wrapped_key, key_version, set_at, set_by)\n        SELECT $1, s.name, s.ciphertext, s.wrapped_key, s.key_version, s.set_at, s.set_by\n        FROM unnest($2::text[], $3::bytea[], $4::bytea[], $5::text[], $6::timestamptz[], $7::text[])\n            AS s (name, ciphertext, wrapped_key, key_version, set_at, set_by)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "ByteaArray",
+        "ByteaArray",
+        "TextArray",
+        "TimestamptzArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "610aae04de9efa8f4a7964a75cd1f1504f0f55ee597ff60b1040c012450bd4eb"
+}

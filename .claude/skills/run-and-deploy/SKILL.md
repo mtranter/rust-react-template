@@ -36,6 +36,10 @@ Migrations run explicitly (`make migrate`, a pre-start task in a deployment), ne
 - A module that broadcasts makes the server and worker refuse to start without `APP_REDIS_URL`; give them the same one (ElastiCache Serverless for Valkey over TLS in production: `rediss://<user>:<password>@<endpoint>:6379`).
 - `APP_ENV=prod` refuses the built-in dev `APP_JWT_SECRET` when no issuer is set.
 
+## Connections (ADR 0050)
+
+`connections` seals the secrets admins give Connections (API keys, passwords, client secrets) with `CONNECTIONS_MASTER_KEY`, 32 bytes in base64 (`openssl rand -base64 32`), which the server reads as it starts. Unset, setting a secret answers `501 not_configured` and the rest works; malformed, the server logs an error and starts as if unset. Keep it in the platform's secret store, never in the database: losing it loses every stored secret (admins enter them again), and a new one doesn't open what the old one sealed (re-wrapping is a follow-up). `migrate` records the Connections the build's modules declare, and retires those none does any more, keeping their values.
+
 ## The assistant (Spec 0012)
 
 The server's `assistant` is off unless `APP_AGENT_MODEL` is set: the server starts as usual, its status operation says off, and the SPA hides its page. With it set:

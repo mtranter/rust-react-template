@@ -2,7 +2,7 @@
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
 //! it grants from every module's policies, so it is built from this list; its
-//! `assistant` follows.
+//! `assistant` and `connections` follow.
 
 use crate::{Composition, config};
 use app_module::Module;
@@ -16,6 +16,7 @@ impl Composition for Registered {
     type Endpoints = (
         access::AccessEndpoints,
         assistant::AssistantEndpoints,
+        connections::ConnectionsEndpoints,
         users::UsersEndpoints,
         notes::NotesEndpoints,
         note_search::NoteSearchEndpoints,
@@ -25,6 +26,7 @@ impl Composition for Registered {
         vec![
             access::module(Self::modules),
             assistant::module(config::agent),
+            connections::module(),
             users::module(access::assignments),
             notes::module(users::directory),
             note_search::module(),

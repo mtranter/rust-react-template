@@ -17,6 +17,9 @@
       "name": "Assistant"
     },
     {
+      "name": "Connections"
+    },
+    {
       "name": "NoteSearch"
     },
     {
@@ -3758,6 +3761,886 @@
         "operationId": "decide_tool_call"
       }
     },
+    "/connections": {
+      "get": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "List the Connections to other systems the app's modules declare, by key unless `sort`\nsays otherwise, with each one's URL, fields and which secrets are set (never their\nvalues). Admins only: anyone else is refused `403`.",
+        "parameters": [
+          {
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ConnectionSort"
+              }
+            },
+            "in": "query",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResult_ConnectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "list_connections"
+      }
+    },
+    "/connections/{key}": {
+      "get": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "Fetch a Connection by its key: its URL, fields, and for each secret whether it is set,\nwhen and by whom (never its value). The response carries its version in the `ETag`\nheader (and body), which a later change must send back in `If-Match`. Admins only:\nanyone else is refused `403`; a key no module declares is `404`.",
+        "parameters": [
+          {
+            "name": "key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "get_connection"
+      },
+      "patch": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "Change a Connection's URL or its declared non-secret fields. Requires `If-Match` with\nthe version last read; a stale one is refused `412` and changes nothing. Admins only:\nanyone else is refused `403`.",
+        "parameters": [
+          {
+            "name": "key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "update_connection"
+      }
+    },
+    "/connections/{key}/secrets/{name}": {
+      "put": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "Set one of a Connection's secrets, sealed before it is stored, replacing any it had\n(which is how a key is rotated). Requires `If-Match` with the Connection's version;\nstale is `412`. Answers `501` when no master key is configured. Admins only: anyone\nelse is refused `403`.",
+        "parameters": [
+          {
+            "name": "key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "set_connection_secret"
+      },
+      "delete": {
+        "tags": [
+          "Connections"
+        ],
+        "summary": "Clear one of a Connection's secrets; clearing one that isn't set changes nothing.\nRequires `If-Match` with the Connection's version; stale is `412`. Admins only: anyone\nelse is refused `403`.",
+        "parameters": [
+          {
+            "name": "key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "required": true,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "description": "Up to 255 characters, unique per request: a retry with the same key and request within 24 hours gets the first successful answer replayed instead of running again.",
+            "required": false,
+            "deprecated": false,
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "headers": {
+              "ETAG": {
+                "required": true,
+                "deprecated": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "The `If-Match` version is stale.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "This `Idempotency-Key` was sent with a different request.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "A write arrived without `If-Match`.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "The deployment lacks what the operation needs.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready to answer yet: retry later.",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JwtAuth": []
+          }
+        ],
+        "operationId": "clear_connection_secret"
+      }
+    },
     "/users": {
       "post": {
         "tags": [
@@ -6195,6 +7078,41 @@
           }
         }
       },
+      "AuthResponse": {
+        "type": "object",
+        "title": "AuthResponse",
+        "required": [
+          "style",
+          "scopes"
+        ],
+        "properties": {
+          "style": {
+            "$ref": "#/components/schemas/AuthStyle"
+          },
+          "name": {
+            "type": "string",
+            "description": "The header or query parameter an API key is sent in."
+          },
+          "scopes": {
+            "type": "array",
+            "description": "What an OAuth 2 client-credentials token is asked for.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AuthStyle": {
+        "type": "string",
+        "enum": [
+          "none",
+          "bearer",
+          "basic",
+          "api_key_header",
+          "api_key_query",
+          "oauth2_client_credentials"
+        ]
+      },
       "BulkGrantRequest": {
         "type": "object",
         "title": "BulkGrantRequest",
@@ -6421,6 +7339,63 @@
             "type": "string"
           }
         }
+      },
+      "ConnectionResponse": {
+        "type": "object",
+        "title": "ConnectionResponse",
+        "required": [
+          "key",
+          "label",
+          "auth",
+          "fields",
+          "secrets",
+          "version"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "As the module that needs it declares it."
+          },
+          "label": {
+            "type": "string"
+          },
+          "auth": {
+            "$ref": "#/components/schemas/AuthResponse"
+          },
+          "url": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "description": "The auth style's fields first, then the module's.",
+            "items": {
+              "$ref": "#/components/schemas/FieldResponse"
+            }
+          },
+          "secrets": {
+            "type": "array",
+            "description": "The secrets its auth style takes.",
+            "items": {
+              "$ref": "#/components/schemas/SecretResponse"
+            }
+          },
+          "healthCheck": {
+            "$ref": "#/components/schemas/HealthCheckResponse"
+          },
+          "version": {
+            "type": "string",
+            "description": "Optimistic-concurrency version. Echo it back in `If-Match` to change this Connection or\nits secrets; a stale value is refused with `412 Precondition Failed`. Also mirrored in\nthe `ETag` response header for single-item reads."
+          }
+        }
+      },
+      "ConnectionSort": {
+        "type": "string",
+        "enum": [
+          "key",
+          "-key",
+          "label",
+          "-label"
+        ]
       },
       "ConversationResponse": {
         "type": "object",
@@ -6675,6 +7650,26 @@
           }
         }
       },
+      "FieldResponse": {
+        "type": "object",
+        "title": "FieldResponse",
+        "required": [
+          "name",
+          "label"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "`None` until an admin sets it."
+          }
+        }
+      },
       "GrantRequest": {
         "type": "object",
         "title": "GrantRequest",
@@ -6760,6 +7755,24 @@
           "grantedAt",
           "-grantedAt"
         ]
+      },
+      "HealthCheckResponse": {
+        "type": "object",
+        "title": "HealthCheckResponse",
+        "required": [
+          "method",
+          "path"
+        ],
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "`GET`, `HEAD` or `POST`."
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative to the Connection's URL."
+          }
+        }
       },
       "InvitationRequest": {
         "type": "object",
@@ -6878,6 +7891,36 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "ListResult_ConnectionResponse": {
+        "type": "object",
+        "title": "ListResult_ConnectionResponse",
+        "description": "The paging fields are present only when the list was paged.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching items across all pages."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The `limit` that was applied (after clamping)."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -7503,6 +8546,34 @@
           "-createdAt"
         ]
       },
+      "SecretResponse": {
+        "type": "object",
+        "title": "SecretResponse",
+        "description": "Whether a secret is set, and when and by whom: never its value.",
+        "required": [
+          "name",
+          "label",
+          "set"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "set": {
+            "type": "boolean"
+          },
+          "setAt": {
+            "type": "string"
+          },
+          "setBy": {
+            "type": "string",
+            "description": "The subject who last set it."
+          }
+        }
+      },
       "SendMessageRequest": {
         "type": "object",
         "title": "SendMessageRequest",
@@ -7513,6 +8584,20 @@
           "text": {
             "type": "string",
             "description": "What the caller says to the assistant."
+          }
+        }
+      },
+      "SetSecretRequest": {
+        "type": "object",
+        "title": "SetSecretRequest",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Stored sealed, and never answered back.",
+            "writeOnly": true
           }
         }
       },
@@ -7968,6 +9053,24 @@
           },
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateConnectionRequest": {
+        "type": "object",
+        "title": "UpdateConnectionRequest",
+        "description": "Carries no version: it travels only in the `If-Match` header.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The base URL requests are sent to, absolute `http` or `https`: left as it is when absent,\ncleared by `null` or an empty string."
+          },
+          "fields": {
+            "type": "object",
+            "description": "Declared fields to set, by name; an empty value clears one. Fields not named are left\nas they are.",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
