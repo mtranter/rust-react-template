@@ -30,6 +30,7 @@ import {
   themeQueryOptions,
 } from "@/lib/appearance";
 import { ifMatch } from "@/lib/if-match";
+import { useTheme } from "@/lib/theme";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -83,6 +84,7 @@ export function AppearanceEditor() {
 }
 
 function Editor({ theme }: { theme: Theme }) {
+  const { scheme, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const queryKey = themeQueryOptions().queryKey;
   const defaults = useMemo(readDefaults, []);
@@ -176,7 +178,7 @@ function Editor({ theme }: { theme: Theme }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="light">
+            <Tabs value={scheme} onValueChange={(next) => setTheme(next as Scheme)}>
               <TabsList>
                 <TabsTrigger value="light">Light</TabsTrigger>
                 <TabsTrigger value="dark">Dark</TabsTrigger>

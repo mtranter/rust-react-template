@@ -21,16 +21,27 @@ function systemIsDark() {
   return typeof window.matchMedia === "function" && window.matchMedia(darkQuery).matches;
 }
 
-const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void } | null>(null);
+type Scheme = "light" | "dark";
+
+const ThemeContext = createContext<{
+  theme: Theme;
+  /** What shows: `theme`, or the system's scheme when it is "system". */
+  scheme: Scheme;
+  setTheme: (theme: Theme) => void;
+} | null>(null);
 
 /** Puts `.dark` on `<html>` for the user's chosen theme, following the system's when "system". */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(storedTheme);
+  const [scheme, setScheme] = useState<Scheme>(() =>
+    theme === "dark" || (theme === "system" && systemIsDark()) ? "dark" : "light",
+  );
 
   useEffect(() => {
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && systemIsDark());
       document.documentElement.classList.toggle("dark", dark);
+      setScheme(dark ? "dark" : "light");
     };
     apply();
     if (theme !== "system" || typeof window.matchMedia !== "function") return;
@@ -48,7 +59,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(next);
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={{ theme, scheme, setTheme }}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

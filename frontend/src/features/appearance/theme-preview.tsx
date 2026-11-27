@@ -3,15 +3,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { cn } from "cn";
 import { InfoIcon } from "lucide-react";
-import { useState } from "react";
 
-/** Real components under the draft theme; dark shows them under `.dark` whatever the viewer's. */
+/** Real components under the draft theme, in the scheme the app shows. */
 export function ThemePreview() {
-  const [dark, setDark] = useState(false);
   return (
     <section aria-label="Preview">
       <Card className="overflow-hidden">
@@ -20,18 +15,11 @@ export function ThemePreview() {
           <CardDescription>
             The whole app shows your changes until you save or discard.
           </CardDescription>
-          <div className="flex items-center gap-2 pt-1">
-            <Switch id="preview-dark" checked={dark} onCheckedChange={setDark} />
-            <Label htmlFor="preview-dark">Preview dark</Label>
-          </div>
         </CardHeader>
         <CardContent>
           <div
             data-testid="theme-preview"
-            className={cn(
-              "grid gap-4 rounded-lg border bg-background p-4 text-foreground",
-              dark && "dark",
-            )}
+            className="grid gap-4 rounded-lg border bg-background p-4 text-foreground"
           >
             <div className="flex flex-wrap gap-2">
               <Button size="sm">Primary</Button>

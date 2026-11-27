@@ -35,7 +35,7 @@ export const appearanceScenarios: Scenario[] = [
     route: "/appearance",
     handlers: [admin, http.get("*/api/appearance/theme", () => HttpResponse.json(custom))],
     steps: async (page) => {
-      await page.getByRole("switch", { name: "Preview dark" }).click();
+      await page.getByRole("tab", { name: "Dark" }).click();
     },
     shows: (page) => page.getByLabel("Primary", { exact: true }),
   },

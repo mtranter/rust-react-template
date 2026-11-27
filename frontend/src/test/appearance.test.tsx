@@ -49,6 +49,21 @@ test("saves with If-Match and keeps the saved theme applied", async () => {
   expect(localStorage.getItem("app-theme-css")).toBe(style());
 });
 
+test("the Light/Dark tabs are the app's own light/dark choice, both ways", async () => {
+  const { user } = await openEditor(appearanceApi({ version: 1 }));
+  expect(screen.getByRole("tab", { name: "Light" })).toHaveAttribute("aria-selected", "true");
+
+  await user.click(screen.getByRole("tab", { name: "Dark" }));
+  expect(document.documentElement).toHaveClass("dark");
+  expect(localStorage.getItem("app-theme")).toBe("dark");
+
+  await user.click(screen.getByRole("button", { name: "Theme" }));
+  await user.click(await screen.findByRole("menuitemradio", { name: "Light" }));
+  expect(document.documentElement).not.toHaveClass("dark");
+  expect(screen.getByRole("tab", { name: "Light" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("switch", { name: "Preview dark" })).not.toBeInTheDocument();
+});
+
 test("shows a server field error on its input", async () => {
   const { user } = await openEditor();
   await user.type(screen.getByLabelText("Primary"), "red;x");
