@@ -8,7 +8,6 @@ import { SparklesIcon } from "lucide-react";
 import { useState } from "react";
 import { AppSidebar } from "./app-sidebar";
 import { AssistantPanel } from "./assistant-panel";
-import { locate, useCapabilities } from "./capabilities";
 import { GoTo } from "./go-to";
 import { ShellBreadcrumb } from "./shell-breadcrumb";
 import { UserMenu } from "./user-menu";
@@ -27,12 +26,9 @@ export function AppShell() {
     setPanelOpen(open);
   };
   const panel = assistantOn === true && !onAssistantPage;
-  const { apps, platform } = useCapabilities();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const { app } = locate(pathname, [...apps, ...platform]);
 
   return (
-    <SidebarProvider data-app={app?.id ?? "home"}>
+    <SidebarProvider>
       <AppSidebar />
       <div className="bg-background relative flex min-w-0 flex-1 flex-col">
         <header className="bg-background/95 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-t-4 border-t-primary px-3 backdrop-blur">

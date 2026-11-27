@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LayoutGridIcon, ShieldCheckIcon } from "lucide-react";
-import { type Capability, locate, productName, useCapabilities } from "./capabilities";
+import { type Capability, appTint, locate, productName, useCapabilities } from "./capabilities";
 
 /**
  * The open app's areas under a switcher to the others; with no app open, the apps themselves.
@@ -125,7 +125,10 @@ function AppSwitcher({ current, apps }: { current?: Capability; apps: Capability
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger render={<SidebarMenuButton size="lg" aria-label="Switch app" />}>
-            <span className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
+            <span
+              style={current ? appTint(current) : undefined}
+              className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md"
+            >
               <Icon className="size-4" />
             </span>
             <span className="grid flex-1 text-left leading-tight">

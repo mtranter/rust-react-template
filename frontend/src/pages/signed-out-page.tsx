@@ -9,7 +9,7 @@ import { LayoutGridIcon } from "lucide-react";
  */
 export function SignedOutPage() {
   return (
-    <main data-app="home" className="bg-sidebar grid min-h-svh place-items-center p-6">
+    <main className="bg-sidebar grid min-h-svh place-items-center p-6">
       <div className="bg-background w-full max-w-sm space-y-6 rounded-2xl border-t-4 border-t-primary p-8 shadow-sm">
         <span className="bg-primary text-primary-foreground flex size-10 items-center justify-center rounded-lg">
           <LayoutGridIcon className="size-5" />

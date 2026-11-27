@@ -1,6 +1,6 @@
 import { Page } from "@/components/page";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { type Capability, productName, useCapabilities } from "@/shell/capabilities";
+import { type Capability, appTint, productName, useCapabilities } from "@/shell/capabilities";
 import { Link } from "@tanstack/react-router";
 
 /** The launcher: every app the caller may open, then the platform's tools. */
@@ -30,18 +30,25 @@ function AppGrid({ label, apps }: { label: string; apps: Capability[] }) {
       <h2 className="font-heading text-lg font-semibold">{label}</h2>
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {apps.map((app) => (
-          <li key={app.id} data-app={app.id}>
+          <li key={app.id}>
             <Link
               to={app.areas[0].to}
-              className="group bg-primary text-primary-foreground focus-visible:ring-ring relative flex h-full min-h-44 flex-col justify-end overflow-hidden rounded-2xl p-5 transition-transform focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              className="group bg-card hover:border-primary focus-visible:ring-ring flex h-full min-h-40 flex-col gap-4 rounded-2xl border-2 p-5 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none motion-reduce:transition-none"
             >
-              <app.icon
-                aria-hidden
-                strokeWidth={1.25}
-                className="absolute -top-4 -right-4 size-32 opacity-20 transition-transform group-hover:rotate-[-8deg] motion-reduce:transition-none"
-              />
-              <span className="font-heading text-2xl font-bold tracking-tight">{app.label}</span>
-              <span className="mt-1 max-w-[30ch] text-sm opacity-85">{app.description}</span>
+              <span
+                style={appTint(app)}
+                className="flex size-12 items-center justify-center rounded-xl"
+              >
+                <app.icon aria-hidden className="size-6" />
+              </span>
+              <span className="mt-auto">
+                <span className="font-heading block text-2xl font-bold tracking-tight">
+                  {app.label}
+                </span>
+                <span className="text-muted-foreground mt-1 block max-w-[34ch] text-sm">
+                  {app.description}
+                </span>
+              </span>
             </Link>
           </li>
         ))}

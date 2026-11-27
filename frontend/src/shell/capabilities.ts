@@ -154,6 +154,19 @@ export function useCapabilities(): { apps: Capability[]; platform: Capability[] 
   return { apps: usable(registry.apps), platform: usable(registry.platform) };
 }
 
+/**
+ * An app's own hue, for its icon's tile only: spread by the golden angle over the registry's order,
+ * so a dozen apps stay apart and adding one never recolours the rest.
+ */
+export function appTint(app: Capability): { backgroundColor: string; color: string } {
+  const index = [...registry.apps, ...registry.platform].findIndex((each) => each.id === app.id);
+  const hue = (250 + Math.max(index, 0) * 137.508) % 360;
+  return {
+    backgroundColor: `oklch(0.93 0.05 ${hue})`,
+    color: `oklch(0.42 0.14 ${hue})`,
+  };
+}
+
 /** The app whose `path` holds `pathname`, and its area: the one whose `to` holds it most closely. */
 export function locate(pathname: string, apps: Capability[]): { app?: Capability; area?: Area } {
   const holds = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
