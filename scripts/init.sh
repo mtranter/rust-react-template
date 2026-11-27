@@ -2,7 +2,7 @@
 # Turns a fresh clone of the template into a greenfield app, once, in one
 # commit: its own name and domain docs, the reference modules registered with
 # no server, the UI down to a shell. The platform's modules (`crates/platform/`,
-# `access`, `assistant`, `connections` and `appearance`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
+# `access`, `assistant`, `connections` and `ui-settings`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
 # tested, for agents to copy until the app's ticket 0001 retires it. Then it
 # removes itself, its make targets and its CI job.
 #
@@ -109,7 +109,7 @@ Once this app's own code shows the same patterns, the reference code is dead wei
 - [ ] The app's first feature covers \`frontend/AGENTS.md\`'s: a server-paged list with its page and sort in the URL, a create form showing server field errors, an edit dialog sending \`If-Match\` and handling a \`412\`.
 - [ ] Both tables, \`docs/agents/domain.md\` and \`frontend/AGENTS.md\`'s links point at the app's code instead.
 - [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`, \`connecting\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
-- [ ] \`crates/platform/\` stays: \`access\`, \`assistant\`, \`connections\` and \`appearance\` are the platform's, registered in every app, not reference code.
+- [ ] \`crates/platform/\` stays: \`access\`, \`assistant\`, \`connections\` and \`ui-settings\` are the platform's, registered in every app, not reference code.
 - [ ] \`crates/reference/\`, its workspace members and dependencies in the root \`Cargo.toml\`, its packages in \`deny.toml\`, its queries in \`.sqlx\` (\`make prepare\`) and its mentions in \`scripts/\` are gone, and \`make check\` passes.
 EOF
 
@@ -125,13 +125,13 @@ perl -0 -i -pe '
 
 # 4. The reference modules off the server: compiled and tested, registered nowhere.
 # The platform's `access` stays, granting from whatever the app registers, and
-# so do its `assistant`, `connections` and `appearance`.
+# so do its `assistant`, `connections` and `ui-settings`.
 cat >crates/server/src/modules.rs <<'EOF'
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
 //! it grants from every module's policies, so it is built from this list; its
-//! `assistant`, `connections` and `appearance` follow.
+//! `assistant`, `connections` and `ui-settings` follow.
 
 use crate::{Composition, config};
 use app_module::Module;
@@ -146,7 +146,7 @@ impl Composition for Registered {
         access::AccessEndpoints,
         assistant::AssistantEndpoints,
         connections::ConnectionsEndpoints,
-        appearance::AppearanceEndpoints,
+        ui_settings::UiSettingsEndpoints,
     );
 
     fn modules() -> Vec<Module> {
@@ -154,7 +154,7 @@ impl Composition for Registered {
             access::module(Self::modules),
             assistant::module(config::agent),
             connections::module(),
-            appearance::module(),
+            ui_settings::module(),
         ]
     }
 }
@@ -180,7 +180,7 @@ git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/test/app-visibility.test.tsx
 cat >frontend/src/shell/capabilities.ts <<EOF
 import { useMyPermissions } from "@/features/access";
-import { useHiddenApps } from "@/features/appearance";
+import { useHiddenApps } from "@/features/ui-settings";
 import type { LinkProps } from "@tanstack/react-router";
 import {
   EyeIcon,
@@ -274,22 +274,22 @@ const integrations: Capability = {
   ],
 };
 
-const appearance: Capability = {
-  id: "appearance",
-  label: "Appearance",
-  description: "The organisation's theme, and which apps everyone sees.",
+const uiSettings: Capability = {
+  id: "ui-settings",
+  label: "UI settings",
+  description: "How the app looks, and which apps everyone sees.",
   icon: PaletteIcon,
-  path: "/appearance",
+  path: "/ui-settings",
   areas: [
     {
-      label: "Theme",
-      to: "/appearance",
+      label: "Theming",
+      to: "/ui-settings/theming",
       icon: PaletteIcon,
       needs: { resource: "theme", action: "update" },
     },
     {
-      label: "Apps",
-      to: "/appearance/apps",
+      label: "App visibility",
+      to: "/ui-settings/app-visibility",
       icon: EyeIcon,
       needs: { resource: "appVisibility", action: "update" },
     },
@@ -299,7 +299,7 @@ const appearance: Capability = {
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [],
-  platform: [access, integrations, appearance],
+  platform: [access, integrations, uiSettings],
 };
 
 /**
@@ -349,14 +349,14 @@ cat >frontend/src/router.tsx <<'EOF'
 import type { GrantSort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
 import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
-import { ThemeLoader } from "@/lib/appearance";
+import { ThemeLoader } from "@/lib/theming";
 import {
   AccessInvitationsPage,
   AccessPermissionsPage,
   AccessRolesPage,
   AccessUsersPage,
 } from "@/pages/access-page";
-import { AppearancePage, AppsPage } from "@/pages/appearance-page";
+import { AppVisibilityPage, ThemingPage } from "@/pages/ui-settings-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
@@ -476,15 +476,30 @@ const integrationRoute = createRoute({
   component: IntegrationPage,
 });
 
+const themingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/ui-settings/theming",
+  component: ThemingPage,
+});
+const uiSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/ui-settings",
+  beforeLoad: () => {
+    throw redirect({ to: "/ui-settings/theming" });
+  },
+});
+// Where the theme editor was before UI settings had more than it.
 const appearanceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/appearance",
-  component: AppearancePage,
+  beforeLoad: () => {
+    throw redirect({ to: "/ui-settings/theming" });
+  },
 });
-const appsRoute = createRoute({
+const appVisibilityRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/appearance/apps",
-  component: AppsPage,
+  path: "/ui-settings/app-visibility",
+  component: AppVisibilityPage,
 });
 
 const assistantRoute = createRoute({
@@ -510,8 +525,10 @@ const routeTree = rootRoute.addChildren([
     roleRoute,
     integrationsRoute,
     integrationRoute,
+    uiSettingsRoute,
     appearanceRoute,
-    appsRoute,
+    themingRoute,
+    appVisibilityRoute,
     assistantRoute,
   ]),
   callbackRoute,

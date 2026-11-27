@@ -14,10 +14,10 @@ import type {
 import type { SignInProvider } from "@/lib/sign-in";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
-import { appearanceScenarios } from "./appearance-scenarios.ts";
 import { assistantScenarios } from "./assistant-scenarios.ts";
 import { integrationsScenarios } from "./integrations-scenarios.ts";
 import { signInScenarios } from "./sign-in-scenarios.ts";
+import { uiSettingsScenarios } from "./ui-settings-scenarios.ts";
 
 // Read by both the browser entry (main.tsx) and the Node script (shoot.ts), which
 // runs it with Node's type stripping: so only package imports, types from `@/`, and other scenarios.
@@ -652,6 +652,6 @@ export const scenarios: Scenario[] = [
   },
   ...assistantScenarios,
   ...integrationsScenarios,
-  ...appearanceScenarios,
+  ...uiSettingsScenarios,
   ...signInScenarios,
 ];

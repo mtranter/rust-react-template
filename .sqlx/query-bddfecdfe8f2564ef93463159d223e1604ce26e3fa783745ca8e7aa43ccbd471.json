@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE ui_settings.theme\n                SET light = $1, dark = $2, shared = $3, updated_at = $4, updated_by = $5,\n                    version = version + 1\n                WHERE key = 'org' AND version = $6\n                RETURNING version\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "ui_settings.theme",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Jsonb",
+        "Jsonb",
+        "Timestamptz",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bddfecdfe8f2564ef93463159d223e1604ce26e3fa783745ca8e7aa43ccbd471"
+}

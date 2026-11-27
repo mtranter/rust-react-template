@@ -3,14 +3,13 @@ import { type ListSearch, validateListSearch } from "@/components/data-table";
 import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
 import { noteSummarySortKeys } from "@/features/note-search";
 import { noteSortKeys } from "@/features/notes";
-import { ThemeLoader } from "@/lib/appearance";
+import { ThemeLoader } from "@/lib/theming";
 import {
   AccessInvitationsPage,
   AccessPermissionsPage,
   AccessRolesPage,
   AccessUsersPage,
 } from "@/pages/access-page";
-import { AppearancePage, AppsPage } from "@/pages/appearance-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
@@ -20,6 +19,7 @@ import { RootLayout } from "@/pages/root-layout";
 import { SearchPage } from "@/pages/search-page";
 import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
 import { SignedOutPage } from "@/pages/signed-out-page";
+import { AppVisibilityPage, ThemingPage } from "@/pages/ui-settings-page";
 import {
   Outlet,
   type RouterHistory,
@@ -170,15 +170,30 @@ const integrationRoute = createRoute({
   component: IntegrationPage,
 });
 
+const themingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/ui-settings/theming",
+  component: ThemingPage,
+});
+const uiSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/ui-settings",
+  beforeLoad: () => {
+    throw redirect({ to: "/ui-settings/theming" });
+  },
+});
+// Where the theme editor was before UI settings had more than it.
 const appearanceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/appearance",
-  component: AppearancePage,
+  beforeLoad: () => {
+    throw redirect({ to: "/ui-settings/theming" });
+  },
 });
-const appsRoute = createRoute({
+const appVisibilityRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/appearance/apps",
-  component: AppsPage,
+  path: "/ui-settings/app-visibility",
+  component: AppVisibilityPage,
 });
 
 const assistantRoute = createRoute({
@@ -207,8 +222,10 @@ const routeTree = rootRoute.addChildren([
     roleRoute,
     integrationsRoute,
     integrationRoute,
+    uiSettingsRoute,
     appearanceRoute,
-    appsRoute,
+    themingRoute,
+    appVisibilityRoute,
     assistantRoute,
   ]),
   callbackRoute,

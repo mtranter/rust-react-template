@@ -1,5 +1,7 @@
 # An org-wide Theme, stored as CSS-variable overrides: public to read, admins' to change
 
+> The `appearance` module is now `ui-settings` (ADR 0052), which also stores which Apps are hidden.
+
 An organisation running an app built from the template wants it to look like theirs: its colours, its fonts, its corners. Until now that meant editing the SPA's stylesheet and rebuilding, which a non-technical admin can't do, and which ADR 0005's one artifact would have to be rebuilt for.
 
 **A platform module, `appearance`, stores one Theme for the whole deployment.** It is overrides of the SPA's CSS variables (its design tokens), by name without the `--`, in three maps: `light` and `dark` for the colour schemes, and `shared` for what both use (radius, fonts, shadows). Empty maps are the defaults, so saving them resets the Theme. It is one aggregate root keyed `org`, absent until first saved (version `0`), versioned and announced on `appearance.theme.v1` like any root (ADR 0016).

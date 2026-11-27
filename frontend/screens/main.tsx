@@ -36,12 +36,12 @@ const notAnAdmin = http.get("*/api/access/catalog", () =>
 const assistantOff = http.get("*/api/assistant/status", () => HttpResponse.json({ on: false }));
 
 // No app hidden.
-const noAppHidden = http.get("*/api/appearance/apps", () =>
+const noAppHidden = http.get("*/api/ui-settings/app-visibility", () =>
   HttpResponse.json({ version: 0, hidden: [] }),
 );
 
 // And no custom theme, so every shot shows `theme.css`' defaults.
-const defaultTheme = http.get("*/api/appearance/theme", () =>
+const defaultTheme = http.get("*/api/ui-settings/theme", () =>
   HttpResponse.json({ version: 0, light: {}, dark: {}, shared: {} }),
 );
 

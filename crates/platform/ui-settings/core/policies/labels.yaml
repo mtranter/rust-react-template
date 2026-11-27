@@ -1,0 +1,12 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: UI settings
+  resources:
+    - resource: theme
+      label: Theme
+      actions:
+        update: Change the theme
+    - resource: appVisibility
+      label: Apps shown
+      actions:
+        update: Show or hide apps

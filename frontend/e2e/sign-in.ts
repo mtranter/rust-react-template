@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 // `make e2e`: signs in to the binary's own SPA through `fake-oidc`, as a bootstrap admin, loads
 // the access screen with that token, invites someone through `fake-oidc`'s stand-in for Cognito,
 // connects an integration (a URL and a secret on Integrations, then Test connection, against the
-// stateful fake $E2E_FAKE serves), saves a theme on Appearance that restyles the app, after a
+// stateful fake $E2E_FAKE serves), saves a theme on UI settings › Theming that restyles the app, after a
 // reload and for a visitor not signed in, then resets it, and signs out. `make e2e` builds the binaries (debug, the
 // server with `embed-frontend`) into $E2E_BIN and migrates and seeds $E2E_DATABASE_URL. Without
 // $E2E_FAKE (an app with no integration yet) the Integrations step only opens the list.
@@ -62,7 +62,7 @@ try {
   const authorizations: string[] = [];
   const unsigned: string[] = [];
   // Public (`server::PUBLIC`): the SPA themes itself before sign-in (ADR 0051).
-  const publicApi = [`${app}/api/appearance/theme`];
+  const publicApi = [`${app}/api/ui-settings/theme`];
   page.on("request", (request) => {
     const url = request.url();
     if (url.startsWith(`${issuer}/authorize`)) authorizations.push(url);
@@ -147,9 +147,9 @@ try {
   }
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
-  // Appearance: an admin's saved theme restyles the app, survives a reload and reaches a
+  // Theming: an admin's saved theme restyles the app, survives a reload and reaches a
   // visitor who has not signed in, with nothing rebuilt or restarted.
-  await page.goto(`${app}/appearance`);
+  await page.goto(`${app}/ui-settings/theming`);
   const primary = page.getByLabel("Primary", { exact: true });
   await primary.waitFor();
   assert.notEqual(
@@ -165,13 +165,13 @@ try {
     );
   assert.equal(await rootVar("--primary"), "rgb(1, 2, 3)", "an edit previews at once");
   await page.getByRole("button", { name: "Save" }).click();
-  await page.getByText("Appearance saved").waitFor();
+  await page.getByText("Theme saved").waitFor();
   await page.reload();
   await primary.waitFor();
   assert.equal(await rootVar("--primary"), "rgb(1, 2, 3)", "the saved theme survives a reload");
   // `index.html` applies the cached theme itself, before the app (or the API) answers.
   const offline = await page.context().newPage();
-  await offline.route("**/api/appearance/theme", (route) => route.abort());
+  await offline.route("**/api/ui-settings/theme", (route) => route.abort());
   await offline.goto(`${app}/auth/signed-out`, { waitUntil: "domcontentloaded" });
   assert.equal(
     await offline.evaluate(() =>
@@ -189,7 +189,7 @@ try {
     return value;
   });
   assert.notEqual(darkPrimary, "rgb(1, 2, 3)", "a light override never reaches dark mode");
-  const theme = await (await fetch(`${app}/api/appearance/theme`)).json();
+  const theme = await (await fetch(`${app}/api/ui-settings/theme`)).json();
   assert.equal(theme.light.primary, "rgb(1, 2, 3)", "anyone may read the theme");
   const visitor = await (await browser.newContext()).newPage();
   await visitor.goto(`${app}/auth/signed-out`);
@@ -201,7 +201,7 @@ try {
   await visitor.context().close();
   await page.getByRole("button", { name: "Reset to defaults" }).click();
   await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await page.getByText("Appearance reset to the defaults").waitFor();
+  await page.getByText("Theme reset to the defaults").waitFor();
   assert.notEqual(await rootVar("--primary"), "rgb(1, 2, 3)", "a reset restores the defaults");
   await page.getByRole("button", { name: "Reset", exact: true }).waitFor({ state: "hidden" });
 

@@ -1,5 +1,5 @@
 import { useMyPermissions } from "@/features/access";
-import { useHiddenApps } from "@/features/appearance";
+import { useHiddenApps } from "@/features/ui-settings";
 import type { LinkProps } from "@tanstack/react-router";
 import {
   EyeIcon,
@@ -118,22 +118,22 @@ const integrations: Capability = {
   ],
 };
 
-const appearance: Capability = {
-  id: "appearance",
-  label: "Appearance",
-  description: "The organisation's theme, and which apps everyone sees.",
+const uiSettings: Capability = {
+  id: "ui-settings",
+  label: "UI settings",
+  description: "How the app looks, and which apps everyone sees.",
   icon: PaletteIcon,
-  path: "/appearance",
+  path: "/ui-settings",
   areas: [
     {
-      label: "Theme",
-      to: "/appearance",
+      label: "Theming",
+      to: "/ui-settings/theming",
       icon: PaletteIcon,
       needs: { resource: "theme", action: "update" },
     },
     {
-      label: "Apps",
-      to: "/appearance/apps",
+      label: "App visibility",
+      to: "/ui-settings/app-visibility",
       icon: EyeIcon,
       needs: { resource: "appVisibility", action: "update" },
     },
@@ -143,7 +143,7 @@ const appearance: Capability = {
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [notes],
-  platform: [access, integrations, appearance],
+  platform: [access, integrations, uiSettings],
 };
 
 /**

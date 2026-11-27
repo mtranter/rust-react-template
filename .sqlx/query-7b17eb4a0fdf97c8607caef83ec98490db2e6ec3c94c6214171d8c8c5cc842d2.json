@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE ui_settings.app_visibility\n                SET hidden = $1, updated_at = $2, updated_by = $3, version = version + 1\n                WHERE key = 'org' AND version = $4\n                RETURNING version\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "ui_settings.app_visibility",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Timestamptz",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7b17eb4a0fdf97c8607caef83ec98490db2e6ec3c94c6214171d8c8c5cc842d2"
+}

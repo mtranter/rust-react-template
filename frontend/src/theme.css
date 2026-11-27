@@ -11,7 +11,7 @@
  * but the neutral of a hovered item. Apps share it all; an app's own hue (`appTint`) colours
  * only its icon's tile, never the interface. Headings are Bricolage Grotesque. Shadows are Tailwind's.
  *
- * These are the defaults: an admin overrides any variable at runtime (`src/lib/appearance/`, a
+ * These are the defaults: an admin overrides any variable at runtime (`src/lib/theming/`, a
  * <style id="app-theme"> after this sheet), so a variable renamed here is a stored theme's key.
  */
 

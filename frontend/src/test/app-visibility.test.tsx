@@ -15,8 +15,8 @@ function visibilityApi(hidden: string[] = [], version = 1) {
   const state: { current: AppVisibility } = { current: { version, hidden } };
   const saves: AppVisibilityInput[] = [];
   server.use(
-    http.get("*/api/appearance/apps", () => HttpResponse.json(state.current)),
-    http.put("*/api/appearance/apps", async ({ request }) => {
+    http.get("*/api/ui-settings/app-visibility", () => HttpResponse.json(state.current)),
+    http.put("*/api/ui-settings/app-visibility", async ({ request }) => {
       if (request.headers.get("If-Match") !== `"${state.current.version}"`) {
         return HttpResponse.json<ErrorBody>(
           { code: "precondition_failed", message: "stale", requestId: "test" },
@@ -45,7 +45,7 @@ test("a hidden app leaves the launcher, though its URL still routes", async () =
 });
 
 test("shows no app until the server says which are hidden", async () => {
-  server.use(http.get("*/api/appearance/apps", () => new Promise<never>(() => {})));
+  server.use(http.get("*/api/ui-settings/app-visibility", () => new Promise<never>(() => {})));
   renderAt("/");
 
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -56,7 +56,7 @@ test("shows no app until the server says which are hidden", async () => {
 test("an admin hides an app with If-Match, and it leaves the launcher", async () => {
   const api = visibilityApi([], 3);
   const user = userEvent.setup();
-  const { router } = renderAt("/appearance/apps");
+  const { router } = renderAt("/ui-settings/app-visibility");
 
   const shown = await screen.findByRole("switch", { name: "Show Notes" });
   await waitFor(() => expect(shown).not.toBeDisabled());
@@ -75,7 +75,7 @@ test("an admin hides an app with If-Match, and it leaves the launcher", async ()
 test("a change made meanwhile is reloaded and said, not overwritten", async () => {
   const api = visibilityApi([], 1);
   const user = userEvent.setup();
-  renderAt("/appearance/apps");
+  renderAt("/ui-settings/app-visibility");
   const shown = await screen.findByRole("switch", { name: "Show Notes" });
   await waitFor(() => expect(shown).not.toBeDisabled());
 

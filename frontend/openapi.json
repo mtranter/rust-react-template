@@ -14,9 +14,6 @@
       "name": "Access"
     },
     {
-      "name": "Appearance"
-    },
-    {
       "name": "Assistant"
     },
     {
@@ -27,6 +24,9 @@
     },
     {
       "name": "Notes"
+    },
+    {
+      "name": "UiSettings"
     },
     {
       "name": "Users"
@@ -4812,10 +4812,10 @@
         "operationId": "test_connection"
       }
     },
-    "/appearance/theme": {
+    "/ui-settings/theme": {
       "get": {
         "tags": [
-          "Appearance"
+          "UiSettings"
         ],
         "summary": "Fetch the organisation's theme: its overrides of the app's CSS variables (names without\n`--`) for the light scheme, the dark scheme, and those both share (radius, fonts,\nshadows). Version `0` with empty maps means the defaults, never changed. The version is\nalso in the `ETag` header, which a change must send back in `If-Match`. Public: no token\nis needed.",
         "responses": {
@@ -4943,7 +4943,7 @@
       },
       "put": {
         "tags": [
-          "Appearance"
+          "UiSettings"
         ],
         "summary": "Replace the organisation's theme with these overrides of the app's CSS variables; empty\nmaps reset it to the defaults. Only known variable names are accepted, and values must\nbe plain CSS values (no `;`, braces, angle brackets, backslashes or `url(`): a bad one is\n`400` naming it (`light.primary`). Requires `If-Match` with the version last read (`0`\nif never saved); a stale one is refused `412` and changes nothing. Admins only: anyone\nelse is refused `403`.",
         "parameters": [
@@ -5118,10 +5118,10 @@
         "operationId": "update_theme"
       }
     },
-    "/appearance/apps": {
+    "/ui-settings/app-visibility": {
       "get": {
         "tags": [
-          "Appearance"
+          "UiSettings"
         ],
         "summary": "Fetch which apps the organisation hides from its web app: the ids of their Capabilities\n(`crm`). Hiding is only that: the apps' operations, and their tools, still answer.\nVersion `0` with none hidden means never changed; the version is also in the `ETag`\nheader, which a change must send back in `If-Match`. Any signed-in caller may read it.",
         "responses": {
@@ -5254,7 +5254,7 @@
       },
       "put": {
         "tags": [
-          "Appearance"
+          "UiSettings"
         ],
         "summary": "Choose which apps the organisation hides from its web app, by their ids; an empty list\nshows every app. Hiding doesn't stop anyone using an app's operations. Requires\n`If-Match` with the version last read (`0` if never saved); a stale one is refused `412`\nand changes nothing. Admins only: anyone else is refused `403`.",
         "parameters": [

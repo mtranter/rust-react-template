@@ -246,7 +246,7 @@ test("back from a sign-in whose token the API refuses too, shows the refusal rat
   // The page's own list is refused too, so the refusal has somewhere to show; and which apps are
   // hidden, as an answer would accept the token.
   server.use(
-    http.get("*/api/appearance/apps", () =>
+    http.get("*/api/ui-settings/app-visibility", () =>
       HttpResponse.json(
         { code: "unauthenticated", message: "unauthenticated", requestId: "test" },
         { status: 401 },

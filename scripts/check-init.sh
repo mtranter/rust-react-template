@@ -79,7 +79,7 @@ for made in TEMPLATE_VERSION GLOSSARY.md docs/adr/.gitkeep docs/tickets/0001-ret
 done
 grep -qx "commit $template" TEMPLATE_VERSION || fail "TEMPLATE_VERSION doesn't name $template"
 git diff --quiet "$template" HEAD -- docs/platform || fail "\`make init\` changed docs/platform/"
-# The platform's `access`, `assistant`, `connections` and `appearance` stay registered: their
+# The platform's `access`, `assistant`, `connections` and `ui-settings` stay registered: their
 # operations are the only ones, and theirs the only MCP tools (the assistant's,
 # and connections' on secrets, are REST-only).
 # composed_app.rs, which `init`'s `make check` ran, fails on a tool not in its TOOLS.

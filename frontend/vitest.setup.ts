@@ -12,9 +12,9 @@ import { client } from "./src/api/client.gen";
 export const server = setupServer(
   http.get("*/api/assistant/status", () => HttpResponse.json({ on: false })),
   // No app hidden.
-  http.get("*/api/appearance/apps", () => HttpResponse.json({ version: 0, hidden: [] })),
+  http.get("*/api/ui-settings/app-visibility", () => HttpResponse.json({ version: 0, hidden: [] })),
   // No custom theme: the defaults in `theme.css`.
-  http.get("*/api/appearance/theme", () =>
+  http.get("*/api/ui-settings/theme", () =>
     HttpResponse.json({ version: 0, light: {}, dark: {}, shared: {} }),
   ),
   http.get("*/api/access/catalog", () =>
