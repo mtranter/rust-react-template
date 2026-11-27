@@ -14,6 +14,7 @@ import type {
 import type { SignInProvider } from "@/lib/sign-in";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import type { Locator, Page } from "playwright";
+import { appearanceScenarios } from "./appearance-scenarios.ts";
 import { assistantScenarios } from "./assistant-scenarios.ts";
 import { integrationsScenarios } from "./integrations-scenarios.ts";
 import { signInScenarios } from "./sign-in-scenarios.ts";
@@ -651,5 +652,6 @@ export const scenarios: Scenario[] = [
   },
   ...assistantScenarios,
   ...integrationsScenarios,
+  ...appearanceScenarios,
   ...signInScenarios,
 ];
