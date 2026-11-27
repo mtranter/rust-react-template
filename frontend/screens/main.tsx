@@ -35,7 +35,12 @@ const notAnAdmin = http.get("*/api/access/catalog", () =>
 // Likewise the assistant is off by default, as with no model configured.
 const assistantOff = http.get("*/api/assistant/status", () => HttpResponse.json({ on: false }));
 
-await setupWorker(...scenario.handlers, appsOnly, notAnAdmin, assistantOff).start({
+// And no custom theme, so every shot shows `theme.css`' defaults.
+const defaultTheme = http.get("*/api/appearance/theme", () =>
+  HttpResponse.json({ version: 0, light: {}, dark: {}, shared: {} }),
+);
+
+await setupWorker(...scenario.handlers, appsOnly, notAnAdmin, assistantOff, defaultTheme).start({
   serviceWorker: { url: "/screens/mockServiceWorker.js" },
   quiet: true,
   onUnhandledRequest: (request, print) => {

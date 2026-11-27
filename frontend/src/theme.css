@@ -10,6 +10,9 @@
  * Tailwind's 700 so text in them reads on white, dark its 400. shadcn's `accent` is not an accent
  * but the neutral of a hovered item. Apps share it all; an app is told apart by its icon, never a
  * colour. Shadows are Tailwind's.
+ *
+ * These are the defaults: an admin overrides any variable at runtime (`src/lib/appearance/`, a
+ * <style id="app-theme"> after this sheet), so a variable renamed here is a stored theme's key.
  */
 
 @theme {

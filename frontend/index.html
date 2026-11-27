@@ -17,6 +17,17 @@
           document.documentElement.classList.add("dark");
         }
       } catch (e) {}
+      // The org's custom theme as last loaded (`src/lib/appearance/`, which refreshes it), so a
+      // restyled page never flashes the defaults.
+      try {
+        var css = localStorage.getItem("app-theme-css");
+        if (css) {
+          var style = document.createElement("style");
+          style.id = "app-theme";
+          style.textContent = css;
+          document.head.appendChild(style);
+        }
+      } catch (e) {}
     </script>
   </head>
   <body>

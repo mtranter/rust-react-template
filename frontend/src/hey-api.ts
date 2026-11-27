@@ -50,6 +50,14 @@ async function authorizedFetch(request: Request): Promise<Response> {
   return response;
 }
 
+/**
+ * For a public operation: carries the token when there is one, but neither renews it nor counts
+ * the answer as the API accepting it (it answers anyone), which would undo `signInAgain`'s guard.
+ */
+export function publicFetch(request: Request): Promise<Response> {
+  return send(request, authorization?.accessToken());
+}
+
 // Relative so the same build works behind the Vite proxy (dev) and served
 // same-origin by the Rust binary (prod).
 export const createClientConfig: CreateClientConfig = (config) => ({
