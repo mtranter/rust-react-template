@@ -4,4 +4,4 @@ apiVersion: auth.flagrante.io/v1
 # the hidden apps is any signed-in caller's.
 defaultGrants:
   - { role: admin, resource: theme, actions: ["*"] }
-  - { role: admin, resource: app_visibility, actions: ["*"] }
+  - { role: admin, resource: appVisibility, actions: ["*"] }

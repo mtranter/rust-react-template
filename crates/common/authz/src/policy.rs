@@ -352,7 +352,8 @@ fn non_empty(file: &File, fields: &mut Fields, key: &str) -> Result<Vec<Named>, 
     Ok(items)
 }
 
-/// A Capability's `capability.yaml` (ADR 0047): `{ id, label }`, beside the Modules it owns.
+/// A Capability's `capability.yaml` (ADR 0047): `{ id, label, app? }`, beside the Modules it owns.
+/// `app: false` says it has no app in the SPA (ADR 0052): only `make check-modules` acts on it.
 pub(crate) fn capability(file: &File, source: &str) -> Result<crate::Capability, PolicyError> {
     let root = file.parse(source)?;
     let mut fields = file.map(&root, "a capability file")?;
@@ -371,6 +372,9 @@ pub(crate) fn capability(file: &File, source: &str) -> Result<crate::Capability,
         ));
     }
     let label = text(file, fields.require(file, "label")?, "`label`")?;
+    if let Some(app) = fields.take("app") {
+        file.bool(app, "`app`")?;
+    }
     fields.finish(file, "a capability file")?;
     Ok(crate::Capability { id, label })
 }

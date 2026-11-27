@@ -243,8 +243,15 @@ test("when the retry gets a 401 too, sends the user to sign in rather than renew
 
 test("back from a sign-in whose token the API refuses too, shows the refusal rather than signing in again", async () => {
   const seen = adminFor([]);
-  // The page's own list is refused too, so the refusal has somewhere to show.
+  // The page's own list is refused too, so the refusal has somewhere to show; and which apps are
+  // hidden, as an answer would accept the token.
   server.use(
+    http.get("*/api/appearance/apps", () =>
+      HttpResponse.json(
+        { code: "unauthenticated", message: "unauthenticated", requestId: "test" },
+        { status: 401 },
+      ),
+    ),
     http.get("*/api/access/subjects", () =>
       HttpResponse.json(
         { code: "unauthenticated", message: "unauthenticated", requestId: "test" },

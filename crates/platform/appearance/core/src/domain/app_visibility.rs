@@ -29,11 +29,16 @@ impl AppVisibility {
         for (i, id) in hidden.iter().enumerate() {
             let fault = if id.is_empty() || id.len() > MAX_ID_LEN {
                 Some(format!("must be 1 to {MAX_ID_LEN} characters"))
-            } else if !id
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+            } else if !(id.starts_with(|c: char| c.is_ascii_lowercase())
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
             {
-                Some("must be an app's id: lowercase letters, digits, `-` and `_`".to_owned())
+                // A Capability's id, as `capability.yaml` allows it.
+                Some(
+                    "must be an app's id: lowercase letters, digits and '-', from a letter"
+                        .to_owned(),
+                )
             } else {
                 None
             };

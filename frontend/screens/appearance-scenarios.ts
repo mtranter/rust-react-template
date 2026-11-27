@@ -1,4 +1,4 @@
-import type { Theme } from "@/api";
+import type { AppVisibility, Theme } from "@/api";
 import { http, HttpResponse } from "msw";
 import type { Scenario } from "./scenarios.ts";
 
@@ -38,5 +38,23 @@ export const appearanceScenarios: Scenario[] = [
       await page.getByRole("tab", { name: "Dark" }).click();
     },
     shows: (page) => page.getByLabel("Primary", { exact: true }),
+  },
+  {
+    name: "appearance-apps",
+    route: "/appearance/apps",
+    handlers: [
+      http.get("*/api/access/me/permissions", () =>
+        HttpResponse.json({
+          permissions: [
+            { resource: "theme", action: "update" },
+            { resource: "appVisibility", action: "update" },
+          ],
+        }),
+      ),
+      http.get("*/api/appearance/apps", () =>
+        HttpResponse.json<AppVisibility>({ version: 2, hidden: ["shop"] }),
+      ),
+    ],
+    shows: (page) => page.getByRole("region", { name: "Apps" }),
   },
 ];

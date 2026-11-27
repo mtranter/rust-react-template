@@ -6,7 +6,7 @@ labels:
       label: Theme
       actions:
         update: Change the theme
-    - resource: app_visibility
+    - resource: appVisibility
       label: Apps shown
       actions:
         update: Show or hide apps

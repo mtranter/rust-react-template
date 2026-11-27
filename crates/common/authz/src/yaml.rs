@@ -12,6 +12,7 @@ pub(crate) struct Node {
 #[derive(Debug, Clone)]
 pub(crate) enum Kind {
     Str(String),
+    Bool(bool),
     Seq(Vec<Node>),
     Map(Vec<(Key, Node)>),
     /// What the policy formats never take where a string, list or mapping is due, described.
@@ -22,6 +23,7 @@ impl Kind {
     pub(crate) fn describe(&self) -> &'static str {
         match self {
             Kind::Str(_) => "a string",
+            Kind::Bool(_) => "a boolean",
             Kind::Seq(_) => "a list",
             Kind::Map(_) => "a mapping",
             Kind::Other(what) => what,
@@ -97,6 +99,16 @@ impl File<'_> {
         }
     }
 
+    pub fn bool(&self, node: &Node, what: &str) -> Result<bool, PolicyError> {
+        match node.kind {
+            Kind::Bool(b) => Ok(b),
+            _ => Err(self.refuse(
+                node.line,
+                format!("{what} must be true or false, not {}", node.kind.describe()),
+            )),
+        }
+    }
+
     pub fn strings(&self, node: &Node, what: &str) -> Result<Vec<(String, usize)>, PolicyError> {
         self.seq(node, what)?
             .iter()
@@ -156,7 +168,7 @@ fn convert(node: MarkedYaml) -> Node {
     let line = node.span.start.line();
     let kind = match node.data {
         YamlData::Value(Scalar::Null) => Kind::Other("null"),
-        YamlData::Value(Scalar::Boolean(_)) => Kind::Other("a boolean"),
+        YamlData::Value(Scalar::Boolean(b)) => Kind::Bool(b),
         YamlData::Value(Scalar::Integer(_)) => Kind::Other("an integer"),
         YamlData::Value(Scalar::String(s)) => Kind::Str(s.into_owned()),
         YamlData::Value(Scalar::FloatingPoint(_)) => Kind::Other("a number"),

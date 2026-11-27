@@ -1,5 +1,5 @@
 apiVersion: auth.flagrante.io/v1
 resourcePolicy:
-  resource: app_visibility
+  resource: appVisibility
   version: default
   rules: []

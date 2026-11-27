@@ -250,7 +250,7 @@ _Avoid_: Approval text, description
 ## The UI
 
 **App**:
-A Capability's screens as the SPA presents them, with its own icon and entry in the shell's registry (`frontend/src/shell/capabilities.ts`, keyed by the Capability's id), switcher, launcher and Go to (ADR 0046, 0047). Each Capability has one App, apart from those with no screens (`assistant`); an App may show data another Capability owns, by linking to, embedding or copying it, without changing who owns it. The platform's own screens (`access`) are tools kept apart from the Apps, not Apps of the suite.
+A Capability's screens as the SPA presents them, with its own icon and entry in the shell's registry (`frontend/src/shell/capabilities.ts`, keyed by the Capability's id), switcher, launcher and Go to (ADR 0046, 0047). Each Capability has one App, apart from backend-only ones, whose `capability.yaml` says `app: false` (`assistant`, ADR 0052); an admin may also hide an App from everyone (Admin › Appearance › Apps), which takes it out of the shell but leaves its operations and Tools answering; an App may show data another Capability owns, by linking to, embedding or copying it, without changing who owns it. The platform's own screens (`access`) are tools kept apart from the Apps, not Apps of the suite.
 _Avoid_: Module (for an App), child app, sub-app
 
 **Area**:

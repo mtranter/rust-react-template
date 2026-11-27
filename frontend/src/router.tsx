@@ -10,7 +10,7 @@ import {
   AccessRolesPage,
   AccessUsersPage,
 } from "@/pages/access-page";
-import { AppearancePage } from "@/pages/appearance-page";
+import { AppearancePage, AppsPage } from "@/pages/appearance-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
@@ -175,6 +175,11 @@ const appearanceRoute = createRoute({
   path: "/appearance",
   component: AppearancePage,
 });
+const appsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/appearance/apps",
+  component: AppsPage,
+});
 
 const assistantRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -203,6 +208,7 @@ const routeTree = rootRoute.addChildren([
     integrationsRoute,
     integrationRoute,
     appearanceRoute,
+    appsRoute,
     assistantRoute,
   ]),
   callbackRoute,

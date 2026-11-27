@@ -28,7 +28,7 @@ pub enum AppVisibilityAction {
 }
 
 impl Resource for AppVisibility {
-    const KIND: &'static str = "app_visibility";
+    const KIND: &'static str = "appVisibility";
     const ATTRS: &'static [&'static str] = &[];
     type Action = AppVisibilityAction;
 

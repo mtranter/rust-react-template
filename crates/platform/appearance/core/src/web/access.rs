@@ -5,5 +5,5 @@ use app_web::Performs;
 /// they perform none.
 pub const OPERATIONS: &[Performs] = &[
     Performs::new("update_theme", "theme", "update"),
-    Performs::new("update_app_visibility", "app_visibility", "update"),
+    Performs::new("update_app_visibility", "appVisibility", "update"),
 ];

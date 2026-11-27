@@ -1,6 +1,8 @@
 import { useMyPermissions } from "@/features/access";
+import { useHiddenApps } from "@/features/appearance";
 import type { LinkProps } from "@tanstack/react-router";
 import {
+  EyeIcon,
   KeyRoundIcon,
   ListChecksIcon,
   ListIcon,
@@ -119,15 +121,21 @@ const integrations: Capability = {
 const appearance: Capability = {
   id: "appearance",
   label: "Appearance",
-  description: "The organisation's theme: its colours, fonts and corners.",
+  description: "The organisation's theme, and which apps everyone sees.",
   icon: PaletteIcon,
   path: "/appearance",
   areas: [
     {
-      label: "Appearance",
+      label: "Theme",
       to: "/appearance",
       icon: PaletteIcon,
       needs: { resource: "theme", action: "update" },
+    },
+    {
+      label: "Apps",
+      to: "/appearance/apps",
+      icon: EyeIcon,
+      needs: { resource: "appVisibility", action: "update" },
     },
   ],
 };
@@ -140,10 +148,13 @@ export const registry: { apps: Capability[]; platform: Capability[] } = {
 
 /**
  * The apps the caller may open, each with only the areas whose `needs` they hold, leaving out an
- * app with none; nothing until the server has answered.
+ * app with none and any the organisation hides (ADR 0052: the platform's tools can't be hidden,
+ * so no admin hides their own way back); nothing until the server has answered both.
  */
 export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
-  const permissions = useMyPermissions() ?? [];
+  const hidden = useHiddenApps();
+  const answered = useMyPermissions();
+  const permissions = hidden ? (answered ?? []) : [];
   const held = (area: Area) =>
     permissions.some((p) => p.resource === area.needs.resource && p.action === area.needs.action);
   const usable = (capabilities: Capability[]) =>
@@ -151,7 +162,8 @@ export function useCapabilities(): { apps: Capability[]; platform: Capability[] 
       const [first, ...rest] = capability.areas.filter(held);
       return first ? [{ ...capability, areas: [first, ...rest] as Capability["areas"] }] : [];
     });
-  return { apps: usable(registry.apps), platform: usable(registry.platform) };
+  const shown = registry.apps.filter((app) => !hidden?.includes(app.id));
+  return { apps: usable(shown), platform: usable(registry.platform) };
 }
 
 /**

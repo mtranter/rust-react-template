@@ -11,6 +11,8 @@ import { client } from "./src/api/client.gen";
 // answers only an admin, so a test of one answers it itself (`accessApi`).
 export const server = setupServer(
   http.get("*/api/assistant/status", () => HttpResponse.json({ on: false })),
+  // No app hidden.
+  http.get("*/api/appearance/apps", () => HttpResponse.json({ version: 0, hidden: [] })),
   // No custom theme: the defaults in `theme.css`.
   http.get("*/api/appearance/theme", () =>
     HttpResponse.json({ version: 0, light: {}, dark: {}, shared: {} }),

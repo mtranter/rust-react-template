@@ -379,7 +379,8 @@ export function accessApi(
   return { handlers, requests, ifMatches, bulkGrants };
 }
 
-// `connection` is admin-only too (ADR 0050), so its Integrations hide with the rest.
+// `connection`, `theme` and `appVisibility` are admin-only too (ADR 0050, 0051, 0052), so their
+// tools hide with the rest.
 const accessResources = [
   "subject",
   "role",
@@ -388,6 +389,7 @@ const accessResources = [
   "invitation",
   "connection",
   "theme",
+  "appVisibility",
 ];
 
 /** `access` as the server answers a caller who isn't an admin: they hold none of its actions. */

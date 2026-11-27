@@ -124,9 +124,9 @@ check-init: ## Run `make init` on a scratch copy of this tree, then check what i
 .PHONY: init check-init
 # --- end template only ---
 
-new-module: _require-cargo-bin db-wait ## Scaffold a write module in its Capability and register it: make new-module CAPABILITY=crm NAME=contacts [ENTITY=contact]
-	@test -n "$(CAPABILITY)" && test -n "$(NAME)" || { echo "usage: make new-module CAPABILITY=<capability> NAME=<module> [ENTITY=<aggregate>]"; exit 1; }
-	./scripts/new-module.sh $(CAPABILITY) $(NAME) $(ENTITY)
+new-module: _require-cargo-bin db-wait ## Scaffold a write module in its Capability and register it: make new-module CAPABILITY=crm NAME=contacts [ENTITY=contact] [APP=false]
+	@test -n "$(CAPABILITY)" && test -n "$(NAME)" || { echo "usage: make new-module CAPABILITY=<capability> NAME=<module> [ENTITY=<aggregate>] [APP=false]"; exit 1; }
+	APP=$(or $(APP),true) ./scripts/new-module.sh $(CAPABILITY) $(NAME) $(ENTITY)
 
 generate: frontend/src/api ## Dump spec + run FE codegen
 

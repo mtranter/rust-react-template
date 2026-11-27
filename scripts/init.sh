@@ -162,7 +162,7 @@ EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = ["assistant/seed"]}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n    "list_connections",\n    "get_connection",\n    "update_connection",\n    "test_connection",\n    "get_theme",\n    "update_theme",\n];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n    "list_connections",\n    "get_connection",\n    "update_connection",\n    "test_connection",\n    "get_theme",\n    "update_theme",\n    "get_app_visibility",\n    "update_app_visibility",\n];}s' crates/server/tests/composed_app.rs
 # No seed assigns the dev sign-in (frontend/vite.config.ts) `admin` once the
 # reference users are off the server: `make dev` makes it a bootstrap admin
 # instead, unless `.env` sets APP_BOOTSTRAP_ADMINS, and `.env.example` says so.
@@ -176,11 +176,14 @@ perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\n\];}{pub const
 git rm -rq frontend/src/features/notes frontend/src/features/note-search \
   frontend/src/pages/notes-page.tsx frontend/src/pages/search-page.tsx \
   frontend/src/test/fixtures.ts frontend/src/test/notes-list.test.tsx \
-  frontend/src/test/note-editing.test.tsx frontend/src/test/note-search.test.tsx
+  frontend/src/test/note-editing.test.tsx frontend/src/test/note-search.test.tsx \
+  frontend/src/test/app-visibility.test.tsx
 cat >frontend/src/shell/capabilities.ts <<EOF
 import { useMyPermissions } from "@/features/access";
+import { useHiddenApps } from "@/features/appearance";
 import type { LinkProps } from "@tanstack/react-router";
 import {
+  EyeIcon,
   KeyRoundIcon,
   ListChecksIcon,
   type LucideIcon,
@@ -274,15 +277,21 @@ const integrations: Capability = {
 const appearance: Capability = {
   id: "appearance",
   label: "Appearance",
-  description: "The organisation's theme: its colours, fonts and corners.",
+  description: "The organisation's theme, and which apps everyone sees.",
   icon: PaletteIcon,
   path: "/appearance",
   areas: [
     {
-      label: "Appearance",
+      label: "Theme",
       to: "/appearance",
       icon: PaletteIcon,
       needs: { resource: "theme", action: "update" },
+    },
+    {
+      label: "Apps",
+      to: "/appearance/apps",
+      icon: EyeIcon,
+      needs: { resource: "appVisibility", action: "update" },
     },
   ],
 };
@@ -295,10 +304,13 @@ export const registry: { apps: Capability[]; platform: Capability[] } = {
 
 /**
  * The apps the caller may open, each with only the areas whose \`needs\` they hold, leaving out an
- * app with none; nothing until the server has answered.
+ * app with none and any the organisation hides (ADR 0052: the platform's tools can't be hidden,
+ * so no admin hides their own way back); nothing until the server has answered both.
  */
 export function useCapabilities(): { apps: Capability[]; platform: Capability[] } {
-  const permissions = useMyPermissions() ?? [];
+  const hidden = useHiddenApps();
+  const answered = useMyPermissions();
+  const permissions = hidden ? (answered ?? []) : [];
   const held = (area: Area) =>
     permissions.some((p) => p.resource === area.needs.resource && p.action === area.needs.action);
   const usable = (capabilities: Capability[]) =>
@@ -306,7 +318,21 @@ export function useCapabilities(): { apps: Capability[]; platform: Capability[] 
       const [first, ...rest] = capability.areas.filter(held);
       return first ? [{ ...capability, areas: [first, ...rest] as Capability["areas"] }] : [];
     });
-  return { apps: usable(registry.apps), platform: usable(registry.platform) };
+  const shown = registry.apps.filter((app) => !hidden?.includes(app.id));
+  return { apps: usable(shown), platform: usable(registry.platform) };
+}
+
+/**
+ * An app's own hue, for its icon's tile only: spread by the golden angle over the registry's order,
+ * so a dozen apps stay apart and adding one never recolours the rest.
+ */
+export function appTint(app: Capability): { backgroundColor: string; color: string } {
+  const index = [...registry.apps, ...registry.platform].findIndex((each) => each.id === app.id);
+  const hue = (250 + Math.max(index, 0) * 137.508) % 360;
+  return {
+    backgroundColor: \`oklch(0.93 0.05 \${hue})\`,
+    color: \`oklch(0.42 0.14 \${hue})\`,
+  };
 }
 
 /** The app whose \`path\` holds \`pathname\`, and its area: the one whose \`to\` holds it most closely. */
@@ -330,7 +356,7 @@ import {
   AccessRolesPage,
   AccessUsersPage,
 } from "@/pages/access-page";
-import { AppearancePage } from "@/pages/appearance-page";
+import { AppearancePage, AppsPage } from "@/pages/appearance-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
@@ -455,6 +481,11 @@ const appearanceRoute = createRoute({
   path: "/appearance",
   component: AppearancePage,
 });
+const appsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/appearance/apps",
+  component: AppsPage,
+});
 
 const assistantRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -480,6 +511,7 @@ const routeTree = rootRoute.addChildren([
     integrationsRoute,
     integrationRoute,
     appearanceRoute,
+    appsRoute,
     assistantRoute,
   ]),
   callbackRoute,

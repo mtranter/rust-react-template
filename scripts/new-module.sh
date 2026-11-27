@@ -7,6 +7,10 @@
 #
 #   scripts/new-module.sh <capability> <name> [<entity>]    e.g. `sales order-lines order-line`
 #
+# With APP=false in the environment (`make new-module .. APP=false`) a new
+# Capability is backend-only (ADR 0052): `app: false` in its `capability.yaml`,
+# and no entry, route or page in the SPA; its operations and tools are as any.
+#
 # The first Module of a Capability also makes the Capability: its folder and
 # `capability.yaml` (its label the id in words), the workspace's
 # `crates/capabilities/` members if it is the first, and its app in the SPA: an
@@ -49,6 +53,11 @@ for other in crates/platform/*/capability.yaml crates/reference/capability.yaml 
 done
 new_capability=false
 [ -f "$capability_file" ] || new_capability=true
+case ${APP:-true} in
+  true) with_app=$new_capability ;;
+  false) with_app=false ;;
+  *) die "APP=$APP: say true or false" ;;
+esac
 
 DATABASE_URL=${DATABASE_URL:-postgres://app:app@localhost:5432/app}
 export DATABASE_URL
@@ -71,7 +80,7 @@ page=frontend/src/pages/$capability-$name-page.tsx
 page_component=$(pascal "$capability")${plural_type}Page
 route=$(camel "$capability")${plural_type}Route
 capability_const=$(camel "$capability")
-if $new_capability; then
+if $with_app; then
   [ ! -e "$page" ] || die "$page already exists"
   ! grep -qE "\b($route|$capability_const)\b" "$router" "$registry" ||
     die "\`$route\` or \`$capability_const\` is already named in $router or $registry"
@@ -91,6 +100,7 @@ make --no-print-directory migrate
 if $new_capability; then
   mkdir -p "$capability_dir"
   printf 'id: %s\nlabel: %s\n' "$capability" "$capability_label" >"$capability_file"
+  [ "${APP:-true}" = false ] && printf 'app: false\n' >>"$capability_file"
 fi
 if ! grep -qF '"crates/capabilities/*/*/core"' Cargo.toml; then
   perl -0 -i -pe 's{(\n    "crates/\*/\*/api",\n)}{$1    # The app'"'"'s Modules, each in its Capability'"'"'s folder (ADR 0047). `make new-module`\n    # adds these with the first Capability: a glob matching nothing fails the workspace.\n    "crates/capabilities/*/*/core",\n    "crates/capabilities/*/*/api",\n}' Cargo.toml
@@ -156,7 +166,7 @@ TOOLS=$(sed -nE 's/.*operation_id = "([^"]+)".*/    "\1",/p' "$dir/src/web/handl
 ' crates/server/tests/composed_app.rs
 cargo fmt --all
 
-if $new_capability; then
+if $with_app; then
   cat >"$page" <<EOF
 import { Page } from "@/components/page";
 
@@ -191,7 +201,11 @@ SQLX_OFFLINE=false cargo bin sqlx prepare --workspace -- --all-targets
 ./scripts/check-modules.sh
 
 app=
-$new_capability && app="
+$new_capability && ! $with_app && app="
+
+The Capability is new and backend-only: $capability_file says \`app: false\`, so it has no app
+in the SPA (ADR 0052). Give it one later by removing that line and adding its entry to $registry."
+$with_app && app="
 
 The Capability is new: $capability_file, and its app in $registry, with one Area,
 $area_label, routed in $router to $page. Describe the app there, and build the Area's feature."

@@ -1,2 +1,4 @@
 id: assistant
 label: Assistant
+# No app in the SPA: its chat is the header's panel (ADR 0052).
+app: false

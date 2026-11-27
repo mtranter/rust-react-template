@@ -69,7 +69,7 @@ impl AppearanceEndpoints {
     }
 
     /// Fetch which apps the organisation hides from its web app: the ids of their Capabilities
-    /// (`notes`). Hiding is only that: the apps' operations, and their tools, still answer.
+    /// (`crm`). Hiding is only that: the apps' operations, and their tools, still answer.
     /// Version `0` with none hidden means never changed; the version is also in the `ETag`
     /// header, which a change must send back in `If-Match`. Any signed-in caller may read it.
     #[oai(path = "/apps", method = "get", operation_id = "get_app_visibility")]

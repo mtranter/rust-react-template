@@ -22,7 +22,9 @@
 # policies. Each Capability folder holds a Module, and each live Capability (the
 # reference's only while its Modules are registered) has an entry in the SPA's
 # registry, frontend/src/shell/capabilities.ts, as a literal `id: "<id>"`, but
-# `assistant`, which has no app; each entry there names a live Capability. Each
+# one whose `capability.yaml` says `app: false` (ADR 0052: a backend-only
+# Capability, its API and tools but no app), which has none; each entry there
+# names a live Capability with an app. Each
 # of its Areas' `needs: { resource: "<r>", action: "<a>" }`, a literal on one
 # line, names an action a registered Module's policies declare: compared with
 # what `dump-spec --actions` lists, as the generated client's types hold the
@@ -38,8 +40,8 @@ cd "$(dirname "$0")/.."
 registry=crates/server/src/modules.rs
 server=crates/server/Cargo.toml
 spa=frontend/src/shell/capabilities.ts
-# Capabilities with no app in the SPA.
-appless=(assistant)
+# Capabilities with no app in the SPA: `app: false` in their `capability.yaml`.
+appless=()
 
 failed=0
 fail() {
@@ -112,6 +114,7 @@ for module in crates/capabilities/*/*/core crates/platform/*/core crates/referen
         fail "$module/src/di.rs: its policies don't name its Capability: \`.capability(policy_file!(\"$path\"))\`"
     fi
     if $registered; then live+=("$id"); fi
+    grep -qE '^app: *false *$' "$folder/capability.yaml" && appless+=("$id")
   fi
 
   if grep -qE 'operation_id = ' "$module"/src/web/*.rs 2>/dev/null; then
@@ -145,6 +148,7 @@ for id in $(printf '%s\n' "${live[@]}" | sort -u); do
 done
 for id in $ids; do
   printf '%s\n' "${live[@]}" | grep -qxF "$id" || fail "$spa: \`id: \"$id\"\` names no Capability with a registered Module"
+  [[ " ${appless[*]} " == *" $id "* ]] && fail "$spa: \`id: \"$id\"\` has an entry, but its capability.yaml says \`app: false\`"
 done
 for id in $(sort <<<"$ids" | uniq -d); do fail "$spa: \`id: \"$id\"\` is given twice"; done
 

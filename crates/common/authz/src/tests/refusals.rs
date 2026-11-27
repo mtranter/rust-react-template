@@ -524,6 +524,10 @@ fn a_module_naming_no_capability_or_a_malformed_one_is_refused() {
             "id: journal\nlabel: Journal\nowner: me\n",
             "`owner` is not supported",
         ),
+        (
+            "id: journal\nlabel: Journal\napp: no-thanks\n",
+            "`app` must be true or false",
+        ),
     ] {
         let refused = Policies::builder("notebook")
             .capability(PolicyFile::new("capability.yaml", source))
@@ -534,4 +538,14 @@ fn a_module_naming_no_capability_or_a_malformed_one_is_refused() {
         assert_eq!(refused.file, "capability.yaml");
         assert!(refused.reason.contains(why), "{refused}");
     }
+
+    Policies::builder("notebook")
+        .capability(PolicyFile::new(
+            "capability.yaml",
+            "id: journal\nlabel: Journal\napp: false\n",
+        ))
+        .resource::<Note>(PolicyFile::new("note.yaml", NOTE))
+        .derived_roles(PolicyFile::new("notes_scopes.yaml", SCOPES))
+        .build()
+        .expect("`app: false` is a Capability with no app");
 }

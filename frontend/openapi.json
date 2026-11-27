@@ -5123,7 +5123,7 @@
         "tags": [
           "Appearance"
         ],
-        "summary": "Fetch which apps the organisation hides from its web app: the ids of their Capabilities\n(`notes`). Hiding is only that: the apps' operations, and their tools, still answer.\nVersion `0` with none hidden means never changed; the version is also in the `ETag`\nheader, which a change must send back in `If-Match`. Any signed-in caller may read it.",
+        "summary": "Fetch which apps the organisation hides from its web app: the ids of their Capabilities\n(`crm`). Hiding is only that: the apps' operations, and their tools, still answer.\nVersion `0` with none hidden means never changed; the version is also in the `ETag`\nheader, which a change must send back in `If-Match`. Any signed-in caller may read it.",
         "responses": {
           "200": {
             "description": "",
@@ -7956,7 +7956,7 @@
         "properties": {
           "hidden": {
             "type": "array",
-            "description": "The ids of the apps to hide, as the SPA's registry names them (`notes`); empty shows\nevery app.",
+            "description": "The ids of the apps to hide, as the SPA's registry names them (`crm`); empty shows\nevery app.",
             "items": {
               "type": "string"
             }

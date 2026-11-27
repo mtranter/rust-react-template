@@ -58,7 +58,7 @@ impl From<Option<Versioned<Theme>>> for ThemeResponse {
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct AppVisibilityInput {
-    /// The ids of the apps to hide, as the SPA's registry names them (`notes`); empty shows
+    /// The ids of the apps to hide, as the SPA's registry names them (`crm`); empty shows
     /// every app.
     pub hidden: Vec<String>,
 }
