@@ -9,7 +9,8 @@ import { chromium } from "playwright";
 // `make e2e`: signs in to the binary's own SPA through `fake-oidc`, as a bootstrap admin, loads
 // the access screen with that token, invites someone through `fake-oidc`'s stand-in for Cognito,
 // connects an integration (a URL and a secret on Integrations, then Test connection, against the
-// stateful fake $E2E_FAKE serves), and signs out. `make e2e` builds the binaries (debug, the
+// stateful fake $E2E_FAKE serves), saves a theme on Appearance that restyles the app, after a
+// reload and for a visitor not signed in, then resets it, and signs out. `make e2e` builds the binaries (debug, the
 // server with `embed-frontend`) into $E2E_BIN and migrates and seeds $E2E_DATABASE_URL. Without
 // $E2E_FAKE (an app with no integration yet) the Integrations step only opens the list.
 
@@ -146,6 +147,44 @@ try {
   }
   assert.deepEqual(unsigned, [], "every API request carried the token");
 
+  // Appearance: an admin's saved theme restyles the app, survives a reload and reaches a
+  // visitor who has not signed in, with nothing rebuilt or restarted.
+  await page.goto(`${app}/appearance`);
+  const primary = page.getByLabel("Primary", { exact: true });
+  await primary.waitFor();
+  assert.notEqual(
+    await page.getByLabel("Text", { exact: true }).getAttribute("placeholder"),
+    "",
+    "every colour shows its default",
+  );
+  await primary.fill("rgb(1, 2, 3)");
+  const rootVar = (name: string) =>
+    page.evaluate(
+      (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(),
+      name,
+    );
+  assert.equal(await rootVar("--primary"), "rgb(1, 2, 3)", "an edit previews at once");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByText("Appearance saved").waitFor();
+  await page.reload();
+  await primary.waitFor();
+  assert.equal(await rootVar("--primary"), "rgb(1, 2, 3)", "the saved theme survives a reload");
+  const theme = await (await fetch(`${app}/api/appearance/theme`)).json();
+  assert.equal(theme.light.primary, "rgb(1, 2, 3)", "anyone may read the theme");
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(`${app}/auth/signed-out`);
+  await visitor.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() ===
+      "rgb(1, 2, 3)",
+  );
+  await visitor.context().close();
+  await page.getByRole("button", { name: "Reset to defaults" }).click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await page.getByText("Appearance reset to the defaults").waitFor();
+  assert.notEqual(await rootVar("--primary"), "rgb(1, 2, 3)", "a reset restores the defaults");
+  await page.getByRole("button", { name: "Reset", exact: true }).waitFor({ state: "hidden" });
+
   await page.getByRole("button", { name: `Account: ${subject.name}` }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   const signedOut = page.getByRole("heading", { name: "You're signed out" });
@@ -163,7 +202,7 @@ try {
   assert.deepEqual(errors, []);
   passed = true;
   console.log(
-    `e2e: signed in, loaded /access with the token, invited someone, ${fake ? "connected an integration and tested it OK, " : ""}signed out and stayed signed out`,
+    `e2e: signed in, loaded /access with the token, invited someone, ${fake ? "connected an integration and tested it OK, " : ""}saved a theme that restyled the app for a visitor too and reset it, signed out and stayed signed out`,
   );
 } finally {
   await browser.close();

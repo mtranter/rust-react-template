@@ -88,6 +88,7 @@ function Editor({ theme }: { theme: Theme }) {
   const defaults = useMemo(readDefaults, []);
   const [version, setVersion] = useState(theme.version);
   const [changedMeanwhile, setChangedMeanwhile] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const save = useMutation({
     ...putAppearanceThemeMutation(),
@@ -151,7 +152,10 @@ function Editor({ theme }: { theme: Theme }) {
       await send({ light: {}, dark: {}, shared: {} });
       form.reset(draftOf(null));
       toast.add({ type: "success", title: "Appearance reset to the defaults" });
-    } catch {}
+    } catch {
+    } finally {
+      setConfirmingReset(false);
+    }
   };
 
   return (
@@ -312,7 +316,7 @@ function Editor({ theme }: { theme: Theme }) {
       <div className="grid gap-4 lg:sticky lg:top-4">
         <ThemePreview />
         <div className="flex flex-wrap justify-end gap-2">
-          <AlertDialog>
+          <AlertDialog open={confirmingReset} onOpenChange={setConfirmingReset}>
             <AlertDialogTrigger render={<Button type="button" variant="ghost" />}>
               Reset to defaults
             </AlertDialogTrigger>

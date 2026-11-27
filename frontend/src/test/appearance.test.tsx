@@ -85,6 +85,7 @@ test("resets to the defaults after confirming", async () => {
   expect(api.saves[0]).toEqual({ light: {}, dark: {}, shared: {} });
   await waitFor(() => expect(screen.getByLabelText("Primary")).toHaveValue(""));
   expect(style()).toBe("");
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 });
 
 test("a caller who may not change it sees a refusal and no Admin entry for it", async () => {

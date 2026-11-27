@@ -3,6 +3,7 @@ import { type ListSearch, validateListSearch } from "@/components/data-table";
 import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
 import { noteSummarySortKeys } from "@/features/note-search";
 import { noteSortKeys } from "@/features/notes";
+import { ThemeLoader } from "@/lib/appearance";
 import {
   AccessInvitationsPage,
   AccessPermissionsPage,
@@ -20,6 +21,7 @@ import { SearchPage } from "@/pages/search-page";
 import { SignInCallbackPage } from "@/pages/sign-in-callback-page";
 import { SignedOutPage } from "@/pages/signed-out-page";
 import {
+  Outlet,
   type RouterHistory,
   createRootRoute,
   createRoute,
@@ -27,7 +29,15 @@ import {
   redirect,
 } from "@tanstack/react-router";
 
-const rootRoute = createRootRoute();
+// The org's theme applies on every route, the signed-out and callback pages too.
+const rootRoute = createRootRoute({
+  component: () => (
+    <>
+      <ThemeLoader />
+      <Outlet />
+    </>
+  ),
+});
 
 // Pathless: every screen but signing in and out, which a visitor reaches before they are signed in.
 const appRoute = createRoute({
