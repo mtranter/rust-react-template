@@ -45,7 +45,7 @@ test("saves with If-Match and keeps the saved theme applied", async () => {
   await waitFor(() =>
     expect(queryClient.getQueryData(["appearance", "theme"])).toMatchObject({ version: 5 }),
   );
-  expect(style()).toBe(":root{--primary:red;}.dark{--primary:blue;}");
+  expect(style()).toBe(":root:not(.dark){--primary:red;}.dark.dark{--primary:blue;}");
   expect(localStorage.getItem("app-theme-css")).toBe(style());
 });
 

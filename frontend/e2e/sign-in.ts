@@ -169,6 +169,26 @@ try {
   await page.reload();
   await primary.waitFor();
   assert.equal(await rootVar("--primary"), "rgb(1, 2, 3)", "the saved theme survives a reload");
+  // `index.html` applies the cached theme itself, before the app (or the API) answers.
+  const offline = await page.context().newPage();
+  await offline.route("**/api/appearance/theme", (route) => route.abort());
+  await offline.goto(`${app}/auth/signed-out`, { waitUntil: "domcontentloaded" });
+  assert.equal(
+    await offline.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+    ),
+    "rgb(1, 2, 3)",
+    "the cached theme applies before first paint, with no answer from the API",
+  );
+  await offline.close();
+  // A light override leaves dark mode's own value alone.
+  const darkPrimary = await page.evaluate(() => {
+    document.documentElement.classList.add("dark");
+    const value = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+    document.documentElement.classList.remove("dark");
+    return value;
+  });
+  assert.notEqual(darkPrimary, "rgb(1, 2, 3)", "a light override never reaches dark mode");
   const theme = await (await fetch(`${app}/api/appearance/theme`)).json();
   assert.equal(theme.light.primary, "rgb(1, 2, 3)", "anyone may read the theme");
   const visitor = await (await browser.newContext()).newPage();

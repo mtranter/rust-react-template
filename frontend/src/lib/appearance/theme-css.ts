@@ -15,11 +15,20 @@ function declarations(values: Record<string, string>): string {
 }
 
 /**
- * The CSS overriding `theme.css`: `light` and `shared` on `:root`, `dark` on `.dark`. Unlayered, so
- * it wins over Tailwind's `@theme` values (`@layer theme`) for fonts and shadows as well.
+ * The CSS overriding `theme.css`: `light` on the root out of dark mode, `shared` on the root, `dark`
+ * on `.dark` (the root, or the editor's preview). Unlayered, so it wins over Tailwind's `@theme`
+ * values (`@layer theme`) for fonts and shadows as well. Each selector outranks `theme.css`'
+ * (`:root`, `.dark`), so it wins wherever it sits in `<head>` (`index.html` writes it before
+ * Vite's stylesheet), and a light override never reaches dark mode.
  */
 export function themeCss(tokens: ThemeTokens): string {
-  const root = declarations({ ...tokens.light, ...tokens.shared });
-  const dark = declarations(tokens.dark);
-  return `${root ? `:root{${root}}` : ""}${dark ? `.dark{${dark}}` : ""}`;
+  const rule = (selector: string, values: Record<string, string>) => {
+    const body = declarations(values);
+    return body ? `${selector}{${body}}` : "";
+  };
+  return (
+    rule(":root:not(.dark)", tokens.light) +
+    rule(":root:root", tokens.shared) +
+    rule(".dark.dark", tokens.dark)
+  );
 }
