@@ -179,6 +179,8 @@ const TOOLS: &[&str] = &[
     "get_connection",
     "update_connection",
     "test_connection",
+    "get_theme",
+    "update_theme",
     "register_user",
     "list_users",
     "get_me",

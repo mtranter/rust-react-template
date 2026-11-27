@@ -6,7 +6,7 @@ Rules for the Rust backend, a modular monolith: each module is a crate that owns
 
 **Every module sits in a Capability's folder** (ADR 0047), beside its `capability.yaml` (`{ id, label }`): the app's in `crates/capabilities/<capability>/<module>/`, a Capability being one product of the suite with one App in the SPA. A Capability owns no code: its modules meet only through their `-api` crates, as any two modules do. A module's `di.rs` names its file in its policies (`.capability(policy_file!("../../capability.yaml"))`, `"../capability.yaml"` for the platform's), so the Catalog admins grant from groups by Capability; `make check-modules` fails on a module with none above it, a Capability folder with no module, and a Capability with no entry in `frontend/src/shell/capabilities.ts` (`assistant` has no App) or an entry with no Capability. The workspace lists `crates/capabilities/*/*/core` and `/api` only once one exists, as a glob matching nothing fails: `make new-module` adds them.
 
-The platform's own modules are in `crates/platform/<module>/` (today `access`, ADR 0040, `assistant`, Spec 0012, and `connections`, ADR 0050), each its own Capability: registered with the server like the app's in `crates/capabilities/`, kept registered by `make init`, and pulled with the platform's later changes (`TEMPLATE_VERSION`), so an app never edits them. The reference modules are in `crates/reference/`, one Capability, `notes`, and the journeys over them in `crates/reference/journeys/`: compiled, linted and tested, and registered with the server in the template only (`make init` registers them with no server, until an app's own code shows the same). Below, `notes` is `crates/reference/notes/core` and `notes_api` its `api`, and so on.
+The platform's own modules are in `crates/platform/<module>/` (today `access`, ADR 0040, `assistant`, Spec 0012, `connections`, ADR 0050, and `appearance`, ADR 0051), each its own Capability: registered with the server like the app's in `crates/capabilities/`, kept registered by `make init`, and pulled with the platform's later changes (`TEMPLATE_VERSION`), so an app never edits them. The reference modules are in `crates/reference/`, one Capability, `notes`, and the journeys over them in `crates/reference/journeys/`: compiled, linted and tested, and registered with the server in the template only (`make init` registers them with no server, until an app's own code shows the same). Below, `notes` is `crates/reference/notes/core` and `notes_api` its `api`, and so on.
 
 | Doing | Copy |
 |---|---|
@@ -166,6 +166,10 @@ Every HTTP request, MCP tool call, worker job and SQL query inside a span is alr
 - Use `tracing`, never the `opentelemetry` API, and `skip_all`, naming each field: never a token, a secret, a bound SQL value or personal data beyond the principal's subject.
 - Always bind SQL values: one written into the SQL text (`QueryBuilder::push`, `format!`) would be exported in `db.query.text`.
 - Build a metric's instrument in the constructor of what records into it, never in a `static` or `LazyLock` (one built before `init` records nothing), and keep its attributes to small closed sets, never an id, path, subject or anything a client chooses.
+
+### Appearance (ADR 0051)
+
+`appearance` (`crates/platform/appearance`) stores the org's one Theme: overrides of the SPA's CSS variables in `light`, `dark` and `shared` maps, one root keyed `org`, absent (version `0`, empty maps) until first saved. `get_theme` is `PUBLIC` (the SPA themes itself before sign-in); `update_theme` replaces it whole with `If-Match` (`0` for the first save, a lost race on the first insert is `412` too), guarded by `theme` / `update`, `admin`'s by default grant. Its allowlists of names and the characters values may not hold are in `domain/theme.rs`: they change with the SPA's tokens. It has no seed.
 
 ## Tests (ADR 0004, 0029, 0031)
 

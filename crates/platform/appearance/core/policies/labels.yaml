@@ -1,0 +1,8 @@
+apiVersion: auth.flagrante.io/v1
+labels:
+  module: Appearance
+  resources:
+    - resource: theme
+      label: Theme
+      actions:
+        update: Change the theme

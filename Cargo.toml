@@ -48,6 +48,8 @@ assistant-api = { path = "crates/platform/assistant/api" }
 assistant = { path = "crates/platform/assistant/core" }
 connections-api = { path = "crates/platform/connections/api" }
 connections = { path = "crates/platform/connections/core" }
+appearance-api = { path = "crates/platform/appearance/api" }
+appearance = { path = "crates/platform/appearance/core" }
 users-api = { path = "crates/reference/users/api" }
 users = { path = "crates/reference/users/core" }
 notes-api = { path = "crates/reference/notes/api" }

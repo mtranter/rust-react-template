@@ -2,7 +2,7 @@
 # Turns a fresh clone of the template into a greenfield app, once, in one
 # commit: its own name and domain docs, the reference modules registered with
 # no server, the UI down to a shell. The platform's modules (`crates/platform/`,
-# `access`, `assistant` and `connections`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
+# `access`, `assistant`, `connections` and `appearance`) stay registered: they are the template's, not reference code. The reference code stays, compiled and
 # tested, for agents to copy until the app's ticket 0001 retires it. Then it
 # removes itself, its make targets and its CI job.
 #
@@ -109,7 +109,7 @@ Once this app's own code shows the same patterns, the reference code is dead wei
 - [ ] The app's first feature covers \`frontend/AGENTS.md\`'s: a server-paged list with its page and sort in the URL, a create form showing server field errors, an edit dialog sending \`If-Match\` and handling a \`412\`.
 - [ ] Both tables, \`docs/agents/domain.md\` and \`frontend/AGENTS.md\`'s links point at the app's code instead.
 - [ ] The platform journeys in \`crates/reference/journeys/\` (\`agents\`, \`compacting_history\`, \`connecting\`) are rewritten over the app's modules in \`crates/server/tests/journeys/\`, so the platform keeps its coverage.
-- [ ] \`crates/platform/\` stays: \`access\`, \`assistant\` and \`connections\` are the platform's, registered in every app, not reference code.
+- [ ] \`crates/platform/\` stays: \`access\`, \`assistant\`, \`connections\` and \`appearance\` are the platform's, registered in every app, not reference code.
 - [ ] \`crates/reference/\`, its workspace members and dependencies in the root \`Cargo.toml\`, its packages in \`deny.toml\`, its queries in \`.sqlx\` (\`make prepare\`) and its mentions in \`scripts/\` are gone, and \`make check\` passes.
 EOF
 
@@ -125,13 +125,13 @@ perl -0 -i -pe '
 
 # 4. The reference modules off the server: compiled and tested, registered nowhere.
 # The platform's `access` stays, granting from whatever the app registers, and
-# so do its `assistant` and `connections`.
+# so do its `assistant`, `connections` and `appearance`.
 cat >crates/server/src/modules.rs <<'EOF'
 //! The one place a module is registered: its `Endpoints` in the tuple and its
 //! `module()` in the list (`make new-module` adds both; `make check-modules`
 //! fails on a module missing from either). The platform's `access` comes first:
 //! it grants from every module's policies, so it is built from this list; its
-//! `assistant` and `connections` follow.
+//! `assistant`, `connections` and `appearance` follow.
 
 use crate::{Composition, config};
 use app_module::Module;
@@ -146,6 +146,7 @@ impl Composition for Registered {
         access::AccessEndpoints,
         assistant::AssistantEndpoints,
         connections::ConnectionsEndpoints,
+        appearance::AppearanceEndpoints,
     );
 
     fn modules() -> Vec<Module> {
@@ -153,6 +154,7 @@ impl Composition for Registered {
             access::module(Self::modules),
             assistant::module(config::agent),
             connections::module(),
+            appearance::module(),
         ]
     }
 }
@@ -160,14 +162,14 @@ EOF
 references=$(sed -nE 's/^name = "([^"]+)"/\1/p' crates/reference/*/core/Cargo.toml | paste -sd '|' -)
 REFERENCES=$references perl -i -ne 'print unless /^($ENV{REFERENCES})\.workspace = true$/' crates/server/Cargo.toml
 perl -i -pe 's{^seed = \[.*\]$}{seed = ["assistant/seed"]}' crates/server/Cargo.toml
-perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n    "list_connections",\n    "get_connection",\n    "update_connection",\n    "test_connection",\n];}s' crates/server/tests/composed_app.rs
+perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\n    "list_grants",\n    "grant_access",\n    "grant_access_in_bulk",\n    "revoke_grant",\n    "get_access_catalog",\n    "list_roles",\n    "list_subjects",\n    "create_role",\n    "delete_role",\n    "assign_role",\n    "unassign_role",\n    "invite_user",\n    "list_invitations",\n    "resend_invitation",\n    "revoke_invitation",\n    "list_connections",\n    "get_connection",\n    "update_connection",\n    "test_connection",\n    "get_theme",\n    "update_theme",\n];}s' crates/server/tests/composed_app.rs
 # No seed assigns the dev sign-in (frontend/vite.config.ts) `admin` once the
 # reference users are off the server: `make dev` makes it a bootstrap admin
 # instead, unless `.env` sets APP_BOOTSTRAP_ADMINS, and `.env.example` says so.
 dev_subject=00000001-0001-0000-0000-000000000001
 perl -i -pe 's{^APP_BOOTSTRAP_ADMINS=.*$}{APP_BOOTSTRAP_ADMINS='"$dev_subject"'}' .env.example
 perl -0 -i -pe 's{^(dev: )}{# No seed assigns the dev sign-in (frontend/vite.config.ts) `admin`.\n${1}export APP_BOOTSTRAP_ADMINS ?= '"$dev_subject"'\n$1}m' Makefile
-perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\];}{pub const PUBLIC: &[(&str, &str)] = &[];}s' crates/server/src/exempt.rs
+perl -0 -i -pe 's{    \(\n        "register_user",.*?\),\n}{}s' crates/server/src/exempt.rs
 
 # 5. The UI down to the shell (src/shell/: the sidebar and a launcher with no
 # apps yet) and the platform's access and assistant screens.
@@ -183,6 +185,7 @@ import {
   ListChecksIcon,
   type LucideIcon,
   MailIcon,
+  PaletteIcon,
   PlugIcon,
   ShieldIcon,
   UsersIcon,
@@ -268,10 +271,26 @@ const integrations: Capability = {
   ],
 };
 
+const appearance: Capability = {
+  id: "appearance",
+  label: "Appearance",
+  description: "The organisation's theme: its colours, fonts and corners.",
+  icon: PaletteIcon,
+  path: "/appearance",
+  areas: [
+    {
+      label: "Appearance",
+      to: "/appearance",
+      icon: PaletteIcon,
+      needs: { resource: "theme", action: "update" },
+    },
+  ],
+};
+
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [],
-  platform: [access, integrations],
+  platform: [access, integrations, appearance],
 };
 
 /**
@@ -310,6 +329,7 @@ import {
   AccessRolesPage,
   AccessUsersPage,
 } from "@/pages/access-page";
+import { AppearancePage } from "@/pages/appearance-page";
 import { AssistantPage } from "@/pages/assistant-page";
 import { HomePage } from "@/pages/home-page";
 import { IntegrationPage, IntegrationsPage } from "@/pages/integrations-page";
@@ -420,6 +440,12 @@ const integrationRoute = createRoute({
   component: IntegrationPage,
 });
 
+const appearanceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/appearance",
+  component: AppearancePage,
+});
+
 const assistantRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/assistant",
@@ -443,6 +469,7 @@ const routeTree = rootRoute.addChildren([
     roleRoute,
     integrationsRoute,
     integrationRoute,
+    appearanceRoute,
     assistantRoute,
   ]),
   callbackRoute,

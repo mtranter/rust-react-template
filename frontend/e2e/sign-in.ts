@@ -60,10 +60,16 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   const authorizations: string[] = [];
   const unsigned: string[] = [];
+  // Public (`server::PUBLIC`): the SPA themes itself before sign-in (ADR 0051).
+  const publicApi = [`${app}/api/appearance/theme`];
   page.on("request", (request) => {
     const url = request.url();
     if (url.startsWith(`${issuer}/authorize`)) authorizations.push(url);
-    if (url.startsWith(`${app}/api/`) && !request.headers().authorization?.startsWith("Bearer ")) {
+    if (
+      url.startsWith(`${app}/api/`) &&
+      !publicApi.includes(url) &&
+      !request.headers().authorization?.startsWith("Bearer ")
+    ) {
       unsigned.push(url);
     }
   });

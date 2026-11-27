@@ -267,6 +267,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "appearance"
+version = "0.1.0"
+dependencies = [
+ "app-authz",
+ "app-db",
+ "app-domain",
+ "app-error",
+ "app-events",
+ "app-module",
+ "app-persistence",
+ "app-test-db",
+ "app-test-support",
+ "app-web",
+ "appearance-api",
+ "async-trait",
+ "chrono",
+ "poem",
+ "poem-openapi",
+ "serde_json",
+ "sqlx",
+ "strum",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "appearance-api"
+version = "0.1.0"
+dependencies = [
+ "app-events",
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4682,6 +4718,8 @@ dependencies = [
  "app-persistence",
  "app-test-db",
  "app-web",
+ "appearance",
+ "appearance-api",
  "assistant",
  "async-trait",
  "chrono",

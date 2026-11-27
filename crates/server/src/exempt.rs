@@ -9,10 +9,16 @@
 //! twice, and on a listed one whose security requirement doesn't match its list.
 
 /// `(operation id, reason)`.
-pub const PUBLIC: &[(&str, &str)] = &[(
-    "register_user",
-    "signing up makes the account the caller's token will name, so there is no user to authorize yet",
-)];
+pub const PUBLIC: &[(&str, &str)] = &[
+    (
+        "register_user",
+        "signing up makes the account the caller's token will name, so there is no user to authorize yet",
+    ),
+    (
+        "get_theme",
+        "the SPA themes itself before sign-in, and the theme holds nothing but CSS values (ADR 0051)",
+    ),
+];
 
 /// `(operation id, reason)`.
 pub const SIGNED_IN: &[(&str, &str)] = &[(

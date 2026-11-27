@@ -380,7 +380,15 @@ export function accessApi(
 }
 
 // `connection` is admin-only too (ADR 0050), so its Integrations hide with the rest.
-const accessResources = ["subject", "role", "grant", "assignment", "invitation", "connection"];
+const accessResources = [
+  "subject",
+  "role",
+  "grant",
+  "assignment",
+  "invitation",
+  "connection",
+  "theme",
+];
 
 /** `access` as the server answers a caller who isn't an admin: they hold none of its actions. */
 export const notAnAdmin = [

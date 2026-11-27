@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   MailIcon,
   NotebookPenIcon,
+  PaletteIcon,
   PlugIcon,
   SearchIcon,
   ShieldIcon,
@@ -115,10 +116,26 @@ const integrations: Capability = {
   ],
 };
 
+const appearance: Capability = {
+  id: "appearance",
+  label: "Appearance",
+  description: "The organisation's theme: its colours, fonts and corners.",
+  icon: PaletteIcon,
+  path: "/appearance",
+  areas: [
+    {
+      label: "Appearance",
+      to: "/appearance",
+      icon: PaletteIcon,
+      needs: { resource: "theme", action: "update" },
+    },
+  ],
+};
+
 /** Every app, and the platform's tools, kept apart in the sidebar's footer, in the switcher's order. */
 export const registry: { apps: Capability[]; platform: Capability[] } = {
   apps: [notes],
-  platform: [access, integrations],
+  platform: [access, integrations, appearance],
 };
 
 /**

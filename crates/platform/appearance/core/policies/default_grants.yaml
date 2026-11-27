@@ -1,0 +1,5 @@
+apiVersion: auth.flagrante.io/v1
+# Any admin may change the org's Theme, with no role of its own (ADR 0051, 0041). Reading it is
+# public: the SPA themes itself before sign-in.
+defaultGrants:
+  - { role: admin, resource: theme, actions: ["*"] }
