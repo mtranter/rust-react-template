@@ -5,7 +5,11 @@
  *
  * shadcn/ui's neutral palette, in OKLCH (lightness, chroma, hue), with one accent, Tailwind's
  * indigo (600 light, 400 dark), on what acts or is current: `primary`, `ring`, the sidebar's active
- * item. Apps share it; an app is told apart by its icon, never a colour. Shadows are Tailwind's.
+ * item. `highlight` (fuchsia) marks what should stand out without acting: a "new" badge, a match.
+ * `success`, `warning`, `info` and `destructive` are for status only, never decoration; light uses
+ * Tailwind's 700 so text in them reads on white, dark its 400. shadcn's `accent` is not an accent
+ * but the neutral of a hovered item. Apps share it all; an app is told apart by its icon, never a
+ * colour. Shadows are Tailwind's.
  */
 
 @theme {
@@ -41,6 +45,14 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --highlight: oklch(0.518 0.253 323.949);
+  --highlight-foreground: oklch(0.985 0 0);
+  --success: oklch(0.527 0.154 150.069);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.555 0.163 48.998);
+  --warning-foreground: oklch(0.985 0 0);
+  --info: oklch(0.5 0.134 242.749);
+  --info-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.585 0.233 277.117);
@@ -77,6 +89,14 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --highlight: oklch(0.74 0.238 322.16);
+  --highlight-foreground: oklch(0.145 0 0);
+  --success: oklch(0.792 0.209 151.711);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.828 0.189 84.429);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.746 0.16 232.661);
+  --info-foreground: oklch(0.145 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.585 0.233 277.117);

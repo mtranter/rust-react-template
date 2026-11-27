@@ -11,7 +11,7 @@ export function changedMeanwhileMessage(retry: Retry, subject: string) {
 /** After a `412 precondition_failed`, once `subject` (`"note"`) has been refetched. */
 export function ChangedMeanwhileAlert({ retry, subject }: { retry: Retry; subject: string }) {
   return (
-    <Alert>
+    <Alert variant="warning">
       <TriangleAlertIcon />
       <AlertDescription>{changedMeanwhileMessage(retry, subject)}</AlertDescription>
     </Alert>

@@ -318,7 +318,7 @@ function TestConnection({ connection }: { connection: ConnectionResponse }) {
               <AlertDescription>{refused}</AlertDescription>
             </Alert>
           ) : connection.status === "ok" ? (
-            <Alert>
+            <Alert variant="success">
               <CircleCheckIcon />
               <AlertTitle>OK</AlertTitle>
               <AlertDescription>

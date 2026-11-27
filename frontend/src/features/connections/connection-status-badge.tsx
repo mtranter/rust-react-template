@@ -1,13 +1,14 @@
 import type { ConnectionStatus } from "@/api/types.gen";
 import { Badge } from "@/components/ui/badge";
+import type { ComponentProps } from "react";
 
 const shown: Record<
   ConnectionStatus,
-  { label: string; variant: "secondary" | "outline" | "default" | "destructive" }
+  { label: string; variant: ComponentProps<typeof Badge>["variant"] }
 > = {
   not_configured: { label: "Not configured", variant: "outline" },
   untested: { label: "Untested", variant: "secondary" },
-  ok: { label: "OK", variant: "default" },
+  ok: { label: "OK", variant: "success" },
   failing: { label: "Failing", variant: "destructive" },
 };
 
