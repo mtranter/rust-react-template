@@ -8,8 +8,8 @@
  * item. `highlight` (fuchsia) marks what should stand out without acting: a "new" badge, a match.
  * `success`, `warning`, `info` and `destructive` are for status only, never decoration; light uses
  * Tailwind's 700 so text in them reads on white, dark its 400. shadcn's `accent` is not an accent
- * but the neutral of a hovered item. Apps share it all; an app is told apart by its icon, never a
- * colour. Shadows are Tailwind's.
+ * but the neutral of a hovered item. Each app overrides `primary` with its own colour (the `[data-app]`
+ * rules at the end); headings are Bricolage Grotesque. Shadows are Tailwind's.
  *
  * These are the defaults: an admin overrides any variable at runtime (`src/lib/appearance/`, a
  * <style id="app-theme"> after this sheet), so a variable renamed here is a stored theme's key.
@@ -17,7 +17,7 @@
 
 @theme {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-sans);
+  --font-heading: "Bricolage Grotesque Variable", var(--font-sans);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
@@ -34,7 +34,7 @@
   --radius: 0.5rem;
 
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.21 0.015 260);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -64,7 +64,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(0.967 0.003 265);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.511 0.262 276.966);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -116,4 +116,56 @@
   --sidebar-accent-foreground: oklch(0.87 0.065 274.039);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.585 0.233 277.117);
+}
+
+/*
+ * Each app owns one colour (`data-app` on the shell, set from its Capability's `id`): it becomes
+ * the app's `primary`, so the sidebar's mark, its current item, the header's rule and every
+ * primary action take it. Everything else stays neutral. `--app-ink` is the text that reads on it.
+ */
+[data-app] {
+  --primary: var(--app);
+  --primary-foreground: var(--app-ink);
+  --ring: var(--app);
+  --sidebar-primary: var(--app);
+  --sidebar-primary-foreground: var(--app-ink);
+  --sidebar-ring: var(--app);
+  --sidebar-accent: color-mix(in srgb, var(--app) 18%, var(--sidebar));
+  --sidebar-accent-foreground: var(--foreground);
+}
+[data-app="home"] {
+  --app: oklch(0.24 0.02 260);
+  --app-ink: oklch(0.985 0 0);
+}
+[data-app="notes"] {
+  --app: oklch(0.8 0.16 78);
+  --app-ink: oklch(0.24 0.05 60);
+}
+[data-app="access"] {
+  --app: oklch(0.5 0.09 190);
+  --app-ink: oklch(0.985 0 0);
+}
+[data-app="connections"] {
+  --app: oklch(0.53 0.23 265);
+  --app-ink: oklch(0.985 0 0);
+}
+[data-app="appearance"] {
+  --app: oklch(0.5 0.17 330);
+  --app-ink: oklch(0.985 0 0);
+}
+.dark [data-app="home"] {
+  --app: oklch(0.92 0.01 260);
+  --app-ink: oklch(0.2 0.02 260);
+}
+.dark [data-app="access"] {
+  --app: oklch(0.72 0.1 190);
+  --app-ink: oklch(0.18 0.03 190);
+}
+.dark [data-app="connections"] {
+  --app: oklch(0.7 0.16 265);
+  --app-ink: oklch(0.16 0.04 265);
+}
+.dark [data-app="appearance"] {
+  --app: oklch(0.72 0.14 330);
+  --app-ink: oklch(0.18 0.04 330);
 }

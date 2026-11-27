@@ -1,5 +1,4 @@
 import { Page } from "@/components/page";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { type Capability, productName, useCapabilities } from "@/shell/capabilities";
 import { Link } from "@tanstack/react-router";
@@ -28,23 +27,21 @@ export function HomePage() {
 function AppGrid({ label, apps }: { label: string; apps: Capability[] }) {
   return (
     <section aria-label={label} className="space-y-3">
-      <h2 className="text-muted-foreground text-sm font-medium">{label}</h2>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      <h2 className="font-heading text-lg font-semibold">{label}</h2>
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {apps.map((app) => (
-          <li key={app.id}>
+          <li key={app.id} data-app={app.id}>
             <Link
               to={app.areas[0].to}
-              className="group block rounded-xl focus-visible:outline-none"
+              className="group bg-primary text-primary-foreground focus-visible:ring-ring relative flex h-full min-h-44 flex-col justify-end overflow-hidden rounded-2xl p-5 transition-transform focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
-              <Card className="group-hover:ring-primary/40 group-focus-visible:ring-ring h-full transition-shadow group-focus-visible:ring-2">
-                <CardHeader>
-                  <span className="bg-primary/10 text-primary mb-2 flex size-9 items-center justify-center rounded-md">
-                    <app.icon className="size-5" />
-                  </span>
-                  <CardTitle>{app.label}</CardTitle>
-                  <CardDescription>{app.description}</CardDescription>
-                </CardHeader>
-              </Card>
+              <app.icon
+                aria-hidden
+                strokeWidth={1.25}
+                className="absolute -top-4 -right-4 size-32 opacity-20 transition-transform group-hover:rotate-[-8deg] motion-reduce:transition-none"
+              />
+              <span className="font-heading text-2xl font-bold tracking-tight">{app.label}</span>
+              <span className="mt-1 max-w-[30ch] text-sm opacity-85">{app.description}</span>
             </Link>
           </li>
         ))}
