@@ -97,7 +97,9 @@ test("lists the grants for an admin, marking a stale one", async () => {
   expect(within(table).getByText("Built in")).toBeInTheDocument();
   expect(within(table).getByText("an-admin")).toBeInTheDocument();
   const platform = screen.getByRole("navigation", { name: "Platform" });
-  expect(within(platform).getByRole("link", { name: "Access" })).toBeInTheDocument();
+  expect(within(platform).getByRole("link", { name: "Admin" })).toBeInTheDocument();
+  expect(within(platform).queryByRole("link", { name: "Access" })).not.toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Integrations" })).toBeInTheDocument();
 });
 
 test("filters the grants by role, keeping the filter in the URL", async () => {

@@ -21,12 +21,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronsUpDownIcon, LayoutGridIcon } from "lucide-react";
+import { ChevronsUpDownIcon, LayoutGridIcon, ShieldCheckIcon } from "lucide-react";
 import { type Capability, locate, productName, useCapabilities } from "./capabilities";
 
 /**
  * The open app's areas under a switcher to the others; with no app open, the apps themselves.
- * The platform's tools sit in the footer.
+ * The platform's tools sit behind one Admin item in the footer, and inside it every tool's areas
+ * show together, a group per tool.
  */
 export function AppSidebar() {
   const { apps, platform } = useCapabilities();
@@ -34,6 +35,20 @@ export function AppSidebar() {
   const { app, area } = locate(pathname, [...apps, ...platform]);
   const { setOpenMobile } = useSidebar();
   const close = () => setOpenMobile(false);
+  const inAdmin = app !== undefined && platform.includes(app);
+  const areaLinks = (of: Capability) =>
+    of.areas.map((each) => (
+      <SidebarMenuItem key={each.to}>
+        <SidebarMenuButton
+          isActive={each === area}
+          tooltip={each.label}
+          render={<Link to={each.to} onClick={close} />}
+        >
+          <each.icon />
+          <span>{each.label}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    ));
 
   return (
     <Sidebar collapsible="icon">
@@ -41,54 +56,52 @@ export function AppSidebar() {
         <AppSwitcher current={app} apps={apps} />
       </SidebarHeader>
       <SidebarContent>
-        <nav aria-label={app ? app.label : "Apps"}>
-          <SidebarGroup>
-            <SidebarGroupLabel>{app ? app.label : "Apps"}</SidebarGroupLabel>
-            <SidebarMenu>
-              {app
-                ? app.areas.map((each) => (
-                    <SidebarMenuItem key={each.to}>
-                      <SidebarMenuButton
-                        isActive={each === area}
-                        tooltip={each.label}
-                        render={<Link to={each.to} onClick={close} />}
-                      >
-                        <each.icon />
-                        <span>{each.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))
-                : apps.map((each) => (
-                    <SidebarMenuItem key={each.id}>
-                      <SidebarMenuButton
-                        tooltip={each.label}
-                        render={<Link to={each.areas[0].to} onClick={close} />}
-                      >
-                        <each.icon />
-                        <span>{each.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-            </SidebarMenu>
-          </SidebarGroup>
-        </nav>
+        {inAdmin ? (
+          platform.map((tool) => (
+            <nav key={tool.id} aria-label={tool.label}>
+              <SidebarGroup>
+                <SidebarGroupLabel>{tool.label}</SidebarGroupLabel>
+                <SidebarMenu>{areaLinks(tool)}</SidebarMenu>
+              </SidebarGroup>
+            </nav>
+          ))
+        ) : (
+          <nav aria-label={app ? app.label : "Apps"}>
+            <SidebarGroup>
+              <SidebarGroupLabel>{app ? app.label : "Apps"}</SidebarGroupLabel>
+              <SidebarMenu>
+                {app
+                  ? areaLinks(app)
+                  : apps.map((each) => (
+                      <SidebarMenuItem key={each.id}>
+                        <SidebarMenuButton
+                          tooltip={each.label}
+                          render={<Link to={each.areas[0].to} onClick={close} />}
+                        >
+                          <each.icon />
+                          <span>{each.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          </nav>
+        )}
       </SidebarContent>
       {platform.length > 0 && (
         <SidebarFooter>
           <nav aria-label="Platform">
             <SidebarMenu>
-              {platform.map((each) => (
-                <SidebarMenuItem key={each.id}>
-                  <SidebarMenuButton
-                    isActive={each === app}
-                    tooltip={each.label}
-                    render={<Link to={each.areas[0].to} onClick={close} />}
-                  >
-                    <each.icon />
-                    <span>{each.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={inAdmin}
+                  tooltip="Admin"
+                  render={<Link to={platform[0].areas[0].to} onClick={close} />}
+                >
+                  <ShieldCheckIcon />
+                  <span>Admin</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </nav>
         </SidebarFooter>
