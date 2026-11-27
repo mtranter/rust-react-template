@@ -125,11 +125,14 @@ export function useDataTable<TData extends RowData, TSort extends string>({
   result,
   params,
   getRowId,
+  hidden = [],
 }: {
   columns: DataTableColumns<TData>;
   result: ListResult<TData> | undefined;
   params: ListParams<TSort>;
   getRowId?: (row: TData) => string;
+  /** Column ids hidden until the user shows them from the Columns menu. */
+  hidden?: readonly string[];
 }): DataTableInstance<TData> {
   const { sortable } = params;
   const sortableColumns = useMemo(
@@ -154,5 +157,6 @@ export function useDataTable<TData extends RowData, TSort extends string>({
     onPaginationChange: params.onPaginationChange,
     onSortingChange: params.onSortingChange,
     getRowId,
+    initialState: { columnVisibility: Object.fromEntries(hidden.map((id) => [id, false])) },
   });
 }

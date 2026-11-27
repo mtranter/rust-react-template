@@ -192,19 +192,25 @@ test("says so when there are no notes", async () => {
   expect(screen.getByText("0–0 of 0")).toBeInTheDocument();
 });
 
-test("hides a column the user switches off", async () => {
+test("shows a hidden column the user switches on, and hides it again", async () => {
   server.use(http.get("*/api/notes", () => HttpResponse.json(page([note(1)]))));
   const headers = () => screen.queryAllByRole("columnheader").map((th) => th.textContent);
+  const toggleAuthor = async () => {
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Author" }));
+  };
 
   const user = userEvent.setup();
   renderWithQuery(<Notes />);
 
   await screen.findByText("Note 1");
-  expect(headers()).toEqual(["Title", "Author", "Created", "Actions"]);
+  expect(headers()).toEqual(["Title", "Created", "Actions"]);
 
-  await user.click(screen.getByRole("button", { name: "Columns" }));
-  await user.click(await screen.findByRole("menuitemcheckbox", { name: "Author" }));
+  await toggleAuthor();
+  await waitFor(() => expect(headers()).toEqual(["Title", "Author", "Created", "Actions"]));
 
+  await user.keyboard("{Escape}");
+  await toggleAuthor();
   await waitFor(() => expect(headers()).toEqual(["Title", "Created", "Actions"]));
 });
 

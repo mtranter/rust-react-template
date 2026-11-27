@@ -19,7 +19,11 @@ const columns = column.columns([
   column.accessor("authorId", { header: "Author" }),
   column.accessor("createdAt", {
     header: "Created",
-    cell: (info) => new Date(info.getValue()).toLocaleString(),
+    cell: (info) =>
+      new Date(info.getValue()).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
   }),
   column.display({
     id: "actions",
@@ -48,6 +52,8 @@ export function NotesTable({
     result: notes.data,
     params,
     getRowId: (note) => note.id,
+    // Notes carry only their author's id, which reads as noise until the API names them.
+    hidden: ["authorId"],
   });
 
   return (
