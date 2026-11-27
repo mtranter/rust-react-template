@@ -1,6 +1,7 @@
 ---
 name: integrations
-description: Make a module call another system's API (a CRM, a payment provider, a noticeboard) through a Connection an admin configures: declare the Connection, write the typed client over `connections_api::Clients`, call it from a job, write the stateful fake its tests and `make dev` use, and test it. Use before touching `Module::declaring`, `connections_api::{Declaration, Clients, Client, Request, DevConnection}`, `connections::clients`, a module's fake, or the Integrations screen.
+description: >
+  Make a module call another system's API (a CRM, a payment provider, a noticeboard) through a Connection an admin configures: declare the Connection, write the typed client over `connections_api::Clients`, call it from a job, write the stateful fake its tests and `make dev` use, and test it. Use before touching `Module::declaring`, `connections_api::{Declaration, Clients, Client, Request, DevConnection}`, `connections::clients`, a module's fake, or the Integrations screen.
 ---
 
 # Integrations: calling another system (ADR 0050)
