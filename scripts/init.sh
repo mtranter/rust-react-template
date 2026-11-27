@@ -169,7 +169,7 @@ perl -0 -i -pe 's{const TOOLS: &\[&str\] = &\[.*?\];}{const TOOLS: &[&str] = &[\
 dev_subject=00000001-0001-0000-0000-000000000001
 perl -i -pe 's{^APP_BOOTSTRAP_ADMINS=.*$}{APP_BOOTSTRAP_ADMINS='"$dev_subject"'}' .env.example
 perl -0 -i -pe 's{^(dev: )}{# No seed assigns the dev sign-in (frontend/vite.config.ts) `admin`.\n${1}export APP_BOOTSTRAP_ADMINS ?= '"$dev_subject"'\n$1}m' Makefile
-perl -0 -i -pe 's{    \(\n        "register_user",.*?\),\n}{}s' crates/server/src/exempt.rs
+perl -0 -i -pe 's{pub const PUBLIC: &\[\(&str, &str\)\] = &\[.*?\n\];}{pub const PUBLIC: &[(&str, &str)] = &[(\n    "get_theme",\n    "the SPA themes itself before sign-in, and the theme holds nothing but CSS values (ADR 0051)",\n)];}s' crates/server/src/exempt.rs
 
 # 5. The UI down to the shell (src/shell/: the sidebar and a launcher with no
 # apps yet) and the platform's access and assistant screens.
