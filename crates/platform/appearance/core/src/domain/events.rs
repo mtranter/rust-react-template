@@ -5,3 +5,10 @@
 pub enum ThemeEvent {
     Updated,
 }
+
+/// What happened to the [`AppVisibility`](super::AppVisibility).
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppVisibilityEvent {
+    Updated,
+}

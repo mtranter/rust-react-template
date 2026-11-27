@@ -1,6 +1,6 @@
 use super::{PendingEvent, Version};
-use crate::domain::{Theme, ThemeEvent};
-use appearance_api::events::v1::{self, ThemeTopic};
+use crate::domain::{AppVisibility, AppVisibilityEvent, Theme, ThemeEvent};
+use appearance_api::events::v1::{self, AppVisibilityTopic, ThemeTopic};
 
 /// Where the domain's events meet the published contract.
 pub(crate) fn pending(theme: &Theme, version: Version, event: ThemeEvent) -> PendingEvent {
@@ -15,4 +15,20 @@ pub(crate) fn pending(theme: &Theme, version: Version, event: ThemeEvent) -> Pen
         updated_by: theme.updated_by().to_owned(),
     };
     PendingEvent::on::<ThemeTopic>(version, &state, event)
+}
+
+pub(crate) fn app_visibility_pending(
+    visibility: &AppVisibility,
+    version: Version,
+    event: AppVisibilityEvent,
+) -> PendingEvent {
+    let event = match event {
+        AppVisibilityEvent::Updated => v1::AppVisibilityEvent::Updated,
+    };
+    let state = v1::AppVisibility {
+        hidden: visibility.hidden().iter().cloned().collect(),
+        updated_at: visibility.updated_at(),
+        updated_by: visibility.updated_by().to_owned(),
+    };
+    PendingEvent::on::<AppVisibilityTopic>(version, &state, event)
 }

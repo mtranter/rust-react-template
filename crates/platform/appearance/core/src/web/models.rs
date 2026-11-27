@@ -1,8 +1,8 @@
-//! The version is an `i64` here, unlike other modules' strings: a Theme never saved is version
+//! The version is an `i64` here, unlike other modules' strings: one never saved is version
 //! `0`, which the SPA compares as a number.
 
 use crate::application::Versioned;
-use crate::domain::Theme;
+use crate::domain::{AppVisibility, Theme};
 use poem_openapi::Object;
 use std::collections::BTreeMap;
 
@@ -48,6 +48,46 @@ impl From<Option<Versioned<Theme>>> for ThemeResponse {
                 light: entity.light().clone(),
                 dark: entity.dark().clone(),
                 shared: entity.shared().clone(),
+                updated_at: Some(entity.updated_at().to_rfc3339()),
+                updated_by: Some(entity.updated_by().to_owned()),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AppVisibilityInput {
+    /// The ids of the apps to hide, as the SPA's registry names them (`notes`); empty shows
+    /// every app.
+    pub hidden: Vec<String>,
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase", rename = "AppVisibility")]
+pub struct AppVisibilityResponse {
+    /// `0` until first saved; send it back in `If-Match` to change it.
+    pub version: i64,
+    /// The ids of the hidden apps, sorted.
+    pub hidden: Vec<String>,
+    /// RFC 3339; `None` until first saved.
+    pub updated_at: Option<String>,
+    /// The subject who last saved it.
+    pub updated_by: Option<String>,
+}
+
+impl From<Option<Versioned<AppVisibility>>> for AppVisibilityResponse {
+    fn from(visibility: Option<Versioned<AppVisibility>>) -> Self {
+        match visibility {
+            None => Self {
+                version: 0,
+                hidden: Vec::new(),
+                updated_at: None,
+                updated_by: None,
+            },
+            Some(Versioned { entity, version }) => Self {
+                version: version.as_i64(),
+                hidden: entity.hidden().iter().cloned().collect(),
                 updated_at: Some(entity.updated_at().to_rfc3339()),
                 updated_by: Some(entity.updated_by().to_owned()),
             },

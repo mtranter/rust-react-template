@@ -125,6 +125,20 @@ impl Appearance {
             .await
     }
 
+    pub async fn apps(&self) -> Outcome<Value> {
+        self.signed(self.api.get("/api/appearance/apps"))
+            .send()
+            .await
+    }
+
+    pub async fn hide_apps(&self, version: i64, hidden: &[&str]) -> Outcome<Value> {
+        self.signed(self.api.put("/api/appearance/apps"))
+            .if_match(version)
+            .json(&serde_json::json!({ "hidden": hidden }))
+            .send()
+            .await
+    }
+
     /// Every `E` announced since boot, with the version each announces.
     pub async fn announced<E: Event>(&self) -> Vec<(Version, PayloadOf<E>)> {
         self.worker

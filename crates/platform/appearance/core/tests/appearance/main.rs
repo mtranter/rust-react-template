@@ -5,6 +5,7 @@ mod driver;
 
 mod behaviours {
     mod access;
+    mod apps;
     mod reading;
     mod updating;
 }

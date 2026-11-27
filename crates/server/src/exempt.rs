@@ -21,7 +21,13 @@ pub const PUBLIC: &[(&str, &str)] = &[
 ];
 
 /// `(operation id, reason)`.
-pub const SIGNED_IN: &[(&str, &str)] = &[(
-    "get_my_permissions",
-    "it answers only what the caller may do, so revoking it would only hide the caller's own Apps",
-)];
+pub const SIGNED_IN: &[(&str, &str)] = &[
+    (
+        "get_my_permissions",
+        "it answers only what the caller may do, so revoking it would only hide the caller's own Apps",
+    ),
+    (
+        "get_app_visibility",
+        "the SPA reads it to draw any signed-in user's apps, and it holds only the ids of the hidden ones (ADR 0052)",
+    ),
+];

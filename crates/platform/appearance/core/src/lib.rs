@@ -5,6 +5,6 @@ mod domain;
 mod web;
 
 pub use db::{MIGRATOR, SCHEMA, migrations};
-pub use di::{AppearanceProvider, module, policies, provider};
-pub use domain::{Theme, ThemeAction};
+pub use di::{Appearance, AppearanceProvider, module, policies, provider};
+pub use domain::{AppVisibility, AppVisibilityAction, Theme, ThemeAction};
 pub use web::AppearanceEndpoints;

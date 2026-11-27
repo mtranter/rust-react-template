@@ -1,10 +1,12 @@
-use super::models::{ThemeInput, ThemeResponse};
-use crate::application::{ThemeService, UpdateTheme, Version};
+use super::models::{AppVisibilityInput, AppVisibilityResponse, ThemeInput, ThemeResponse};
+use crate::Appearance;
+use crate::application::{UpdateTheme, Version};
 use app_web::{ApiResult, Caller, WithETag, if_match_version};
 use poem::web::Data;
 use poem_openapi::{OpenApi, Tags, param::Header, payload::Json};
 
 type ThemeResult = WithETag<ThemeResponse>;
+type AppVisibilityResult = WithETag<AppVisibilityResponse>;
 
 #[derive(Tags)]
 enum ApiTag {
@@ -14,6 +16,11 @@ enum ApiTag {
 fn tagged(theme: ThemeResponse) -> ThemeResult {
     let version = Version::from_i64(theme.version);
     ThemeResult::new(theme, version)
+}
+
+fn tagged_visibility(visibility: AppVisibilityResponse) -> AppVisibilityResult {
+    let version = Version::from_i64(visibility.version);
+    AppVisibilityResult::new(visibility, version)
 }
 
 /// Unit struct so `dump-spec` can build the spec without a database.
@@ -28,8 +35,8 @@ impl AppearanceEndpoints {
     /// also in the `ETag` header, which a change must send back in `If-Match`. Public: no token
     /// is needed.
     #[oai(path = "/theme", method = "get", operation_id = "get_theme")]
-    async fn get(&self, themes: Data<&ThemeService>) -> ApiResult<ThemeResult> {
-        Ok(tagged(themes.0.get().await?.into()))
+    async fn get(&self, appearance: Data<&Appearance>) -> ApiResult<ThemeResult> {
+        Ok(tagged(appearance.0.themes.get().await?.into()))
     }
 
     /// Replace the organisation's theme with these overrides of the app's CSS variables; empty
@@ -41,7 +48,7 @@ impl AppearanceEndpoints {
     #[oai(path = "/theme", method = "put", operation_id = "update_theme")]
     async fn update(
         &self,
-        themes: Data<&ThemeService>,
+        appearance: Data<&Appearance>,
         caller: Caller,
         #[oai(name = "If-Match")] if_match: Header<Option<String>>,
         body: Json<ThemeInput>,
@@ -57,7 +64,41 @@ impl AppearanceEndpoints {
             dark,
             shared,
         };
-        let theme = themes.0.update(&caller, cmd, expected).await?;
+        let theme = appearance.0.themes.update(&caller, cmd, expected).await?;
         Ok(tagged(Some(theme).into()))
+    }
+
+    /// Fetch which apps the organisation hides from its web app: the ids of their Capabilities
+    /// (`notes`). Hiding is only that: the apps' operations, and their tools, still answer.
+    /// Version `0` with none hidden means never changed; the version is also in the `ETag`
+    /// header, which a change must send back in `If-Match`. Any signed-in caller may read it.
+    #[oai(path = "/apps", method = "get", operation_id = "get_app_visibility")]
+    async fn get_apps(
+        &self,
+        appearance: Data<&Appearance>,
+        _caller: Caller,
+    ) -> ApiResult<AppVisibilityResult> {
+        Ok(tagged_visibility(appearance.0.apps.get().await?.into()))
+    }
+
+    /// Choose which apps the organisation hides from its web app, by their ids; an empty list
+    /// shows every app. Hiding doesn't stop anyone using an app's operations. Requires
+    /// `If-Match` with the version last read (`0` if never saved); a stale one is refused `412`
+    /// and changes nothing. Admins only: anyone else is refused `403`.
+    #[oai(path = "/apps", method = "put", operation_id = "update_app_visibility")]
+    async fn update_apps(
+        &self,
+        appearance: Data<&Appearance>,
+        caller: Caller,
+        #[oai(name = "If-Match")] if_match: Header<Option<String>>,
+        body: Json<AppVisibilityInput>,
+    ) -> ApiResult<AppVisibilityResult> {
+        let expected = if_match_version(if_match.0)?;
+        let visibility = appearance
+            .0
+            .apps
+            .update(&caller, body.0.hidden, expected)
+            .await?;
+        Ok(tagged_visibility(Some(visibility).into()))
     }
 }

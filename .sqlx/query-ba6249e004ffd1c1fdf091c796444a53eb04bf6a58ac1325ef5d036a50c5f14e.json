@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO appearance.app_visibility\n                    (key, hidden, updated_at, updated_by, version)\n                VALUES ('org', $1, $2, $3, 1)\n                RETURNING version\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "appearance.app_visibility",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ba6249e004ffd1c1fdf091c796444a53eb04bf6a58ac1325ef5d036a50c5f14e"
+}
