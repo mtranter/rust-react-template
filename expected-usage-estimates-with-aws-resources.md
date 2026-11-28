@@ -404,3 +404,84 @@ Assumptions: 2 hosts or tasks per tenant across 2 AZs where noted, a Multi-AZ RD
 3. Write an ADR recording pooled regional infrastructure. It replaces Spec 0010's account-per-environment proposal with one account per region, isolating tenants by database role, IAM task role, KMS key policy and Valkey ACL.
 4. Script tenant onboarding (database + role, secrets, KMS key, Valkey user, Cognito pool, ECS services, ALB rule) and offboarding (key deletion, database drop). Include a single-tenant restore runbook (10.2).
 5. Load-test 20 tenants concurrently against one db.m7g.xlarge at the realistic mix to confirm the tenants-per-instance figures.
+
+## 11. Neon instead of RDS
+
+### 11.1 Compatibility: pooled for the server, direct for the worker and `migrate`
+
+Neon's pooled endpoint (`-pooler` host) is PgBouncer in **transaction mode**. Session state doesn't survive a commit there: `SET`, `LISTEN`, SQL-level `PREPARE`, temp tables and **session** advisory locks all fail. Protocol-level prepared statements work, because Neon sets `max_prepared_statements=1000`. Checked against the code:
+
+| Feature (where) | Scope | Pooled OK? |
+|---|---|---|
+| sqlx's statement cache (every `query!`) | protocol-level prepared statements | **Yes** |
+| Relay lock `pg_try_advisory_xact_lock` (`worker.rs`), backfill `pg_advisory_xact_lock` (`subscriptions.rs`), retire function (migrations 0008, 0009) | transaction | **Yes** |
+| `FOR UPDATE SKIP LOCKED` claim, units of work, `If-Match` version guards | transaction | **Yes** |
+| Delivery figures `pg_try_advisory_lock` + `conn.detach()` (`figures.rs`, worker only) | **session** | **No**: the lock would stay on a pooled backend another client then gets |
+| `SET search_path` per module (`run_migrations`, `migrate` only) | **session** | **No** |
+| Server request path (handlers, authz rule-set refresh, idempotency records, MCP) | no session state | **Yes** |
+
+So, exactly as you suggested:
+
+- **`server` → pooled URL** (`ep-xxx-pooler.<region>.aws.neon.tech`). Keep sqlx's own pool small (`APP_DB_MAX_CONNECTIONS=5`), since PgBouncer does the multiplexing.
+- **`worker` → direct URL.** The figures' session lock is the only blocker. Everything else in the kafka-lite path is transaction-scoped. Long relay and claim transactions are better on a direct connection anyway.
+- **`migrate` → direct URL** (search_path, DDL, sqlx's migration lock).
+
+This needs `DATABASE_URL` to differ per binary, which is already the case since each is its own ECS task.
+
+### 11.2 The catch: the worker keeps Neon awake
+
+Neon scales compute to zero after 5 idle minutes, but the worker polls every second, so **the compute never suspends**. You pay for it all month, autoscaling between a minimum and maximum CU (1 CU ≈ 1 vCPU / 4 GB). Options:
+
+- **Accept it** (simplest). Autoscale 0.25 to 1 CU: about 1 CU through 10 business hours × 22 days and 0.25 CU otherwise, so ≈ 220 + 130 = **~350 CU-hours a month**.
+- **Let it sleep overnight.** Stop the polling worker out of hours (an ECS scheduled scale to 0), and run `worker --drain` from EventBridge every 15 to 30 minutes, so events wait up to that long at night. The 5-minute suspend then applies between runs, bringing it to about 250 CU-hours. Worth it mainly for idle tenants (11.4).
+- Don't lower `APP_WORKER_POLL_MS` to make it sleep: any poll under 5 minutes keeps it awake.
+
+### 11.3 Single-tenant cost: Neon vs RDS (USD a month)
+
+Neon Launch is $0.106/CU-hour, Neon Scale $0.222/CU-hour (99.95% SLA), storage $0.35/GB-month, the same rate in every region. Neon has **no Ireland region**: in the EU use Frankfurt (eu-central-1) or London (eu-west-2), and run the ECS side in the same region (Fargate there costs about the same as Ireland).
+
+| | US | EU (Frankfurt) | AU (Sydney) |
+|---|---|---|---|
+| RDS db.t4g.medium Single-AZ + 50 GB (section 8 / exec summary) | $53 | $56 | $81 |
+| **Neon Launch**, ~350 CU-h + 5 GB | **~$39** | **~$39** | **~$39** |
+| RDS db.t4g.medium Multi-AZ + 50 GB | $106 | $112 | $162 |
+| **Neon Scale** (SLA), ~350 CU-h + 5 GB | **~$80** | **~$80** | **~$80** |
+
+- **Neon is cheaper for one tenant everywhere, most of all in Sydney**, because Neon prices are flat across regions and AWS's Sydney premium doesn't apply.
+- **Network:** Neon sits outside your VPC, reached over TLS through your NAT gateway (data volume here is a few GB, ~$0.05/GB). PrivateLink is available on higher plans. It's an extra hop: Neon in the same AWS region adds about 1 ms per round trip over in-VPC RDS. The request path barely notices. The worker's ~6 round trips per job take it from ~200 to ~100 jobs/s, still ~2× the generous burst (section 3.2).
+- **What you gain:** branching (a copy of production for a migration rehearsal in seconds), point-in-time restore **per project**, and no instance sizing or credit balance to watch.
+- **What you lose:** a VPC-private database by default, RDS's IAM auth and AWS-native backups and KMS keys, and one bill. Neon's HA model (storage replicated, compute restarted on failure) isn't the same as Multi-AZ failover: check the SLA plan fits.
+
+### 11.4 Neon for pooled multi-tenant hosting (section 10)
+
+Here Neon changes the shape, not just the price. Two ways to use it:
+
+**A. A Neon project per tenant.** Launch allows 100 projects, Scale 1,000.
+- Strongest isolation: separate compute, storage, credentials and PITR per tenant. It **solves the single-tenant restore problem** in 10.2, and offboarding is deleting the project.
+- But nothing is shared: each tenant pays its own ~350 CU-hours, or ~250 with overnight drain. At 20 tenants: **~$780 a month on Launch, ~$1,600 on Scale**, against ~$540 for a shared Multi-AZ db.m7g.xlarge in the US (more in AU).
+- It's cheapest when tenants are small or idle a lot, since each scales to its 0.25 CU floor or to zero.
+
+**B. One Neon project, a database per tenant** (the same layout as 10.1).
+- Shared compute autoscales to the regional peak, say 0.5 CU overnight and 3 to 4 CU in business hours: about 22 × 10 × 3.5 + 510 × 0.5 ≈ 1,025 CU-hours, so **~$110 a month on Launch or ~$230 on Scale for 20 tenants**, plus storage (~$35 for 100 GB). That is the cheapest database option in this report.
+- Same trade-offs as a shared RDS: shared fate, noisy neighbours, and restoring one tenant means branching the project and copying that one database out.
+- Watch connections: pooled server connections are cheap, but each tenant's direct worker connections count against the compute's `max_connections`, about 419 at 1 CU and more at larger sizes. At 5 per worker, 20 tenants need 100.
+
+**Pooled cost per tenant, 20 tenants, ECS on EC2, with HA (compare 10.6):**
+
+| Database option | US | EU (Frankfurt) | AU |
+|---|---|---|---|
+| Shared RDS db.m7g.xlarge Multi-AZ (10.6) | ~$49 | ~$53 | ~$64 |
+| **B. Neon Scale, one project, database per tenant** | **~$25** | **~$28** | **~$30** |
+| A. Neon Launch, project per tenant | ~$62 | ~$65 | ~$68 |
+| A. Neon Scale, project per tenant | ~$105 | ~$108 | ~$112 |
+
+Rows B and A swap the RDS lines of 10.6 for Neon compute and storage, and keep everything else (EC2, ALB, NAT, Valkey, KMS, secrets). The EU figures assume Frankfurt EC2 at about Ireland's rates.
+
+**A hybrid:** run option B for the general pool, and give large, regulated or noisy tenants their own Neon project (option A), or their own RDS. Moving a tenant between them is a dump/restore, or logical replication, of its one database.
+
+### 11.5 What to change in the code and docs for Neon
+
+1. **Optional:** make the figures reader's lock transaction-scoped (`pg_try_advisory_xact_lock` held for the read), so the worker can use the pooled URL too. This isn't needed if the worker stays on the direct URL.
+2. Document in the `run-and-deploy` skill: server → pooled URL, worker and `migrate` → direct URL, and why. Spec 0010 already reaches for Neon for the Lambda variant, so link the two.
+3. Set `sslmode=require` (`verify-full` with Neon's CA if you want stricter checking). The bundled rustls TLS works with it.
+4. Load-test the worker against Neon in-region to confirm the ~100 jobs/s per worker estimate.
