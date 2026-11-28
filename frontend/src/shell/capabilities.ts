@@ -3,6 +3,7 @@ import { useHiddenApps } from "@/features/ui-settings";
 import type { LinkProps } from "@tanstack/react-router";
 import {
   EyeIcon,
+  HistoryIcon,
   KeyRoundIcon,
   ListChecksIcon,
   ListIcon,
@@ -98,6 +99,12 @@ const access: Capability = {
       to: "/access/permissions",
       icon: ListChecksIcon,
       needs: { resource: "grant", action: "list" },
+    },
+    {
+      label: "Audit log",
+      to: "/access/audit",
+      icon: HistoryIcon,
+      needs: { resource: "auditEntry", action: "list" },
     },
   ],
 };

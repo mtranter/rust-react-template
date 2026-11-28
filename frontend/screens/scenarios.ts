@@ -1,4 +1,5 @@
 import type {
+  AuditEntryResponse,
   CatalogResponse,
   ErrorBody,
   GrantResponse,
@@ -287,6 +288,24 @@ const invitations: InvitationResponse[] = [
   },
 ];
 
+const auditEntries: AuditEntryResponse[] = [
+  { change: "roleAssigned", role: "support", subject: "auth0|6650b2", actor: "auth0|6650a1" },
+  {
+    change: "accessGranted",
+    role: "support",
+    resource: "gadget",
+    action: "polish",
+    scope: "any",
+    actor: "auth0|6650a1",
+  },
+  { change: "roleCreated", role: "support", actor: "auth0|6650a1" },
+  { change: "accessGranted", role: "user", resource: "widget", action: "build", scope: "any" },
+].map((entry, n) => ({
+  id: `audit-${n}`,
+  occurredAt: new Date(Date.UTC(2026, 0, 10 - n, 9, 30)).toISOString(),
+  ...entry,
+})) as AuditEntryResponse[];
+
 /** `access` as the server answers an admin. */
 const accessApi = [
   http.get("*/api/access/me/permissions", () =>
@@ -302,6 +321,7 @@ const accessApi = [
         ["assignment", "assign"],
         ["invitation", "list"],
         ["invitation", "invite"],
+        ["auditEntry", "list"],
       ].map(([resource, action]) => ({ resource, action })),
     }),
   ),
@@ -319,6 +339,9 @@ const accessApi = [
     ),
   ),
   http.get("*/api/access/catalog", () => HttpResponse.json(accessCatalog)),
+  http.get("*/api/access/audit", () =>
+    HttpResponse.json({ items: auditEntries, total: auditEntries.length, limit: 20, offset: 0 }),
+  ),
   http.get("*/api/access/grants", ({ request }) => {
     const params = new URL(request.url).searchParams;
     const matching = grants.filter((g) =>
@@ -549,6 +572,26 @@ export const scenarios: Scenario[] = [
     route: "/access/permissions",
     handlers: accessApi,
     shows: (page) => page.getByText("No longer used"),
+  },
+  {
+    name: "access-audit",
+    route: "/access/audit",
+    handlers: accessApi,
+    shows: (page) => page.getByRole("cell", { name: "Role created" }),
+  },
+  {
+    name: "access-audit-building",
+    route: "/access/audit",
+    handlers: [
+      http.get("*/api/access/audit", () =>
+        HttpResponse.json(
+          { code: "unavailable", message: "still being built", requestId: "screens" },
+          { status: 503 },
+        ),
+      ),
+      ...accessApi,
+    ],
+    shows: (page) => page.getByRole("alert"),
   },
   {
     name: "access-grant",

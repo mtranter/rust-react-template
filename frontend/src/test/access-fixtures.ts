@@ -1,6 +1,7 @@
 import type {
   AssignmentRequest,
   AssignmentResponse,
+  AuditEntryResponse,
   BulkGrantRequest,
   BulkGrantResponse,
   CatalogResponse,
@@ -387,6 +388,7 @@ const accessResources = [
   "grant",
   "assignment",
   "invitation",
+  "auditEntry",
   "connection",
   "theme",
   "appVisibility",
@@ -400,6 +402,7 @@ export const notAnAdmin = [
   http.get("*/api/access/roles", forbidden),
   http.get("*/api/access/subjects", forbidden),
   http.get("*/api/access/invitations", forbidden),
+  http.get("*/api/access/audit", forbidden),
 ];
 
 export function invitation(
@@ -531,4 +534,59 @@ export function invitationsApi(
     }),
   ];
   return { handlers, ifMatches };
+}
+
+export function auditEntry(
+  n: number,
+  changes: Partial<AuditEntryResponse> = {},
+): AuditEntryResponse {
+  return {
+    id: `audit-${n}`,
+    occurredAt: new Date(Date.UTC(2026, 0, n, 9)).toISOString(),
+    change: "roleAssigned",
+    actor: "an-admin",
+    role: "support",
+    subject: `subject-${n}`,
+    ...changes,
+  };
+}
+
+/**
+ * The audit log as the server answers an admin: `entries` filtered exactly by `actor`, `role`,
+ * `subject` and `change`, by `since` (inclusive) and `until` (exclusive), newest first unless
+ * sorted by `occurredAt`, and paged. `requests` records each query.
+ */
+export function auditApi(entries: AuditEntryResponse[]) {
+  const requests: URLSearchParams[] = [];
+  const handlers = [
+    ...accessApi([]).handlers,
+    http.get("*/api/access/audit", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      const since = params.get("since");
+      const until = params.get("until");
+      const matching = entries
+        .filter((e) =>
+          (["actor", "role", "subject", "change"] as const).every(
+            (field) => !params.get(field) || e[field] === params.get(field),
+          ),
+        )
+        .filter((e) => !since || e.occurredAt >= since)
+        .filter((e) => !until || e.occurredAt < until)
+        .sort((a, b) =>
+          params.get("sort") === "occurredAt"
+            ? a.occurredAt.localeCompare(b.occurredAt)
+            : b.occurredAt.localeCompare(a.occurredAt),
+        );
+      const limit = Number(params.get("limit") ?? 20);
+      const offset = Number(params.get("offset") ?? 0);
+      return HttpResponse.json({
+        items: matching.slice(offset, offset + limit),
+        total: matching.length,
+        limit,
+        offset,
+      });
+    }),
+  ];
+  return { handlers, requests };
 }

@@ -2,6 +2,7 @@ import { listSearch } from "@/components/data-table";
 import { Page } from "@/components/page";
 import {
   AssignRoleDialog,
+  AuditLogTable,
   CreateRoleDialog,
   GrantAccessDialog,
   GrantsTable,
@@ -16,6 +17,7 @@ import { getRouteApi } from "@tanstack/react-router";
 const usersRoute = getRouteApi("/app/access/subjects");
 const invitationsRoute = getRouteApi("/app/access/invitations");
 const permissionsRoute = getRouteApi("/app/access/permissions");
+const auditRoute = getRouteApi("/app/access/audit");
 
 export function AccessUsersPage() {
   const { search } = usersRoute.useSearch();
@@ -90,6 +92,25 @@ export function AccessPermissionsPage() {
         onFilter={(filter) =>
           navigate({ search: (prev) => ({ ...prev, ...filter, page: undefined }) })
         }
+      />
+    </Page>
+  );
+}
+
+export function AccessAuditPage() {
+  const { page = 1, sort, ...filter } = auditRoute.useSearch();
+  const navigate = auditRoute.useNavigate();
+
+  return (
+    <Page title="Audit log" description="Every change to who may do what: by whom, and when.">
+      <AuditLogTable
+        page={page}
+        sort={sort}
+        filter={filter}
+        onChange={(position) =>
+          navigate({ search: (prev) => ({ ...prev, ...listSearch(position) }) })
+        }
+        onFilter={(next) => navigate({ search: (prev) => ({ ...prev, ...next, page: undefined }) })}
       />
     </Page>
   );

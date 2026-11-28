@@ -1,10 +1,18 @@
-import type { GrantSort, NoteSort, NoteSummarySort } from "@/api/types.gen";
+import type { AuditSort, GrantSort, NoteSort, NoteSummarySort } from "@/api/types.gen";
 import { type ListSearch, validateListSearch } from "@/components/data-table";
-import { type GrantFilter, grantSortKeys, invitationStatuses } from "@/features/access";
+import {
+  type AuditFilter,
+  type GrantFilter,
+  auditChanges,
+  auditSortKeys,
+  grantSortKeys,
+  invitationStatuses,
+} from "@/features/access";
 import { noteSummarySortKeys } from "@/features/note-search";
 import { noteSortKeys } from "@/features/notes";
 import { ThemeLoader } from "@/lib/theming";
 import {
+  AccessAuditPage,
   AccessInvitationsPage,
   AccessPermissionsPage,
   AccessRolesPage,
@@ -152,6 +160,15 @@ const accessPermissionsRoute = createRoute({
   }),
   component: AccessPermissionsPage,
 });
+const accessAuditRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/access/audit",
+  validateSearch: (search: Record<string, unknown>): AuditFilter & ListSearch<AuditSort> => ({
+    ...auditFilter(search),
+    ...validateListSearch<AuditSort>(search, auditSortKeys),
+  }),
+  component: AccessAuditPage,
+});
 
 const roleRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -219,6 +236,7 @@ const routeTree = rootRoute.addChildren([
     accessRolesRoute,
     accessInvitationsRoute,
     accessPermissionsRoute,
+    accessAuditRoute,
     roleRoute,
     integrationsRoute,
     integrationRoute,
@@ -235,6 +253,20 @@ const routeTree = rootRoute.addChildren([
 function grantFilter(search: Record<string, unknown>): GrantFilter {
   const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
   return { role: text(search.role), resource: text(search.resource), action: text(search.action) };
+}
+
+function auditFilter(search: Record<string, unknown>): AuditFilter {
+  const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+  const day = (value: unknown) =>
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+  return {
+    change: auditChanges.find((c) => c === search.change),
+    role: text(search.role),
+    actor: text(search.actor),
+    subject: text(search.subject),
+    since: day(search.since),
+    until: day(search.until),
+  };
 }
 
 export function createAppRouter(history?: RouterHistory) {

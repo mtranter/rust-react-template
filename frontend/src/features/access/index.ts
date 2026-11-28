@@ -8,3 +8,4 @@ export { SubjectsTable } from "./subjects-table";
 export { useMyPermissions, usePermitted } from "./use-my-permissions";
 export { InvitationsTable, invitationStatuses } from "./invitations-table";
 export { InviteUserDialog } from "./invite-user-dialog";
+export { type AuditFilter, AuditLogTable, auditChanges, auditSortKeys } from "./audit-log-table";
