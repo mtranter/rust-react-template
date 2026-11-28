@@ -1,9 +1,10 @@
 use super::error::refused;
 use super::events::{self, scope_name};
 use super::{
-    AssignmentRepository, CatalogAction, CatalogCapability, CatalogResource, EventPublisher,
-    GrantFilter, GrantRepository, GrantSortKey, IdentityDirectory, InvitationRepository, ListQuery,
-    Listed, RoleRepository, SubjectRepository, Transactions, Version, Versioned,
+    AssignmentRepository, AuditLog, CatalogAction, CatalogCapability, CatalogResource,
+    EventPublisher, GrantFilter, GrantRepository, GrantSortKey, IdentityDirectory,
+    InvitationRepository, ListQuery, Listed, RoleRepository, SubjectRepository, Transactions,
+    Version, Versioned,
 };
 use crate::domain::{
     CreateRole, Grant, GrantAccess, GrantAction, GrantEvent, GrantId, GrantedBy, Role, Scope,
@@ -59,6 +60,7 @@ pub struct AccessService {
     pub(super) clock: Arc<dyn Clock>,
     pub(super) authorizer: Arc<Authorizer>,
     pub(super) modules: Arc<Modules>,
+    pub(super) audit: Arc<dyn AuditLog>,
 }
 
 pub(super) fn acting(principal: &Principal) -> GrantedBy {
@@ -83,6 +85,7 @@ impl AccessService {
         clock: Arc<dyn Clock>,
         authorizer: Arc<Authorizer>,
         modules: Arc<Modules>,
+        audit: Arc<dyn AuditLog>,
     ) -> Self {
         Self {
             repo,
@@ -96,6 +99,7 @@ impl AccessService {
             clock,
             authorizer,
             modules,
+            audit,
         }
     }
 

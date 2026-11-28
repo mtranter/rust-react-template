@@ -2,9 +2,9 @@
 //! dependency-free.
 
 use crate::application::{
-    CatalogAction, CatalogCapability, CatalogResource, DirectoryStatus, GrantSortKey,
-    GrantedInBulk, HeldRole, InvitationListing, InvitationSortKey, Listing, Permission,
-    RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
+    AuditChange, AuditEntry, AuditSortKey, CatalogAction, CatalogCapability, CatalogResource,
+    DirectoryStatus, GrantSortKey, GrantedInBulk, HeldRole, InvitationListing, InvitationSortKey,
+    Listing, Permission, RoleSortKey, SubjectListing, SubjectSortKey, Versioned, scope_name,
 };
 use crate::domain::{Assignment, Grant, Invitation, InvitationStatus, Role, Scope};
 use app_persistence::{Direction, Sort};
@@ -659,5 +659,108 @@ impl SortParam for InvitationSort {
             Self::InvitedAtDesc => (InvitationSortKey::InvitedAt, Direction::Desc),
         };
         Sort { key, direction }
+    }
+}
+
+/// What changed in an audit entry.
+#[derive(Debug, Clone, Copy, Enum)]
+#[oai(rename_all = "camelCase")]
+pub enum AuditChangeParam {
+    AccessGranted,
+    GrantRevoked,
+    RoleCreated,
+    RoleDeleted,
+    RoleAssigned,
+    RoleUnassigned,
+}
+
+impl From<AuditChangeParam> for AuditChange {
+    fn from(change: AuditChangeParam) -> Self {
+        match change {
+            AuditChangeParam::AccessGranted => Self::AccessGranted,
+            AuditChangeParam::GrantRevoked => Self::GrantRevoked,
+            AuditChangeParam::RoleCreated => Self::RoleCreated,
+            AuditChangeParam::RoleDeleted => Self::RoleDeleted,
+            AuditChangeParam::RoleAssigned => Self::RoleAssigned,
+            AuditChangeParam::RoleUnassigned => Self::RoleUnassigned,
+        }
+    }
+}
+
+impl From<AuditChange> for AuditChangeParam {
+    fn from(change: AuditChange) -> Self {
+        match change {
+            AuditChange::AccessGranted => Self::AccessGranted,
+            AuditChange::GrantRevoked => Self::GrantRevoked,
+            AuditChange::RoleCreated => Self::RoleCreated,
+            AuditChange::RoleDeleted => Self::RoleDeleted,
+            AuditChange::RoleAssigned => Self::RoleAssigned,
+            AuditChange::RoleUnassigned => Self::RoleUnassigned,
+        }
+    }
+}
+
+/// One change to who may do what: a grant made or revoked, a role created or deleted, or a
+/// role assigned to or unassigned from a subject.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AuditEntryResponse {
+    pub id: String,
+    pub occurred_at: String,
+    pub change: AuditChangeParam,
+    /// The subject who made the change; absent when the system did (`migrate` applying a
+    /// module's default grants, or a seed).
+    #[oai(skip_serializing_if_is_none)]
+    pub actor: Option<String>,
+    /// The role granted, revoked, created, deleted, assigned or unassigned.
+    pub role: String,
+    /// Whom the role was assigned to or unassigned from.
+    #[oai(skip_serializing_if_is_none)]
+    pub subject: Option<String>,
+    /// The grant's resource, action and scope.
+    #[oai(skip_serializing_if_is_none)]
+    pub resource: Option<String>,
+    #[oai(skip_serializing_if_is_none)]
+    pub action: Option<String>,
+    #[oai(skip_serializing_if_is_none)]
+    pub scope: Option<String>,
+}
+
+impl From<AuditEntry> for AuditEntryResponse {
+    fn from(e: AuditEntry) -> Self {
+        Self {
+            id: e.id.to_string(),
+            occurred_at: e.occurred_at.to_rfc3339(),
+            change: e.change.into(),
+            actor: e.actor,
+            role: e.role,
+            subject: e.subject,
+            resource: e.resource,
+            action: e.action,
+            scope: e.scope,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Enum)]
+pub enum AuditSort {
+    #[oai(rename = "occurredAt")]
+    OccurredAtAsc,
+    #[oai(rename = "-occurredAt")]
+    OccurredAtDesc,
+}
+
+impl SortParam for AuditSort {
+    type Key = AuditSortKey;
+
+    fn sort(self) -> Sort<AuditSortKey> {
+        let direction = match self {
+            Self::OccurredAtAsc => Direction::Asc,
+            Self::OccurredAtDesc => Direction::Desc,
+        };
+        Sort {
+            key: AuditSortKey::OccurredAt,
+            direction,
+        }
     }
 }

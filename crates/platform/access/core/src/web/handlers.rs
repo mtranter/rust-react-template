@@ -1,11 +1,12 @@
 use super::models::{
-    AssignmentRequest, AssignmentResponse, BulkGrantRequest, BulkGrantResponse, CatalogResponse,
-    GrantRequest, GrantResponse, GrantSort, InvitationRequest, InvitationResponse, InvitationSort,
-    InvitationStatusParam, PermissionsResponse, RoleRequest, RoleResponse, RoleSort,
-    SubjectResponse, SubjectSort,
+    AssignmentRequest, AssignmentResponse, AuditChangeParam, AuditEntryResponse, AuditSort,
+    BulkGrantRequest, BulkGrantResponse, CatalogResponse, GrantRequest, GrantResponse, GrantSort,
+    InvitationRequest, InvitationResponse, InvitationSort, InvitationStatusParam,
+    PermissionsResponse, RoleRequest, RoleResponse, RoleSort, SubjectResponse, SubjectSort,
 };
 use crate::application::{
-    AccessService, GrantFilter, GrantInBulk, InvitationFilter, SubjectFilter, Versioned,
+    AccessService, AuditFilter, GrantFilter, GrantInBulk, InvitationFilter, SubjectFilter,
+    Versioned,
 };
 use crate::domain::{
     AssignRole, CreateRole, Grant, GrantAccess, GrantId, InvitationId, InviteUser,
@@ -51,6 +52,15 @@ enum RevokedInvitation {
 fn invitation_id(raw: &str) -> ApiResult<InvitationId> {
     raw.parse()
         .map_err(|_| AppError::validation("invalid invitation id").into())
+}
+
+fn time(name: &str, raw: Option<String>) -> ApiResult<Option<chrono::DateTime<chrono::Utc>>> {
+    raw.map(|raw| {
+        chrono::DateTime::parse_from_rfc3339(raw.trim())
+            .map(|t| t.to_utc())
+            .map_err(|_| AppError::invalid_field(name, "not an RFC 3339 time").into())
+    })
+    .transpose()
 }
 
 fn grant_id(raw: &str) -> ApiResult<GrantId> {
@@ -273,6 +283,44 @@ impl AccessEndpoints {
         let expected = if_match_version(if_match.0)?;
         access.0.delete_role(&caller, &name.0, expected).await?;
         Ok(Deleted::Deleted)
+    }
+
+    /// Read the audit log of changes to who may do what: each grant made or revoked, role
+    /// created or deleted, and role assigned to or unassigned from a subject, with who made it
+    /// (`actor`, absent for the system) and when. Filter by `actor`, `role`, `subject` (whom a
+    /// role was assigned to or unassigned from) or `change` (exact), and by `since` (inclusive)
+    /// and `until` (exclusive), RFC 3339 times. Paginated, newest first unless `sort` says
+    /// otherwise (`occurredAt`, `-` prefix for descending). Changes older than a week may show
+    /// only the latest of each grant, role or assignment. `503` while the log is still being
+    /// built. `403` unless the caller is an `admin`, or holds a role granted it.
+    #[oai(path = "/audit", method = "get", operation_id = "list_access_audit")]
+    #[allow(clippy::too_many_arguments)]
+    async fn list_audit(
+        &self,
+        access: Data<&AccessService>,
+        caller: Caller,
+        actor: Query<Option<String>>,
+        role: Query<Option<String>>,
+        subject: Query<Option<String>>,
+        change: Query<Option<AuditChangeParam>>,
+        since: Query<Option<String>>,
+        until: Query<Option<String>>,
+        limit: Query<Option<i64>>,
+        offset: Query<Option<i64>>,
+        sort: Query<Option<Vec<AuditSort>>>,
+    ) -> ApiResult<Json<ListResult<AuditEntryResponse>>> {
+        let query = paged(limit.0, offset.0).sorted(sorts(sort.0));
+        let page = query.page;
+        let filter = AuditFilter {
+            actor: actor.0,
+            role: role.0,
+            subject: subject.0,
+            change: change.0.map(Into::into),
+            since: time("since", since.0)?,
+            until: time("until", until.0)?,
+        };
+        let listed = access.0.list_audit(&caller, filter, query).await?;
+        Ok(Json(ListResult::new(listed, page)))
     }
 
     /// List the subjects roles can be assigned to (each a token's `sub`): everyone who has

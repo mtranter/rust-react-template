@@ -175,6 +175,7 @@ const TOOLS: &[&str] = &[
     "list_invitations",
     "resend_invitation",
     "revoke_invitation",
+    "list_access_audit",
     "list_connections",
     "get_connection",
     "update_connection",

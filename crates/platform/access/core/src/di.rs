@@ -1,11 +1,13 @@
 // Naming the pool to wire the repository is this module's DI seam (ADR 0007).
 #![allow(clippy::disallowed_types)]
 
-use crate::application::{AccessService, IdentityDirectory, Modules, Operation, Rules, SignIns};
+use crate::application::{
+    AccessService, AuditEntry, IdentityDirectory, Modules, Operation, Rules, SignIns,
+};
 use crate::cognito::CognitoDirectory;
 use crate::db::{
-    PgAssignmentRepository, PgGrantRepository, PgInvitationRepository, PgRoleRepository,
-    PgSubjectRepository, migrations,
+    AUDIT_ASSIGNMENTS, AUDIT_GRANTS, AUDIT_ROLES, AuditRows, PgAssignmentRepository, PgAuditLog,
+    PgGrantRepository, PgInvitationRepository, PgRoleRepository, PgSubjectRepository, migrations,
 };
 use crate::domain::{Assignment, Grant, Invitation, Role, Subject};
 use crate::web::{OPERATIONS, RecordingSignIns};
@@ -14,6 +16,7 @@ use access_api::events::v1::{AssignmentTopic, GrantTopic, InvitationTopic, RoleT
 use app_authz::{Policies, PoliciesBuilder, policy_file};
 use app_error::AppResult;
 use app_module::{Context, Module, PoliciesError};
+use app_persistence::Handlers;
 use app_web::{PrincipalResolver, Provide};
 use std::sync::Arc;
 
@@ -78,6 +81,7 @@ fn service(
         ctx.clock(),
         ctx.authorizer(),
         modules,
+        Arc::new(PgAuditLog::new(ctx.pool())),
     )
 }
 
@@ -105,7 +109,7 @@ pub fn sign_ins(ctx: &Context) -> Arc<dyn PrincipalResolver> {
     })
 }
 
-/// `access`' `grant`, `role`, `assignment`, `subject` and `invitation` resources, all `admin`'s by baseline
+/// `access`' `grant`, `role`, `assignment`, `subject`, `invitation` and `auditEntry` resources, all `admin`'s by baseline
 /// rules rather than grants, so no revocation can lock admins out (ADR 0040). It has no default
 /// grants.
 pub fn policies() -> PoliciesBuilder {
@@ -116,7 +120,17 @@ pub fn policies() -> PoliciesBuilder {
         .resource::<Assignment>(policy_file!("policies/assignment.yaml"))
         .resource::<Subject>(policy_file!("policies/subject.yaml"))
         .resource::<Invitation>(policy_file!("policies/invitation.yaml"))
+        .resource::<AuditEntry>(policy_file!("policies/audit_entry.yaml"))
         .labels(policy_file!("policies/labels.yaml"))
+}
+
+/// What the worker runs for `access`: the audit log's copy of every grant, role and assignment
+/// event, from the earliest each topic holds.
+pub fn handlers(_ctx: &Context) -> Handlers {
+    Handlers::new()
+        .on_from_earliest::<GrantTopic>(AUDIT_GRANTS, AuditRows)
+        .on_from_earliest::<RoleTopic>(AUDIT_ROLES, AuditRows)
+        .on_from_earliest::<AssignmentTopic>(AUDIT_ASSIGNMENTS, AuditRows)
 }
 
 /// Assigning roles, for another module's seed to give the accounts it seeds theirs, as `System`:
@@ -170,6 +184,7 @@ pub fn module(composed: fn() -> Vec<Module>) -> Module {
     .providing(sign_ins)
     .with_policies(policies)
     .performing(OPERATIONS)
+    .with_handlers(handlers)
     .publishes::<GrantTopic>()
     .publishes::<RoleTopic>()
     .publishes::<AssignmentTopic>()

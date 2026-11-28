@@ -17,4 +17,5 @@ pub const OPERATIONS: &[Performs] = &[
     Performs::new("list_invitations", "invitation", "list"),
     Performs::new("resend_invitation", "invitation", "resend"),
     Performs::new("revoke_invitation", "invitation", "revoke"),
+    Performs::new("list_access_audit", "auditEntry", "list"),
 ];

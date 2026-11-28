@@ -30,3 +30,7 @@ labels:
         invite: Invite
         resend: Resend
         revoke: Revoke
+    - resource: auditEntry
+      label: Audit log
+      actions:
+        list: View

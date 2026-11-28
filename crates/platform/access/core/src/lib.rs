@@ -11,16 +11,16 @@ mod domain;
 mod web;
 
 pub use application::{
-    Created, DirectoryStatus, DirectoryUser, IdentityDirectory, Modules, Operation, POLL_EVERY,
-    Rules,
+    AuditChange, AuditEntry, AuditEntryAction, Created, DirectoryStatus, DirectoryUser,
+    IdentityDirectory, Modules, Operation, POLL_EVERY, Rules,
 };
 pub use cognito::CognitoDirectory;
 pub use db::{
     GrantColumns, InvitationColumns, MIGRATOR, RoleColumns, SCHEMA, SubjectColumns, migrations,
 };
 pub use di::{
-    AccessProvider, apply_default_grants, assignments, directory, module, policies, provider,
-    rules, sign_ins,
+    AccessProvider, apply_default_grants, assignments, directory, handlers, module, policies,
+    provider, rules, sign_ins,
 };
 pub use domain::{
     Assignment, AssignmentAction, Email, Grant, GrantAction, GrantId, Invitation, InvitationAction,

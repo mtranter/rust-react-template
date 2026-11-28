@@ -7,6 +7,7 @@ mod workshop;
 mod behaviours {
     mod access;
     mod assigning;
+    mod auditing;
     mod catalog;
     mod defaults;
     mod granting;

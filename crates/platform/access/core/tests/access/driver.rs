@@ -10,7 +10,7 @@ use app_domain::{FixedClock, seed_time};
 use app_error::{AppError, AppResult};
 use app_events::{Event, PayloadOf};
 use app_module::Context;
-use app_persistence::{Handlers, Version};
+use app_persistence::Version;
 use app_test_db::Template;
 use app_web::testing::{Call, Page, Refused, TestApi};
 use app_web::{Accept, Claims, JwtVerifier, json_newtype};
@@ -182,6 +182,23 @@ impl InvitationJson {
 
 pub type Invitations = Page<InvitationJson>;
 
+json_newtype!(pub AuditEntryJson);
+
+impl AuditEntryJson {
+    /// `(change, actor, role, subject)`, each absent one empty.
+    pub fn summary(&self) -> (String, String, String, String) {
+        let field = |name: &str| self[name].as_str().unwrap_or_default().to_owned();
+        (
+            field("change"),
+            field("actor"),
+            field("role"),
+            field("subject"),
+        )
+    }
+}
+
+pub type AuditLog = Page<AuditEntryJson>;
+
 /// A user the fake identity provider holds.
 #[derive(Debug, Clone)]
 struct DirectoryEntry {
@@ -334,7 +351,7 @@ impl Access {
                 .data(verifier.clone())
                 .data(ctx.authorizer())
         });
-        let worker = ctx.worker(Handlers::new());
+        let worker = ctx.worker(access::handlers(&ctx));
         let seeded_through = worker.outbox_end().await.expect("read the outbox");
         let access = Self {
             api,
@@ -533,6 +550,24 @@ impl Access {
             .into_iter()
             .find(|s| s.subject() == subject)
             .unwrap_or_else(|| panic!("{subject} is listed"))
+    }
+
+    /// Delivers what `access` has announced so far to its own subscriptions, as the worker
+    /// would.
+    pub async fn run_pending_events(&self) {
+        self.worker
+            .run_until_idle()
+            .await
+            .expect("the worker reaches the database");
+    }
+
+    /// `query` as the API names its parameters: `actor`, `role`, `subject`, `change`, `since`,
+    /// `until`, `sort`, `limit`, `offset`.
+    pub async fn audit_where(&self, query: &[(&str, &str)]) -> Outcome<AuditLog> {
+        let query: Vec<_> = query.iter().map(|(k, v)| (*k, v.to_string())).collect();
+        self.signed(self.api.get("/api/access/audit").queries(&query))
+            .send()
+            .await
     }
 
     pub fn sign_out(&self) {
@@ -881,5 +916,8 @@ pub const TEMPLATE: Template = Template::new("access", |pool| {
             .ensure_assigned(&Principal::System, ADMIN_ID, ADMIN)
             .await
             .expect("assign the admin");
+        app_db::register_subscriptions(&ctx.pool(), ctx.clock().as_ref(), &access::handlers(&ctx))
+            .await
+            .expect("register access' subscriptions");
     })
 });

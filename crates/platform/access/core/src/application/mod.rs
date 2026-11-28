@@ -2,6 +2,7 @@
 //! `app-persistence` so they read as this layer's vocabulary while staying identical across modules.
 
 mod assignments;
+mod audit;
 mod catalog;
 mod directory;
 mod error;
@@ -17,6 +18,7 @@ mod subjects;
 pub use app_persistence::{
     EventPublisher, ListQuery, Listed, PendingEvent, Transactions, Tx, Version, Versioned,
 };
+pub use audit::{AuditChange, AuditEntry, AuditEntryAction, AuditFilter, AuditLog, AuditSortKey};
 pub use catalog::{CatalogAction, CatalogCapability, CatalogResource};
 pub use directory::{Created, DirectoryStatus, DirectoryUser, IdentityDirectory};
 pub(crate) use events::scope_name;
