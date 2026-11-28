@@ -3,6 +3,8 @@
 ## Executive summary
 
 > **Monthly total (USD, on-demand): US ~$140 · EU ~$150 · AU ~$180 lean. With HA: US ~$220 · EU ~$235 · AU ~$295.** The line-by-line breakdown is in the cost table below.
+>
+> **Pooled hosting (section 10):** with 20 tenants sharing one region's network, ALB, RDS, Valkey and KMS, but each keeping its own app, database, keys and secrets, the cost per tenant with HA is about **US ~$49 · EU ~$53 · AU ~$64** on ECS on EC2 Graviton (Fargate: ~$57 · ~$63 · ~$74). That's about 4× cheaper than standalone.
 
 **What it is.** An internal suite of 6 business apps for one company of about 100 staff. It is a modular-monolith Rust server with an embedded React SPA and a Postgres-backed event outbox (the "kafka-lite" mechanism). It is single-tenant, busy during working hours and near idle overnight.
 
@@ -274,3 +276,131 @@ A 1-year Compute Savings Plan (Fargate) and an RDS Reserved Instance cut about 2
 - No bulk imports or integration syncs moving thousands of rows a minute. A nightly sync of 50k records fans out to 50k × F jobs: at 200 jobs/s per worker that is ~6 minutes for F = 1.5, which is fine overnight. A bulk sync into a master-data topic with 8 consumers (say, importing 5k users) is 40k jobs, about 3.5 minutes.
 - Agents over MCP behave like a few extra humans, not loops of hundreds of calls a minute. If agents are automated, apply Little's law to them separately: N_agents × calls a minute.
 - Browser-to-ALB latency (Sydney) is not counted in R. It doesn't change throughput, since R ≪ Z.
+
+## 10. Pooled multi-tenant hosting (many single-tenant deployments, shared infrastructure)
+
+The app stays single-tenant: each customer gets its own `server` and `worker`, its own database, its own Cognito pool and its own secrets, all from the same image. What's pooled is everything underneath, once per region. This keeps the code and its guarantees unchanged and gets most of the cost benefit of SaaS.
+
+```mermaid
+flowchart TB
+  subgraph Region["One region (shared)"]
+    ALB["ALB: host rules<br/>acme.app.com, globex.app.com, ...<br/>wildcard ACM cert"]
+    subgraph ECS["ECS cluster (Fargate or EC2 Graviton)"]
+      A1[acme server] --- A2[acme worker]
+      G1[globex server] --- G2[globex worker]
+    end
+    RDS[("One RDS instance<br/>database per tenant: acme, globex, ...<br/>role per tenant, CONNECT only to its own")]
+    VK[("Valkey Serverless<br/>ACL user per tenant: channels acme:* only")]
+    KMS["KMS: one key per tenant<br/>key policy: only that tenant's task role"]
+    NAT[NAT / VPC endpoints]
+  end
+  ALB --> A1 & G1
+  A1 & A2 --> RDS
+  G1 & G2 --> RDS
+  A1 & A2 -.-> VK
+  A1 -.->|wrap/unwrap data keys| KMS
+```
+
+### 10.1 What's shared and what isn't
+
+| Shared per region | Kept per tenant |
+|---|---|
+| VPC, subnets, NAT gateways, VPC endpoints | ECS services (`server`, `worker`) and their task IAM role |
+| ALB (one host rule + target group per tenant; 100 rules per listener by default, raisable) | Database and DB role on the shared RDS |
+| ECS cluster, capacity (Fargate or EC2), ECR image | Cognito user pool / OIDC client (`APP_JWT_ISSUER`, `APP_OIDC_CLIENT_ID`) |
+| RDS instance | KMS key, Secrets Manager secrets |
+| Valkey Serverless cache | Valkey ACL user and channel prefix |
+| Observability stack (tenant as a resource attribute) | Log group (or a `tenant` field), alarms |
+
+**Databases.** A schema per tenant won't work, because every module already owns a schema in its database (`notes`, `access`, `messaging`, ...). A database per tenant fits cleanly: each tenant's `DATABASE_URL` names its own database, its own `migrate` runs against it, and its outbox, jobs, idempotency records and advisory locks (`RELAY_LOCK` is scoped to the database) are isolated. Run `REVOKE CONNECT ON DATABASE ... FROM PUBLIC` on every database and give each tenant's role `CONNECT` on its own only.
+
+**Tune each tenant for sharing:** `APP_WORKER_POLL_MS=3000` (the idle poll is the main cost that scales with tenant count: ~25 ms of DB CPU a second per tenant at 1 s, ~8 ms at 3 s; the cost is up to 3 s more event latency) and `APP_DB_MAX_CONNECTIONS=5` per process (10 per tenant, so 200 connections for 20 tenants, well inside a 16 GiB instance's ~1,600).
+
+### 10.2 Sizing the shared database
+
+Tenants in one region share business hours, so assume their peaks coincide (no statistical smoothing). Per tenant at peak, with a 3 s poll: **~0.04 vCPU realistic, ~0.14 vCPU generous** (section 4.3 minus most of the idle cost).
+
+| Instance | vCPU / RAM | Tenants (realistic) | Tenants (all generous) |
+|---|---|---|---|
+| db.m7g.large | 2 / 8 GiB | ~15 to 20 | ~8 |
+| db.m7g.xlarge | 4 / 16 GiB | ~30 to 40 | ~15 to 20 |
+| db.m7g.2xlarge | 8 / 32 GiB | ~60 to 80 | ~35 |
+
+Keep peak CPU under ~60%. Use the non-burstable m7g class: 20 tenants peaking together would drain a t4g's credits by mid-morning. RAM is rarely the limit at a few GB per tenant, but check the buffer cache hit ratio as tenants grow. Move a heavy tenant out with a dump/restore or logical replication of its one database.
+
+**Risks of sharing the database:** maintenance windows, version upgrades and failovers hit every tenant at once. One tenant's bulk import or heavy report can slow the others, so watch per-database load in Performance Insights. Point-in-time recovery restores the whole instance, so restoring one tenant means restoring to a new instance and then dumping and restoring that one database. Script and test this before you need it.
+
+### 10.3 Compute: Fargate vs ECS on EC2 Graviton
+
+On Fargate, each tenant pays for its minimum task sizes (0.5 + 0.25 vCPU) while using about 0.1 vCPU and 100 MB. ECS on EC2 lets tasks share instances and reserve what they actually use:
+
+| Task (EC2 launch type) | CPU units reserved (soft share) | Memory reservation (soft) / limit (hard) |
+|---|---|---|
+| `server` | 128 (0.125 vCPU) | 128 MB / 512 MB |
+| `worker` | 64 (0.0625 vCPU) | 64 MB / 256 MB |
+| **Per tenant** | **192 units** | **192 MB / 768 MB** |
+
+CPU shares are soft, so an idle tenant's CPU goes to a busy one. Memory reservations pack tasks, and hard limits contain a runaway task.
+
+- **One m7g.xlarge (4 vCPU / 16 GiB) fits ~20 tenants:** 20 × 192 = 3,840 of its 4,096 CPU units, and 20 × 768 MB = 15 GB of hard limits. Generous-peak CPU use is ~20 × 0.15 ≈ 3 vCPU, so one host is the safe maximum. Run **2 hosts in 2 AZs, each able to take every tenant** (N+1), so they normally run at ~50%.
+- **Networking:** the `awsvpc` mode gives each task an ENI, and an m7g.xlarge has only 4 ENIs. Turn on **ENI trunking** (`awsvpcTrunking`) or use `bridge` mode with dynamic host ports and instance-type target groups.
+- **Operations you take on:** an Auto Scaling group with a capacity provider, AMI patching (use Bottlerocket or the ECS-optimised AL2023 with managed instance draining), and spreading each tenant's server across AZs.
+- **A middle path:** keep `server` on Fargate, where it's user-facing and you avoid patching, and pack workers onto EC2 or run them on Fargate Spot.
+
+### 10.4 Shared Valkey with tenant isolation
+
+Nothing broadcasts yet, but this is cheap to get right before anything does. Pub/sub ignores the Redis DB index, and `RedisBus` publishes on plain channel names (`crates/common/bus/src/redis.rs`), so two tenants on one cache would hear each other today. Two layers fix that:
+
+1. **Prefix (code change, small):** an `APP_BUS_PREFIX` setting (say, `acme:`) that `RedisBus` prepends to every channel on `PUBLISH` and `SUBSCRIBE`. Nothing above the `Bus` trait changes.
+2. **Enforced by Valkey ACLs:** ElastiCache Serverless for Valkey supports RBAC users. Give each tenant a user whose access string allows only its channels and the pub/sub commands, roughly `on ~nothing resetchannels &acme:* -@all +publish +subscribe +ping +hello +auth`. A bug in the prefix then fails closed, as a `NOPERM`, rather than leaking. Each tenant's `APP_REDIS_URL` carries its own username and password.
+
+TLS is on by default for ElastiCache Serverless. Cost: one cache's minimum, about $6 a month plus a few dollars of ECPUs for the whole region, instead of $6 or more per tenant.
+
+### 10.5 KMS as a tenant security layer
+
+KMS doesn't isolate compute or the database engine, but it makes each tenant's secrets cryptographically separate and lets you **crypto-shred** a tenant on offboarding. Create one customer-managed key per tenant (alias `alias/tenant/acme`), with a key policy that allows `kms:Encrypt`/`Decrypt`/`GenerateDataKey` only to that tenant's task role, plus an `EncryptionContext` condition `tenant = acme`. A compromised task of another tenant, or a misconfigured env var pointing at the wrong key, then gets `AccessDenied`.
+
+| Where | How | Effort |
+|---|---|---|
+| **Connections' secrets** (ADR 0050) | A `KmsKeyProvider` adapter behind the existing `KeyProvider` port: `GenerateDataKey`/`Decrypt` with the tenant's key, envelope format unchanged. ADR 0050 already names it as the next adapter. It replaces the `CONNECTIONS_MASTER_KEY` env var, so no raw master key lives in a task definition. Cache unwrapped data keys in memory briefly to keep KMS calls rare. | Small: one adapter + config |
+| **Secrets Manager** (`DATABASE_URL`, Valkey password, model keys) | Encrypt each tenant's secrets with its key. Only its task execution role can read them. | Config only |
+| **S3** (attachments, exports, if apps add them) | A bucket or prefix per tenant with SSE-KMS under its key and a bucket policy matching the role. | Config only |
+| **Bus payloads** (optional) | Encrypt payloads with a tenant data key before `PUBLISH`. This is defence in depth over the ACLs, and probably unnecessary. | Small |
+| **RDS** | Storage encryption is **one key per instance**, not per database, so all tenants on an instance share it. For per-tenant cryptographic separation of especially sensitive columns, encrypt them in the application with a tenant data key (the same envelope as Connections). Otherwise a dedicated instance is the only per-tenant key. | Per-column app work, or a dedicated instance |
+
+**Cost:** $1 per key per month plus $0.03 per 10,000 requests: about $20 to $25 a month for 20 tenants with data-key caching.
+
+**Offboarding:** schedule the tenant's key for deletion (7 to 30 day wait). Its Connections secrets, Secrets Manager values and S3 objects become unreadable everywhere, backups included. Drop its database, and age the instance's snapshots out.
+
+### 10.6 Cost: 20 tenants per region, with HA, on-demand USD a month
+
+Assumptions: 2 hosts or tasks per tenant across 2 AZs where noted, a Multi-AZ RDS db.m7g.xlarge with 200 GB gp3, 2 NAT gateways, 1 ALB, Valkey Serverless, 20 KMS keys, ~3 secrets per tenant. EC2 m7g.xlarge on-demand: US $0.1632/h, EU (Ireland) $0.1819/h, AU (Sydney) $0.204/h. db.m7g.xlarge: US $0.337/h, with EU and AU estimated at about +11% and +40%. Confirm in the AWS Pricing Calculator.
+
+| Item | US (us-east-1) | EU (eu-west-1) | AU (ap-southeast-2) |
+|---|---|---|---|
+| Compute, **ECS on EC2**: 2 × m7g.xlarge + EBS | $250 | $275 | $310 |
+| Compute, *Fargate instead*: 20 × (server + worker) | *$420* | *$480* | *$520* |
+| RDS db.m7g.xlarge Multi-AZ | $492 | $545 | $690 |
+| RDS gp3 200 GB Multi-AZ | $46 | $50 | $55 |
+| ALB (+ LCUs) | $30 | $32 | $35 |
+| NAT gateways × 2 (+ data) | $70 | $75 | $90 |
+| Valkey Serverless (shared) | $10 | $10 | $12 |
+| KMS (20 keys) | $22 | $22 | $22 |
+| Secrets Manager, CloudWatch, ECR | $50 | $50 | $55 |
+| **Total, ECS on EC2** | **~$970** | **~$1,060** | **~$1,270** |
+| **Per tenant, ECS on EC2** | **~$49** | **~$53** | **~$64** |
+| *Total / per tenant, Fargate* | *~$1,140 / $57* | *~$1,265 / $63* | *~$1,480 / $74* |
+| *Standalone, per tenant (exec summary, with HA)* | *~$220* | *~$235* | *~$295* |
+
+- **Pooling is about 4 to 4.5× cheaper per tenant** than standalone HA deployments. ECS on EC2 saves another ~15% over Fargate at 20 tenants, more as hosts fill.
+- **RDS is now about half the bill.** A Single-AZ shared instance would halve that line (per tenant ~$37 US, ~$40 EU, ~$46 AU on EC2). That's a reasonable trade for a non-critical tier, but a failover then hits 20 customers at once.
+- **Savings Plans and reserved instances** (1 year) take ~30% off EC2 and RDS: **~$35 US, ~$38 EU, ~$45 AU per tenant**.
+- **Marginal cost** once the region exists: about one tenant's compute share plus 1/20 of the database, roughly **$25 to $35 a month per extra tenant** until the next database or host step.
+
+### 10.7 Things to do before pooling
+
+1. Add `APP_BUS_PREFIX` to `RedisBus`, and document the per-tenant ACL user in the `run-and-deploy` skill.
+2. Add the `KmsKeyProvider` adapter to `connections` (ADR 0050's planned follow-up), with config selecting env or KMS.
+3. Write an ADR recording pooled regional infrastructure. It replaces Spec 0010's account-per-environment proposal with one account per region, isolating tenants by database role, IAM task role, KMS key policy and Valkey ACL.
+4. Script tenant onboarding (database + role, secrets, KMS key, Valkey user, Cognito pool, ECS services, ALB rule) and offboarding (key deletion, database drop). Include a single-tenant restore runbook (10.2).
+5. Load-test 20 tenants concurrently against one db.m7g.xlarge at the realistic mix to confirm the tenants-per-instance figures.
