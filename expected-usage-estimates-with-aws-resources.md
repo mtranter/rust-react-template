@@ -5,6 +5,8 @@
 > **Monthly total (USD, on-demand): US ~$140 · EU ~$150 · AU ~$180 lean. With HA: US ~$220 · EU ~$235 · AU ~$295.** The line-by-line breakdown is in the cost table below.
 >
 > **Pooled hosting (section 10):** with 20 tenants sharing one region's network, ALB, RDS, Valkey and KMS, but each keeping its own app, database, keys and secrets, the cost per tenant with HA is about **US ~$49 · EU ~$53 · AU ~$64** on ECS on EC2 Graviton (Fargate: ~$57 · ~$63 · ~$74). That's about 4× cheaper than standalone.
+>
+> **Neon instead of RDS (section 11):** this works if the server uses Neon's pooled URL and the worker and `migrate` use the direct URL. Standalone, the database drops to ~$39 a month on Launch (~$80 on Scale with an SLA) in any region. Pooled, with one Neon project holding a database per tenant, it comes to **~$25 to $30 per tenant** all in.
 
 **What it is.** An internal suite of 6 business apps for one company of about 100 staff. It is a modular-monolith Rust server with an embedded React SPA and a Postgres-backed event outbox (the "kafka-lite" mechanism). It is single-tenant, busy during working hours and near idle overnight.
 
