@@ -1,5 +1,42 @@
 # Expected usage and AWS resource estimates
 
+## Executive summary
+
+**What it is.** An internal suite of 6 business apps for one company of about 100 staff. It is a modular-monolith Rust server with an embedded React SPA and a Postgres-backed event outbox (the "kafka-lite" mechanism). It is single-tenant, busy during working hours and near idle overnight.
+
+**Expected load.** Peak-hour traffic is about 7 to 36 API requests a second, bursting to about 110 at the generous design peak, with about 20% of requests writing. Each write fans out to 3 to 5 background subscriber jobs, which come to about 54 a second at that peak, bursting to about 165. This fan-out, not the web traffic, is the main load on the database. Even at the generous peak, every component runs at 25% or less of its capacity.
+
+**Resources (the same in every region):**
+
+| Component | Size | Peak utilisation (generous case) |
+|---|---|---|
+| ECS Fargate `server` (API, SPA, MCP) | 1 task, 0.5 vCPU / 1 GB, ARM64 | ~25% CPU, under 10% memory |
+| ECS Fargate `worker` (events, jobs) | 1 task, 0.25 vCPU / 0.5 GB, ARM64 | ~25% of one worker's throughput |
+| RDS PostgreSQL 17 | db.t4g.medium (2 vCPU / 4 GiB), 50 GB gp3 | ~20% CPU in the peak hour |
+| ALB + NAT gateway, logs, secrets | 1 each | — |
+| Redis / Valkey | not needed yet | — |
+
+**Monthly cost (USD, on-demand, 730 h):**
+
+| | US (us-east-1) | EU (eu-west-1, Ireland) | AU (ap-southeast-2, Sydney) |
+|---|---|---|---|
+| Fargate `server` | $14 | $16 | $17 |
+| Fargate `worker` | $7 | $8 | $9 |
+| RDS db.t4g.medium, Single-AZ | $47 | $50 | $74 |
+| gp3 storage 50 GB | $6 | $6 | $7 |
+| ALB | $18 | $20 | $20 |
+| NAT gateway (or public IPs + VPC endpoints) | $35 | $37 | $45 |
+| CloudWatch, Secrets Manager, ECR | $10 | $10 | $10 |
+| **Lean total** | **~$140** | **~$150** | **~$180** |
+| **With HA** (2 servers, 2 workers, Multi-AZ RDS) | **~$220** | **~$235** | **~$295** |
+| Later step-up to db.m7g.large (non-burstable), Single-AZ | +~$75 | +~$85 | +~$100 |
+
+The Fargate ARM unit rates behind these figures: US $0.0324 per vCPU-hour and $0.0036 per GB-hour; Sydney $0.0389 and $0.0043; Ireland is estimated at about 20% below its x86 rate. RDS db.t4g.medium: about $47 a month in us-east-1, about $0.069 an hour in eu-west-1 and about $74 a month in Sydney. ALB, NAT and storage are approximate regional list prices. A 1-year Savings Plan or Reserved Instance takes about 20 to 35% off. Confirm the totals in the AWS Pricing Calculator.
+
+**Recommendation.** Start lean on 1 server, 1 worker and a Single-AZ db.t4g.medium in the region closest to staff. Compute is under 20% of the bill, and the database and fixed network costs dominate. Move RDS to Multi-AZ when about 10 minutes of failover downtime becomes unacceptable. Scale the server out only after solving MCP session stickiness (7.3). Load-test staging before go-live (7.8).
+
+---
+
 For one company of about 100 people running 6 apps (Capabilities) on this template, deployed on ECS Fargate with RDS for PostgreSQL. Single-tenant: one environment, one database, one org. Prepared 2026-11-28 from the code at `main` plus a quick local benchmark.
 
 **Short answer**
