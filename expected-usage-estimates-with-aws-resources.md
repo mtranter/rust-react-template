@@ -6,15 +6,15 @@
 
 **What it is.** An internal suite of 6 business apps for one company of about 100 staff. It is a modular-monolith Rust server with an embedded React SPA and a Postgres-backed event outbox (the "kafka-lite" mechanism). It is single-tenant, busy during working hours and near idle overnight.
 
-**Expected load.** Peak-hour traffic is about 7 to 36 API requests a second, bursting to about 110 at the generous design peak, with about 20% of requests writing. Each write fans out to 3 to 5 background subscriber jobs, which come to about 54 a second at that peak, bursting to about 165. This fan-out, not the web traffic, is the main load on the database. Even at the generous peak, every component runs at 25% or less of its capacity.
+**Expected load.** Peak-hour traffic is about 7 to 36 API requests a second, bursting to about 110 at the generous design peak, with about 20% of requests writing. Each event fans out to about 1.5 subscriber jobs on average. Most topics have no consumer, and a few, like Users, have up to 8, but those change rarely. At the generous peak that comes to about 17 jobs a second, bursting to about 52. Subscriber deliveries are still the largest single share of database work, but at this fan-out the database runs at about 10% CPU in the peak hour, and every component runs at 25% or less of its capacity even in bursts.
 
 **Resources (the same in every region):**
 
 | Component | Size | Peak utilisation (generous case) |
 |---|---|---|
 | ECS Fargate `server` (API, SPA, MCP) | 1 task, 0.5 vCPU / 1 GB, ARM64 | ~25% CPU, under 10% memory |
-| ECS Fargate `worker` (events, jobs) | 1 task, 0.25 vCPU / 0.5 GB, ARM64 | ~25% of one worker's throughput |
-| RDS PostgreSQL 17 | db.t4g.medium (2 vCPU / 4 GiB), 50 GB gp3 | ~20% CPU in the peak hour |
+| ECS Fargate `worker` (events, jobs) | 1 task, 0.25 vCPU / 0.5 GB, ARM64 | ~10% of one worker's throughput (~25% in bursts) |
+| RDS PostgreSQL 17 | db.t4g.medium (2 vCPU / 4 GiB), 50 GB gp3 | ~10% CPU in the peak hour (~25% in bursts) |
 | ALB + NAT gateway, logs, secrets | 1 each | — |
 | Redis / Valkey | not needed yet | — |
 
@@ -51,7 +51,7 @@ For one company of about 100 people running 6 apps (Capabilities) on this templa
 | RDS PostgreSQL 17 | **db.t4g.medium (2 vCPU, 4 GiB), 50 GB gp3**, Single-AZ, PITR on | db.m7g.large when CPU credits trend down or CPU > 40% sustained, Multi-AZ when an outage of ~10 min costs more than about $75 a month |
 | Valkey (ElastiCache) | **none**: no module broadcasts yet | the first module that calls `app_bus` |
 
-At the generous design peak (about 110 API requests a second and 165 subscriber jobs a second), that comes to **about 0.75 vCPU and 1.5 GB of Fargate**, and the database runs at about 20% CPU during the peak hour. Cost is roughly **US$175 a month lean, about $290 with HA** in Sydney (section 8). The database and the fixed network costs dominate. Compute is almost nothing.
+At the generous design peak (about 110 API requests a second and 52 subscriber jobs a second in bursts), that comes to **about 0.75 vCPU and 1.5 GB of Fargate**, and the database runs at about 10% CPU during the peak hour. Cost is roughly **US$175 a month lean, about $290 with HA** in Sydney (section 8). The database and the fixed network costs dominate. Compute is almost nothing.
 
 ---
 
@@ -92,7 +92,13 @@ The parts that matter for capacity:
 | MCP sessions live in the memory of the process that opened them (ADR 0034). | **Several server tasks need stickiness by `Mcp-Session-Id`, which an ALB can't do** (section 7.3). |
 | Assistant turns stream SSE from the server. Each tool call is an in-process call to `/api`. | Long-lived connections, very little CPU. The ALB idle timeout must be longer than a model call. |
 
-Today's fan-out, from `messaging.subscription`: `users.user.v1` has 3 subscriptions, `notes.note.v1` 1, and each `access` topic 1 (the audit log). So F is 1 to 3 today. With 6 real apps, each owning a couple of roots whose topics feed their own search projection, the audit log, and a reaction or projection in one or two other apps, **F = 3 is realistic and F = 5 generous**.
+Today's fan-out, from `messaging.subscription`: `users.user.v1` has 3 subscriptions, `notes.note.v1` 1, and each `access` topic 1 (the audit log). With 6 real apps, fan-out per topic is uneven:
+
+- **Most topics: 0 consumers.** Their events are written to the outbox, marked dispatched by the relay and compacted. They cost one outbox row and no jobs.
+- **Typical consumed topics: 1 to 2** (the owning app's own search projection, a reaction in one other app).
+- **A few shared master-data topics: up to 8.** Users, for example, is projected by every app that shows or sorts by people.
+
+What sizes the worker is F weighted by event volume, not by topic count. The high-fan-out topics are master data with ~100 keys that change a few times a day, so they barely move the average. The busy topics are each app's own transactional roots, which have 0 to 2 consumers. So **F = 1.5 jobs per event is realistic and F = 2 generous**. Even if every Users change hit 8 consumers, 100 users × a few changes a day is under 1,000 jobs a day.
 
 ## 3. Traffic model (Little's law)
 
@@ -130,14 +136,14 @@ Add about 10 full page loads per user a day (`index.html`, the 1.2 MB bundle, fo
 
 events = writes × c, where c covers cascades: a subscriber's write publishes its own event, as a projection or reaction may. jobs = events × F, plus deferred jobs and Schedules, which are negligible.
 
-| | R (F = 3, c = 1.2) | G (F = 5, c = 1.5) |
+| | R (F = 1.5, c = 1.1) | G (F = 2, c = 1.2) |
 |---|---|---|
 | Writes / day | 21k | 130k |
-| Events / day | 25k | 195k |
-| Subscriber jobs / day | 75k | ~1M |
+| Events / day | 23k | 156k |
+| Subscriber jobs / day | 35k | ~310k |
 | Writes / s, peak-hour mean (burst) | 1.1 (3.5) | 7.2 (22) |
-| Events / s, peak-hour mean (burst) | 1.4 (4.2) | 11 (33) |
-| **Jobs / s, peak-hour mean (burst)** | **4 (13)** | **54 (165)** |
+| Events / s, peak-hour mean (burst) | 1.2 (3.8) | 8.6 (26) |
+| **Jobs / s, peak-hour mean (burst)** | **2 (6)** | **17 (52)** |
 
 Each business write costs Postgres roughly this:
 
@@ -145,12 +151,12 @@ Each business write costs Postgres roughly this:
 - relay: 1 outbox update and F job inserts, shared across a batch of up to 100
 - each of F deliveries: claim (update), handler writes (1 to 3 rows), job delete, in 1 transaction each
 
-So **about 3 + 3F row operations and 1 + F commits per write**: about 12 row ops and 4 commits at F = 3, about 18 and 6 at F = 5. **Fan-out, not the HTTP traffic, is what sizes the database** (section 4.3).
+So **about 3 + 3F row operations and 1 + F commits per write**: about 7.5 row ops and 2.5 commits at F = 1.5, about 9 and 3 at F = 2. Deliveries are still the largest single share of database CPU (section 4.3), but at this fan-out they are about the same order as the HTTP traffic, not a multiple of it.
 
 **Worker sizing by Little's law.** Measured locally, one worker drained 3,000 jobs in 11.5 s, about 260 jobs/s, as a debug build with Postgres on the same host. On Fargate to RDS, each job is about 6 round trips (claim, begin, handler, delete, commit) at about 0.5 to 0.8 ms each, so about 5 ms of wall time, or **~200 jobs/s per worker**. Utilisation ρ = λ × 5 ms:
 
-- R: 4 jobs/s gives ρ ≈ 2%. Bursts of 13/s are 7%.
-- G: 54 jobs/s gives ρ ≈ 27%. A burst of 165/s is 83%, but only for seconds: the outbox and job tables are the buffer, and a burst drains a few seconds behind. One worker suffices. A second gives redundancy and halves lag.
+- R: 2 jobs/s gives ρ ≈ 1%. Bursts of 6/s are 3%.
+- G: 17 jobs/s gives ρ ≈ 9%. Bursts of 52/s are 26%. One worker has about 4× headroom over the generous burst. A second worker is only for redundancy. Even a burst above capacity just queues in the outbox and job tables and drains seconds later.
 
 ## 4. Measurements behind the per-unit costs
 
@@ -188,18 +194,19 @@ Postgres vCPU-seconds per second = reads × 1 ms + writes × 1.3 ms + jobs × 5.
 
 | | Reads | Writes | Jobs | Idle | Total | % of 2 vCPU |
 |---|---|---|---|---|---|---|
-| R peak-hour mean | 6.4/s → 0.006 | 1.1/s → 0.001 | 4/s → 0.022 | 0.05 | **0.08 vCPU** | 4% |
-| G peak-hour mean | 29/s → 0.029 | 7.2/s → 0.009 | 54/s → 0.30 | 0.05 | **0.39 vCPU** | 19% |
-| G burst (seconds) | 88/s → 0.09 | 22/s → 0.03 | 165/s → 0.91 | 0.05 | **~1.1 vCPU** | 54% |
+| R peak-hour mean | 6.4/s → 0.006 | 1.1/s → 0.001 | 2/s → 0.011 | 0.05 | **0.07 vCPU** | 3.5% |
+| G peak-hour mean | 29/s → 0.029 | 7.2/s → 0.009 | 17/s → 0.094 | 0.05 | **0.18 vCPU** | 9% |
+| G burst (seconds) | 88/s → 0.09 | 22/s → 0.03 | 52/s → 0.29 | 0.05 | **~0.46 vCPU** | 23% |
 
-In G, about 75% of the database's CPU goes to subscriber deliveries. A db.t4g.medium has a baseline of 20% per vCPU (0.4 vCPU sustained) and earns 24 CPU credits an hour, banking up to 576. So:
+In G, subscriber deliveries are about 70% of the database's non-idle CPU, but the total is small. A db.t4g.medium has a baseline of 20% per vCPU (0.4 vCPU sustained) and earns 24 CPU credits an hour, banking up to 576. So:
 
-- **R** runs at a tenth of the baseline. The instance banks credits all day.
-- **G** sits right at the baseline during the peak hour, bursts above it on credits, and falls to near idle outside work hours. It is fine for a working-hours profile. If G-level load ever ran for 8+ hours straight, Unlimited mode would start billing surplus credits (US$0.075 per vCPU-hour). That is the moment to move to **db.m7g.large**, which is non-burstable.
+- **R** runs at about a sixth of the baseline. The instance banks credits all day.
+- **G** runs at under half the baseline in the peak hour and only briefly exceeds it in bursts. Credits never drain on a working-hours profile, and even all-day G load would stay under the baseline. The move to **db.m7g.large** (non-burstable) is now a trigger for growth, not something this load needs.
+- **db.t4g.small (2 vCPU / 2 GiB)** would also carry this CPU (same 0.4 vCPU baseline), saving about $23 a month in the US and EU and about $37 in AU. I still recommend the medium: 4 GiB keeps the whole data set and connections in memory with room to spare, and the extra cost is small.
 
 ### 4.4 Database memory, storage, IOPS and connections
 
-- **Data.** 6 apps × 100 users of business records: a few hundred MB in year one, low single-digit GB after a few years (more if apps store documents in Postgres, which they shouldn't: use S3). The outbox holds the latest event per key plus 7 days: ~0.3 GB (R) to ~2 GB (G) of churn at about 1.5 KB an event, since events carry the root's whole state. The access audit log grows forever but slowly. Jobs are deleted when they complete. Idempotency records live 24 h.
+- **Data.** 6 apps × 100 users of business records: a few hundred MB in year one, low single-digit GB after a few years (more if apps store documents in Postgres, which they shouldn't: use S3). The outbox holds the latest event per key plus 7 days: ~0.25 GB (R) to ~1.6 GB (G) of churn at about 1.5 KB an event, since events carry the root's whole state. The access audit log grows forever but slowly. Jobs are deleted when they complete. Idempotency records live 24 h.
 - **RAM.** With 4 GiB, `shared_buffers` (~1 GiB) holds the whole hot set for years. Move to 8 GiB (db.t4g.large or db.m7g.large) if the buffer cache hit ratio drops below ~99%.
 - **Storage.** **50 GB gp3** (3,000 IOPS and 125 MB/s baseline included). G bursts are about 200 commits/s and about 400 row ops/s, well under the baseline IOPS. Turn on storage autoscaling with a 200 GB ceiling.
 - **Connections.** Each process has a pool of 10 (`APP_DB_MAX_CONNECTIONS`): 1 to 2 servers + 1 to 2 workers + `migrate` gives at most 50, against the ~400 a db.t4g.medium defaults to. Little's law says fewer than 2 are busy at a time. No RDS Proxy needed.
@@ -231,7 +238,7 @@ Everything is in 2 AZs, with private subnets for tasks and RDS. For egress (JWKS
 | RDS buffer cache hit | < 99% | an 8 GiB class |
 | RDS `FreeStorageSpace` | < 20% | storage autoscaling handles it |
 
-**Headroom.** The recommended setup handles about 4× the generous burst on the server and about 1.2× on the worker per task (the outbox absorbs the rest as lag). The database is at about 20% of a burstable 2-vCPU at the G peak hour. A 500-person single-tenant deployment would still fit on 2 servers, 2 workers and one db.m7g.large.
+**Headroom.** The recommended setup handles about 4× the generous burst on both the server and the worker. The database is at about 9% of a burstable 2-vCPU at the G peak hour (23% in bursts). A 500-person single-tenant deployment would still fit on 2 servers, 2 workers and one db.m7g.large.
 
 ## 7. Risks and cheap tuning found while reviewing
 
@@ -242,7 +249,7 @@ Everything is in 2 AZs, with private subnets for tasks and RDS. For egress (JWKS
 5. **The claim query's cost grows with the number of subscriptions a worker serves**: it does a `LATERAL` index probe per (queue, event_type), plus the per-key ordering and backfill `NOT EXISTS` checks. That is fine at dozens of subscriptions. Watch it in Performance Insights as the apps grow to 50+ subscriptions.
 6. **t4g credit trap.** Burstable RDS runs in Unlimited mode. If the load turns out to be sustained rather than working-hours bursty, surplus credits are billed. Watch `CPUSurplusCreditsCharged`.
 7. **Assistant cost is tokens, not compute.** Each model call carries the tool list (one tool per operation: 49 today, more with 6 apps) and up to 50 history messages, so the tool schemas alone are many thousands of input tokens per call, with up to 10 tool calls a turn. Budget it separately (Bedrock or Anthropic), and consider prompt caching or a narrower tool set.
-8. **Calibrate with a real load test.** These are model numbers scaled from a laptop. Before go-live, run a k6 scenario on staging (the same Fargate and RDS sizes) at the G mix: 110 req/s, 20% writes, F = 5. Confirm p95 < 200 ms, job lag < 5 s and RDS CPU < 50%.
+8. **Calibrate with a real load test.** These are model numbers scaled from a laptop. Before go-live, run a k6 scenario on staging (the same Fargate and RDS sizes) at the G mix: 110 req/s, 20% writes, F = 2 (with the Users topic at 8). Confirm p95 < 200 ms, job lag < 5 s and RDS CPU < 50%.
 
 ## 8. Indicative monthly cost (ap-southeast-2, on-demand, USD)
 
@@ -264,6 +271,6 @@ A 1-year Compute Savings Plan (Fargate) and an RDS Reserved Instance cut about 2
 ## 9. Assumptions to revisit
 
 - 6 apps of LOB-style CRUD, with no app doing heavy reporting or analytics in Postgres. A reporting app scanning big tables changes the RDS sizing more than everything above. Give it a read replica or its own projection.
-- No bulk imports or integration syncs moving thousands of rows a minute. A nightly sync of 50k records fans out to 50k × F jobs: at 200 jobs/s per worker that is ~4 minutes for F = 3, which is fine overnight.
+- No bulk imports or integration syncs moving thousands of rows a minute. A nightly sync of 50k records fans out to 50k × F jobs: at 200 jobs/s per worker that is ~6 minutes for F = 1.5, which is fine overnight. A bulk sync into a master-data topic with 8 consumers (say, importing 5k users) is 40k jobs, about 3.5 minutes.
 - Agents over MCP behave like a few extra humans, not loops of hundreds of calls a minute. If agents are automated, apply Little's law to them separately: N_agents × calls a minute.
 - Browser-to-ALB latency (Sydney) is not counted in R. It doesn't change throughput, since R ≪ Z.
