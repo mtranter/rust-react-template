@@ -2,6 +2,8 @@
 
 ## Executive summary
 
+> **Monthly total (USD, on-demand): US ~$140 · EU ~$150 · AU ~$180 lean. With HA: US ~$220 · EU ~$235 · AU ~$295.** The line-by-line breakdown is in the cost table below.
+
 **What it is.** An internal suite of 6 business apps for one company of about 100 staff. It is a modular-monolith Rust server with an embedded React SPA and a Postgres-backed event outbox (the "kafka-lite" mechanism). It is single-tenant, busy during working hours and near idle overnight.
 
 **Expected load.** Peak-hour traffic is about 7 to 36 API requests a second, bursting to about 110 at the generous design peak, with about 20% of requests writing. Each write fans out to 3 to 5 background subscriber jobs, which come to about 54 a second at that peak, bursting to about 165. This fan-out, not the web traffic, is the main load on the database. Even at the generous peak, every component runs at 25% or less of its capacity.
